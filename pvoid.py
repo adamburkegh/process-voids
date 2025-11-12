@@ -4,9 +4,10 @@ import random
 import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
+DEBUG = False
 
-
-print( f'Importing pm4py {datetime.datetime.now()}')
+if DEBUG:
+    print( f'Importing pm4py {datetime.datetime.now()}')
 import pm4py
 
 
@@ -25,6 +26,8 @@ SYNCH_COST = 0
 
 
 def show_skip_outcome(dv):
+    if not DEBUG:
+        return
     print(dv.print_blinded())
     print('=====')
     print(dv.stats())

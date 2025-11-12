@@ -1,7 +1,7 @@
 # process-voids
 Characterising unobserved activities in process event data.
 
-For context, see [this blog post](https://adamburkeware.net/2025/11/11/pvoid-adsn.html). This was presented at ADSN 2025; a preprint is forthcoming.
+Background and motivation can be found in [this blog post](https://adamburkeware.net/2025/11/11/pvoid-adsn.html). This was presented at ADSN 2025; a preprint is forthcoming.
 
 Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. Australian Data Science Network 2025.
 
@@ -12,10 +12,10 @@ This project is based on a hard fork of the [skip-probabilities](https://git.rwt
 Install dependencies (perhaps in a dedicated environment)
 
 ```
-pip -r requirements.txt
+pip install -r requirements.txt
 ```
 
-Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local directory, or set the `probabilities.EBI_EXECUTABLE` constant to a different path.
+Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local directory, or set the `probabilities.EBI_EXECUTABLE` constant to the path of the executable.
 
 Calculate skip probabilities and coverage on a XES event log and a PTML process tree model.
 
@@ -28,7 +28,7 @@ python pvoid.py <log> <model>
 This uses a filtered version of the [Road Traffic Fines dataset](https://data.4tu.nl/articles/_/12683249/1). Firstly a number of activities are filtered out to make a clearer example. Secondaly an process model is used, that is based on a discovered inductive miner model, but introduces the fictional activity Certify Judgement in the middle of the main process sequence. This makes it a compulsory step which is never observed in the log, ie, a process void.
 
 ```
-python -u skipprob.py logs/rtfm_fine_appeal.xes.gz models/rtfm_extra.ptml
+$ python -u pvoid.py logs/rtfm_fine_appeal.xes.gz models/rtfm_extra.ptml
 
 ...
 
