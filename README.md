@@ -3,7 +3,7 @@ Characterising unobserved activities in process event data.
 
 Background and motivation can be found in [this blog post](https://adamburkeware.net/2025/11/11/pvoid-adsn.html). This was presented at ADSN 2025; a preprint is forthcoming.
 
-Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. Australian Data Science Network 2025.
+_Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. Australian Data Science Network 2025._
 
 This project is based on a hard fork of the [skip-probabilities](https://git.rwth-aachen.de/philippbaer/skip-probabilities) repository created by Philipp Bär.
 
@@ -25,7 +25,7 @@ python pvoid.py <log> <model>
 
 ## Sample Output
 
-This uses a filtered version of the [Road Traffic Fines dataset](https://data.4tu.nl/articles/_/12683249/1). Firstly a number of activities are filtered out to make a clearer example. Secondaly an process model is used, that is based on a discovered inductive miner model, but introduces the fictional activity Certify Judgement in the middle of the main process sequence. This makes it a compulsory step which is never observed in the log, ie, a process void.
+This uses a filtered version of the [Road Traffic Fines dataset](https://data.4tu.nl/articles/_/12683249/1). Firstly a number of activities are filtered out to make a clearer example. Secondly a process model is used,  based on a discovered inductive miner model, but which introduces the fictional activity _Certify Judgement_ in the middle of the main process sequence. This makes it a compulsory step which is never observed in the log, ie, a process void.
 
 ```
 $ python -u pvoid.py logs/rtfm_fine_appeal.xes.gz models/rtfm_extra.ptml
