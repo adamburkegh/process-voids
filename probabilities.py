@@ -5,7 +5,9 @@ import random
 import pandas as pd
 import subprocess
 from tqdm import tqdm
-
+import os
+import subprocess
+from pathlib import Path
 
 EBI_EXECUTABLE = 'ebi'
 
@@ -53,9 +55,24 @@ class EbiOccurance(object):
         return log
     
     def ebi_slpn(self, model='model.pnml', log='log.xes', out='smodel.slpn'):
-        subprocess.check_call([EBI_EXECUTABLE, "disc", "occ", log, model, 
-                               "-o", out])
-    
+        exe = os.path.abspath(EBI_EXECUTABLE)
+
+        cmd = [
+            exe,
+            "discover",
+            "occurrence",
+            "stochastic-labelled-Petri-net",
+            log,
+            model,
+            "-o",
+            out
+        ]
+
+        print("Running:")
+        print(" ".join(cmd))
+
+        subprocess.check_call(cmd)
+
     def validate_slpn(self, tree:ProcessTree, path='smodel.slpn'):
         file = open(path,"r")
         lines = file.readlines()

@@ -1,4 +1,3 @@
-
 import datetime
 import random
 import sys
@@ -14,6 +13,7 @@ import pm4py
 from coveragemass import *
 from derivation import DerivationPipeline, EbiWeights
 import probabilities
+ebi = probabilities.EbiOccurance()
 from processtree import *
 import slpn_importer
 
@@ -120,6 +120,7 @@ def main():
     print( f'Coverage: {coverage_mass(pt, dv.skip_probs)}' )
     print( '==========' )
     print( f'Finished at {datetime.datetime.now()}')
+    raw_output = show_tree_weights(pt, dv)
 
 if __name__ == '__main__':
     main()
