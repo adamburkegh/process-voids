@@ -60,30 +60,37 @@ def activity_skip_probs_by_label(skip_probs: Dict[ProcessTree, float]) -> Dict[s
         counts[label] = counts.get(label, 0) + 1
     return {label: sums[label] / counts[label] for label in sums}
 
-
 # Colour Codes
-GREEN = "#00A651"
-ORANGE = "#F7941E"
-RED = "#ED1C24"
-MAROON = "#800000"
+RED = "#D72000FF"
+ORANGE = "#EE6100FF"
+AMBER = "#FFAD0AFF"
+TEAL = "#1BB6AFFF"
+GREY = "#9093A2FF"
+NAVY = "#777F9FFF"
 
 
 def prob_to_colour(p: float) -> str:
     """
-    Skip probability- four bands to return a #RRGGBB" hex string:
-        0%    <= p <= 14% -> green
-        15%   <= p <= 20% -> orange
-        21%   <= p <= 30% -> red
-        31%   <= p <= 100% -> maroon
+    Skip probability - six even bands to return a #RRGGBBAA hex string:
+        0%      <= p < 16.67%  -> NAVY
+        16.67%  <= p < 33.33%  -> GREY
+        33.33%  <= p < 50%     -> TEAL
+        50%     <= p < 66.67%  -> AMBER
+        66.67%  <= p < 83.33%  -> ORANGE
+        83.33%  <= p <= 100%   -> RED
     """
     p = max(0.0, min(1.0, p))
-    if p <= 0.14:
-        return GREEN
-    if p <= 0.20:
+    if p < 1 / 6:
+        return NAVY
+    if p < 2 / 6:
+        return GREY
+    if p < 3 / 6:
+        return TEAL
+    if p < 4 / 6:
+        return AMBER
+    if p < 5 / 6:
         return ORANGE
-    if p <= 0.30:
-        return RED
-    return MAROON
+    return RED
 
 
 # BPMN colouring
