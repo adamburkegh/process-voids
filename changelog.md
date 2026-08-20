@@ -12,4 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Purpose
 
-This feature provides a visual representation of skip probabilities directly within the BPMN model, allowing activities with different skip probabilities to be identified more easily.
+This feature provides a visual representation of skip probabilities directly within the BPMN model, allowing activities with different skip probabilities to be identified more easily. 
+
+### Implementation
+The colours added depend upon tools such as bpmn.io to view the model. 
