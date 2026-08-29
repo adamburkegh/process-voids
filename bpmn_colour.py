@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Optional
 
-from processtree import ProcessTree, Activity, Tau
+from skipalignments import ProcessTree, Activity, Tau
 
 
 # BPMN, BPMNDI, DC, DI, BIOC Namespaces

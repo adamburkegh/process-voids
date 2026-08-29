@@ -5,17 +5,23 @@ Background and motivation can be found in [this blog post](https://adamburkeware
 
 _Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. Australian Data Science Network 2025._
 
-This project is based on a hard fork of the [skip-probabilities](https://git.rwth-aachen.de/philippbaer/skip-probabilities) repository created by Philipp Bär.
 
 ## Building and Running
 
-Install dependencies (perhaps in a dedicated environment)
+This project is under development, and requires [skip-alignments](https://github.com/adamburkegh/skip-alignments) as a local dependency.
+
+Clone skip-alignments. In skip-alignments, perhaps in a venv:
+```
+pip install -e .
+```
+
+In process-voids, perhaps in a venv:
 
 ```
-pip install -r requirements.txt
+pip install -e .
 ```
 
-Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local directory, or set the `probabilities.EBI_EXECUTABLE` constant to the path of the executable.
+Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local directory, or set the `skipalignments.probabilities.EBI_EXECUTABLE` constant to the path of the executable.
 
 Calculate skip probabilities and coverage on a XES event log and a PTML process tree model.
 
