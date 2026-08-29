@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "process-voids"
+version = "0.1.0"
+description = "Characterising unobserved activities in process event data."
+requires-python = ">=3.10"
+dependencies = [
+    "pm4py>=2.7,<=2.8",
+    "rustxes>=0.2.10",
+    "skipalignments @ file:../skip-alignments",
+]
+
+[tool.setuptools]
+py-modules = [
+    "pvoid",
+    "bpmn_colour",
+    "coveragemass",
+    "disco",
+    "logs",
+    "rtfm",
+    "slpn",
+    "slpn_importer",
+]

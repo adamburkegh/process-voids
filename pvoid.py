@@ -1,6 +1,5 @@
 
 import datetime
-import random
 import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -12,12 +11,13 @@ import pm4py
 
 
 from coveragemass import *
-from derivation import DerivationPipeline, EbiWeights
-import probabilities
-from processtree import *
+from skipalignments import (
+    DerivationPipeline, EbiWeights, ProcessTree, LeafNode, Activity, Tau,
+    Sequence, Xor, And, Loop, update_pair_taus, probabilities,
+)
 import slpn_importer
 
-probabilities.EBI_EXECUTABLE="./ebi"   # Path to ebi link
+probabilities.EBI_EXECUTABLE="ebi.exe"   # resolved via PATH; see README
 
 MM_COST = 100000
 TAU_COST = 0
@@ -67,31 +67,6 @@ def show_tree_weights(tree,dv):
         child_string = "\n".join([show_tree_weights(c,dv) \
                                     for c in tree.children])
         return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
-
-
-'''
-This ... what one can only call filthy hack ... taken from im_models.ipynb
-'''
-def update_pair_taus(tree:ProcessTree):
-    if isinstance(tree, Tau):
-        if tree.parent is not None and len(tree.parent.children) == 2:
-            other = tree.parent.children[0]
-            if other == tree:
-                other = tree.parent.children[1]
-            if isinstance(other, Activity):
-                # set tau
-                tree.name = "TAU_" + other.name
-            else:
-                tree.name = "TAU_" + other.id
-        else:
-            tree.name = "TAU_" + str(tree.get_distance_to_root()) + str(random.random())
-        return
-    elif not isinstance(tree, Activity):
-        for c in tree.children:
-            update_pair_taus(c)
-        return
-    else:
-        return
 
 
 def skipprob(log, pt, slpn_path ):

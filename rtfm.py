@@ -5,7 +5,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 import pm4py
 
-from processtree import *
+from skipalignments import *
 
 
 def printTree(tree):

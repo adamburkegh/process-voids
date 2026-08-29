@@ -2,7 +2,7 @@
 import sys
 import unittest
 
-from processtree import *
+from skipalignments import *
 from coveragemass import *
 from slpn import *
 
