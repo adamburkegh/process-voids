@@ -3,8 +3,8 @@ import sys
 import unittest
 
 from skipalignments import *
-from coveragemass import *
-from slpn import *
+from process_voids.coveragemass import *
+from process_voids.slpn import *
 
 
 
