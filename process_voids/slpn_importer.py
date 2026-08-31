@@ -12,7 +12,7 @@ ChatGPT assisted
 import io
 from fractions import Fraction
 
-from slpn import StochasticLabelledPetriNet
+from .slpn import StochasticLabelledPetriNet
 
 
 class StochasticLabelledPetriNetImporter:

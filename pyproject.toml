@@ -17,10 +17,9 @@ dependencies = [
 py-modules = [
     "pvoid",
     "bpmn_colour",
-    "coveragemass",
     "disco",
-    "logs",
     "rtfm",
-    "slpn",
-    "slpn_importer",
 ]
+
+[tool.setuptools.packages.find]
+include = ["process_voids*", "lab*"]

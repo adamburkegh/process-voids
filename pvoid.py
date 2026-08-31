@@ -10,12 +10,12 @@ if DEBUG:
 import pm4py
 
 
-from coveragemass import *
+from process_voids.coveragemass import *
 from skipalignments import (
     DerivationPipeline, EbiWeights, ProcessTree, LeafNode, Activity, Tau,
     Sequence, Xor, And, Loop, update_pair_taus, probabilities,
 )
-import slpn_importer
+from process_voids import slpn_importer
 
 probabilities.EBI_EXECUTABLE="ebi.exe"   # resolved via PATH; see README
 
