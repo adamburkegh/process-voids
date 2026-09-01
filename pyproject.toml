@@ -14,13 +14,6 @@ dependencies = [
     "matplotlib",
 ]
 
-[tool.setuptools]
-py-modules = [
-    "pvoid",
-    "bpmn_colour",
-    "disco",
-    "rtfm",
-]
-
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["process_voids*", "lab*"]
