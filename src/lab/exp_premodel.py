@@ -38,7 +38,7 @@ def run_experiment2(cases, out_csv='var/lab/results/exp_premodel.csv'):
             row.update(metrics)
         except Exception as e:
             row.update(status=f'error: {e}', weight_coverage=None,
-                        skipprob=None, duration_coverage=None)
+                        skipprob=None, duration_coverage=None, alignment_coverage=None)
         rows.append(row)
 
     df = pd.DataFrame(rows)
