@@ -9,6 +9,9 @@ Captures the metrics currently available:
   - duration_coverage: coveragemass.coverage_by_duration, estimating
     coverage from the implied duration of activities present in the
     model but missing from the log
+  - alignment_coverage: coveragemass.coverage_by_alignment (zero
+    convention - matches the paper; favours flagging a possible void
+    over silently absorbing a subprocess that ran but wasn't recorded)
 
 More metrics are expected to land here later.
 """
@@ -19,7 +22,8 @@ from skipalignments import Activity
 
 from process_voids import pvoid, slpn_importer
 from process_voids.coveragemass import mass_by_weight, transfer_pt_weights, \
-    infer_operator_weights, coverage_by_duration, log_to_traces, dur
+    infer_operator_weights, coverage_by_duration, log_to_traces, dur, \
+    coverage_by_alignment
 
 
 def mean_skipprob(tree, skip_probs):
@@ -51,4 +55,5 @@ def compute_metrics(log, tree, slpn_path, has_estimator=True):
         'skipprob': mean_skipprob(tree, dv.skip_probs),
         'duration_coverage': coverage_by_duration(
             tree, traces, dv.skip_probs, total_dur),
+        'alignment_coverage': coverage_by_alignment(tree, dv),
     }

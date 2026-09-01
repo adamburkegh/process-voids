@@ -1,7 +1,8 @@
 """
 Dose-response plots for exp_disco_degrade output: weight_coverage /
-skipprob / duration_coverage vs degradation_level, one line per
-discovery+estimator combo, faceted by (log, degradation dimension).
+skipprob / duration_coverage / alignment_coverage vs degradation_level,
+one line per discovery+estimator combo, faceted by (log, degradation
+dimension).
 
 Usage:
     python -m lab.plots var/lab/results/exp_disco_degrade.csv
@@ -16,7 +17,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-METRICS = ['weight_coverage', 'skipprob', 'duration_coverage']
+METRICS = ['weight_coverage', 'skipprob', 'duration_coverage', 'alignment_coverage']
 
 
 def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
@@ -40,14 +41,20 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
 
         group_ok = ok[(ok['log'] == log) & (ok['degradation_dim'] == dim)]
         for ax, metric in zip(axes, METRICS):
+            # skipprob is a skip probability (higher = worse); every other
+            # metric here is a coverage proxy (higher = better) - plot
+            # 1-skipprob so all four panels read the same direction.
+            label = '1 - skipprob' if metric == 'skipprob' else metric
             for combo, combo_group in group_ok.groupby('combo'):
                 combo_group = combo_group.sort_values('degradation_level')
                 if combo_group.empty:
                     continue
-                ax.plot(combo_group['degradation_level'], combo_group[metric],
+                y = (1 - combo_group[metric] if metric == 'skipprob'
+                     else combo_group[metric])
+                ax.plot(combo_group['degradation_level'], y,
                         marker='o', label=combo)
             ax.set_xlabel(f'{dim}-wise degradation level')
-            ax.set_ylabel(metric)
+            ax.set_ylabel(label)
             ax.set_ylim(-0.05, 1.05)
             ax.legend()
 
