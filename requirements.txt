@@ -1,5 +1,6 @@
 pm4py >= 2.7, <= 2.8
 rustxes >= 0.2.10
+matplotlib >= 3.11.1
 # skipalignments is not yet published/tagged anywhere real.
 # Use `pip install -e .` instead (pyproject.toml points at a local
 # ../skip-alignments checkout). Once skip-alignments is pushed and
