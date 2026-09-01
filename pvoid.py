@@ -12,16 +12,13 @@ import pm4py
 
 from process_voids.coveragemass import *
 from skipalignments import (
-    DerivationPipeline, EbiWeights, ProcessTree, LeafNode, Activity, Tau,
-    Sequence, Xor, And, Loop, update_pair_taus, probabilities,
+    DerivationPipeline, EbiWeights, LeafNode, Activity, Tau,
+    Sequence, Xor, And, Loop, probabilities,
 )
 from process_voids import slpn_importer
+from process_voids.tree import from_pm4py
 
 probabilities.EBI_EXECUTABLE="ebi.exe"   # resolved via PATH; see README
-
-MM_COST = 100000
-TAU_COST = 0
-SYNCH_COST = 0
 
 
 
@@ -81,9 +78,7 @@ def main():
     print( f'Started at {datetime.datetime.now()}')
     logx   = pm4py.read_xes( sys.argv[1] )
     modelt = pm4py.read_ptml( sys.argv[2] )
-    pt = ProcessTree.from_pm4py( modelt, MM_COST, TAU_COST, 
-                                             SYNCH_COST )
-    update_pair_taus(pt)
+    pt = from_pm4py(modelt)
     slpn_path = 'var/spmodel.slpn'
     dv = skipprob(logx, pt, slpn_path)
     show_skip_outcome(dv)
