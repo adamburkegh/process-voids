@@ -26,7 +26,7 @@ Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local di
 Calculate skip probabilities and coverage on a XES event log and a PTML process tree model.
 
 ```
-python pvoid.py <log> <model>
+python -m process_voids.pvoid <log> <model>
 ```
 
 ## Sample Output
@@ -34,7 +34,7 @@ python pvoid.py <log> <model>
 This uses a filtered version of the [Road Traffic Fines dataset](https://data.4tu.nl/articles/_/12683249/1). Firstly a number of activities are filtered out to make a clearer example. Secondly a process model is used,  based on a discovered inductive miner model, but which introduces the fictional activity _Certify Judgement_ in the middle of the main process sequence. This makes it a compulsory step which is never observed in the log, ie, a process void.
 
 ```
-$ python -u pvoid.py logs/rtfm_fine_appeal.xes.gz models/rtfm_extra.ptml
+$ python -u -m process_voids.pvoid logs/rtfm_fine_appeal.xes.gz models/rtfm_extra.ptml
 
 ...
 

@@ -1,6 +1,6 @@
 """
 Metric computation for a single (log, model) run, built on top of the
-existing skip-probability pipeline in pvoid.py / process_voids.
+existing skip-probability pipeline in process_voids.pvoid.
 
 Captures the two metrics currently available:
   - weight_coverage: coveragemass.coverage_mass, weighted by tree/leaf
@@ -14,8 +14,7 @@ from pathlib import Path
 
 from skipalignments import Activity
 
-import pvoid
-from process_voids import slpn_importer
+from process_voids import pvoid, slpn_importer
 from process_voids.coveragemass import coverage_mass, transfer_pt_weights, \
     infer_operator_weights
 
