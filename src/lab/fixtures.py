@@ -9,8 +9,10 @@ Model:  N = seq( o, loop(a, e), xor(s, tau), p )
 Approval, with optional escalation, executes in the order-inventory
 system; urgent payments skip scheduling.
 
-Log L_ex: five cases, of which sigma3 and sigma5 escalated in reality
+Log L_ex: six cases, of which sigma3 and sigma5 escalated in reality
 but the order-inventory events (e) were not captured in the extract.
+sigma6 is an urgent payment that skips scheduling entirely (the only
+trace omitting s).
 
 This is the paper's worked example. It doubles as a quick smoke test for
 the harness (see exp_premodel.py) and is bookmarked for the coverage
@@ -34,13 +36,14 @@ ACTIVITY_COST = 100000
 
 RUNNING_EXAMPLE_XES = 'data/payment_approval.xes'
 
-# sigma1 .. sigma5, each "activity:hour-offset" per the paper's a:t notation
+# sigma1 .. sigma6, each "activity:hour-offset" per the paper's a:t notation
 _TRACES = [
     "o:0 a:1 s:2 p:3",
     "o:0 a:1 e:5 a:9 s:10 p:11",
     "o:0 s:10 p:11",
     "o:0 s:1 p:2",
     "o:0 a:1 s:10 p:11",
+    "o:0 a:1 p:2",
 ]
 _CASE_NAMES = [f'sigma{i + 1}' for i in range(len(_TRACES))]
 

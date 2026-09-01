@@ -66,6 +66,32 @@ def show_tree_weights(tree,dv):
         return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
 
 
+def show_tree_coverage_by_duration(tree, dv, traces, total_dur=None):
+    if total_dur is None:
+        total_dur = sum([ dur(sigma) for sigma in traces ])
+    cov = coverage_by_duration(tree, traces, dv.skip_probs, total_dur)
+    if isinstance(tree, LeafNode):
+        return tree.__str__() + " : " + str(cov) + \
+                ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + \
+                str(dv.skip_probs[tree]) + \
+                (" ]" if tree.get_cheapest_execution(0)[1] else "")
+    else:
+        if isinstance(tree, Sequence):
+            operator = "→"
+        elif isinstance(tree, Xor):
+            operator = "×"
+        elif isinstance(tree, And):
+            operator = "∧"
+        elif isinstance(tree, Loop):
+            operator = "↺"
+        else:
+            operator = "UNKNOWN"
+        operator += " : " + str(cov)
+        child_string = "\n".join([show_tree_coverage_by_duration(c,dv,traces,total_dur) \
+                                    for c in tree.children])
+        return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
+
+
 def skipprob(log, pt, slpn_path ):
     dv = DerivationPipeline(pt, log, pn_log=log, 
                             pn_method=EbiWeights.OCCURANCE,
@@ -87,7 +113,13 @@ def main():
     transfer_pt_weights(pt,slpn)
     print(show_tree_weights(pt,dv))
     print( '==========' )
-    print( f'Coverage: {coverage_mass(pt, dv.skip_probs)}' )
+    print( f'Coverage: {mass_by_weight(pt, dv.skip_probs)}' )
+    print( '==========' )
+    traces = log_to_traces(logx)
+    total_dur = sum([ dur(sigma) for sigma in traces ])
+    print(show_tree_coverage_by_duration(pt, dv, traces, total_dur))
+    print( '==========' )
+    print( f'Coverage by Duration: {coverage_by_duration(pt, traces, dv.skip_probs, total_dur)}' )
     print( '==========' )
     print( f'Finished at {datetime.datetime.now()}')
 

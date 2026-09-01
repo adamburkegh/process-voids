@@ -1,7 +1,7 @@
 """
 Dose-response plots for exp_disco_degrade output: weight_coverage /
-skipprob vs degradation_level, one line per discovery+estimator combo,
-faceted by (log, degradation dimension).
+skipprob / duration_coverage vs degradation_level, one line per
+discovery+estimator combo, faceted by (log, degradation dimension).
 
 Usage:
     python -m lab.plots var/lab/results/exp_disco_degrade.csv
@@ -16,7 +16,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-METRICS = ['weight_coverage', 'skipprob']
+METRICS = ['weight_coverage', 'skipprob', 'duration_coverage']
 
 
 def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',

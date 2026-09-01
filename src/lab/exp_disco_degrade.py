@@ -55,8 +55,8 @@ def run_experiment1(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS,
                         'dropped': ', '.join(sorted(str(d) for d in dropped)),
                     }
                     if tree is None:
-                        row.update(status=discover_status,
-                                   weight_coverage=None, skipprob=None)
+                        row.update(status=discover_status, weight_coverage=None,
+                                   skipprob=None, duration_coverage=None)
                         rows.append(row)
                         continue
                     slpn_path = (f'var/lab/e1_{log_name}_{combo_name}_'
@@ -68,8 +68,8 @@ def run_experiment1(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS,
                         row['status'] = 'ok'
                         row.update(metrics)
                     except Exception as e:
-                        row.update(status=f'error: {e}',
-                                    weight_coverage=None, skipprob=None)
+                        row.update(status=f'error: {e}', weight_coverage=None,
+                                    skipprob=None, duration_coverage=None)
                     rows.append(row)
 
     df = pd.DataFrame(rows)
