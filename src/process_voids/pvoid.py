@@ -7,12 +7,12 @@ DEBUG = False
 
 if DEBUG:
     print( f'Importing pm4py {datetime.datetime.now()}')
-import pm4py
+import pm4py_config as pm4py
 
 
 from process_voids.coveragemass import *
 from skipalignments import (
-    DerivationPipeline, EbiWeights, LeafNode, Activity, Tau,
+    DerivationPipeline, DiscoverySource, LeafNode, Activity, Tau,
     Sequence, Xor, And, Loop, probabilities,
 )
 from process_voids import slpn_importer
@@ -94,7 +94,7 @@ def show_tree_coverage_by_duration(tree, dv, traces, total_dur=None):
 
 def skipprob(log, pt, slpn_path ):
     dv = DerivationPipeline(pt, log, pn_log=log, 
-                            pn_method=EbiWeights.OCCURANCE,
+                            pn_method=DiscoverySource.OCCURANCE,
                             sagn_timeout=600)
     dv.compute(path='var', slpn_path=slpn_path ) 
     return dv

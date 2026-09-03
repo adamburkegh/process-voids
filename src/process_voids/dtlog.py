@@ -96,7 +96,7 @@ def write_xes(log: pd.DataFrame, path: str) -> None:
     written times (a 1000x factor - eg 2026-01-01 round-trips as
     1970-01-21) unless corrected here first.
     """
-    import pm4py
+    import pm4py_config as pm4py
     log = log.copy()
     log['time:timestamp'] = log['time:timestamp'].astype('datetime64[ns]')
     Path(path).parent.mkdir(parents=True, exist_ok=True)

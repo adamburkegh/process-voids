@@ -11,6 +11,7 @@ dependencies = [
     "pm4py>=2.7,<=2.8",
     "rustxes>=0.2.10",
     "skipalignments @ file:../skip-alignments",
+    "pm4py_config @ file:../pm4py-config",
     "matplotlib",
 ]
 

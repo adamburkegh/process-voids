@@ -11,7 +11,7 @@ weights directly and skip that pass.
 from dataclasses import dataclass
 from typing import Callable
 
-import pm4py
+import pm4py_config as pm4py
 
 from process_voids.tree import from_pm4py
 
