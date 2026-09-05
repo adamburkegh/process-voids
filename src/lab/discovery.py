@@ -1,11 +1,7 @@
 """
-Registry of discovery-algorithm + estimator combinations used by the
-experiment sweeps in this package.
-
-Each combo pairs a discovery method (log -> ProcessTree) with whether a
-separate occurrence-based weight-estimation pass is needed afterwards.
-Miners that are themselves stochastic (e.g. toothpaste) assign leaf
-weights directly and skip that pass.
+Registry of discovery algorithms used by the experiment sweeps in this
+package - each combo pairs a name with a discovery method
+(log -> DiscoveryResult).
 """
 
 from dataclasses import dataclass
@@ -17,16 +13,26 @@ from process_voids.tree import from_pm4py
 
 
 @dataclass
+class DiscoveryResult:
+    tree: object  # ProcessTree
+    ppt_weights: object = None  # (weights, loop_taus) pair, toothpaste only
+
+
+@dataclass
 class DiscoveryCombo:
     name: str
-    discover: Callable  # (log, **kwargs) -> ProcessTree
-    has_estimator: bool  # False if discovery already assigns leaf weights
+    discover: Callable  # (log, **kwargs) -> DiscoveryResult
 
 
 def discover_inductive(log, noise_threshold=0.0):
     pt_pm4py = pm4py.discover_process_tree_inductive(
         log, noise_threshold=noise_threshold)
-    return from_pm4py(pt_pm4py)
+    return DiscoveryResult(from_pm4py(pt_pm4py))
+
+
+def discover_toothpaste(log):
+    from lab.toothpaste_bridge import discover
+    return discover(log)
 
 
 def _not_implemented(name):
@@ -37,7 +43,7 @@ def _not_implemented(name):
 
 
 COMBOS = {
-    'inductive': DiscoveryCombo('inductive', discover_inductive, has_estimator=True),
-    'indulpet': DiscoveryCombo('indulpet', _not_implemented('indulpet'), has_estimator=True),
-    'toothpaste': DiscoveryCombo('toothpaste', _not_implemented('toothpaste'), has_estimator=False),
+    'inductive': DiscoveryCombo('inductive', discover_inductive),
+    'indulpet': DiscoveryCombo('indulpet', _not_implemented('indulpet')),
+    'toothpaste': DiscoveryCombo('toothpaste', discover_toothpaste),
 }
