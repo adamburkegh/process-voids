@@ -22,8 +22,7 @@ from skipalignments import Activity
 
 from process_voids import pvoid, slpn_importer
 from process_voids.coveragemass import mass_by_weight, transfer_pt_weights, \
-    infer_operator_weights, coverage_by_duration, log_to_traces, dur, \
-    coverage_by_alignment
+    coverage_by_duration, log_to_traces, dur, coverage_by_alignment
 
 
 def mean_skipprob(tree, skip_probs):
@@ -32,22 +31,24 @@ def mean_skipprob(tree, skip_probs):
     return sum(values) / len(values) if values else 0.0
 
 
-def compute_metrics(log, tree, slpn_path, has_estimator=True):
+def compute_metrics(log, tree, slpn_path, ppt_weights=None):
     """
     Run the skip-alignment pipeline for (log, tree) and return the
     weight-coverage and skipprob summary metrics.
 
-    has_estimator: False when the discovery method already assigned leaf
-    weights (eg a stochastic miner); the separate occurrence-based
-    weight-fitting pass is then skipped.
+    ppt_weights: the (weights, loop_taus) pair from a toothpaste
+    discovery - passed through to pvoid.skipprob so DerivationPipeline
+    uses DiscoverySource.TOOTHPASTE (exact PPT weights) instead of
+    estimating occurrence-based weights from the log. Either way,
+    compute() writes a resolved SLPN to slpn_path (estimated for
+    OCCURANCE, exactly compiled from the PPT for TOOTHPASTE) with the
+    same transitions/label/weight shape, so the same transfer_pt_weights
+    read-back works unconditionally for both.
     """
     Path(slpn_path).parent.mkdir(parents=True, exist_ok=True)
-    dv = pvoid.skipprob(log, tree, slpn_path)
-    if has_estimator:
-        slpn = slpn_importer.read_slpn(slpn_path)
-        transfer_pt_weights(tree, slpn)
-    else:
-        infer_operator_weights(tree)
+    dv = pvoid.skipprob(log, tree, slpn_path, ppt_weights=ppt_weights)
+    slpn = slpn_importer.read_slpn(slpn_path)
+    transfer_pt_weights(tree, slpn)
     traces = log_to_traces(log)
     total_dur = sum(dur(sigma) for sigma in traces)
     return {

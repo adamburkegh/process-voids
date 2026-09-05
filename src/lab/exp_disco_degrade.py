@@ -71,13 +71,14 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
         for combo_name, combo in combos.items():
             started_discover = time.monotonic()
             try:
-                tree = combo.discover(base_log)
+                result = combo.discover(base_log)
+                tree, ppt_weights = result.tree, result.ppt_weights
                 discover_status = 'ok'
             except NotImplementedError:
-                tree = None
+                tree, ppt_weights = None, None
                 discover_status = 'not_implemented'
             except Exception as e:
-                tree = None
+                tree, ppt_weights = None, None
                 discover_status = f'discovery error: {e}'
             logger.info('Discovery: log=%s combo=%s -> %s (%.1fs)',
                         log_name, combo_name, discover_status,
@@ -97,7 +98,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                 slpn_path = f'var/lab/disco_degrade_{log_name}_{combo_name}_level0.slpn'
                 try:
                     zero_level_metrics = compute_metrics(
-                        base_log, tree, slpn_path, has_estimator=combo.has_estimator)
+                        base_log, tree, slpn_path, ppt_weights=ppt_weights)
                     zero_level_status = 'ok'
                 except Exception as e:
                     zero_level_status = f'error: {e}'
@@ -157,7 +158,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                     try:
                         metrics = compute_metrics(
                             degraded_log, tree, slpn_path,
-                            has_estimator=combo.has_estimator)
+                            ppt_weights=ppt_weights)
                         row['status'] = 'ok'
                         row.update(metrics)
                     except Exception as e:

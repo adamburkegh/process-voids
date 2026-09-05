@@ -95,9 +95,17 @@ def write_xes(log: pd.DataFrame, path: str) -> None:
     defaults to microsecond resolution, which silently corrupts the
     written times (a 1000x factor - eg 2026-01-01 round-trips as
     1970-01-21) unless corrected here first.
+
+    astype('datetime64[ns]') also refuses to drop timezone info outright
+    (raises rather than silently converting), so a tz-aware column is
+    normalised to naive UTC first - matches what pm4py.read_xes hands
+    back for logs with an explicit UTC offset.
     """
     import pm4py_config as pm4py
     log = log.copy()
-    log['time:timestamp'] = log['time:timestamp'].astype('datetime64[ns]')
+    timestamps = log['time:timestamp']
+    if timestamps.dt.tz is not None:
+        timestamps = timestamps.dt.tz_convert('UTC').dt.tz_localize(None)
+    log['time:timestamp'] = timestamps.astype('datetime64[ns]')
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     pm4py.write_xes(log, path)

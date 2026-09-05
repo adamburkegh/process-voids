@@ -92,11 +92,19 @@ def show_tree_coverage_by_duration(tree, dv, traces, total_dur=None):
         return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
 
 
-def skipprob(log, pt, slpn_path ):
-    dv = DerivationPipeline(pt, log, pn_log=log, 
-                            pn_method=DiscoverySource.OCCURANCE,
-                            sagn_timeout=600)
-    dv.compute(path='var', slpn_path=slpn_path ) 
+def skipprob(log, pt, slpn_path, ppt_weights=None):
+    if ppt_weights is not None:
+        # Toothpaste's weights are exact from the PPT - no pn_log/
+        # estimation pass needed.
+        dv = DerivationPipeline(pt, log,
+                                pn_method=DiscoverySource.TOOTHPASTE,
+                                pn_ppt_weights=ppt_weights,
+                                sagn_timeout=600)
+    else:
+        dv = DerivationPipeline(pt, log, pn_log=log,
+                                pn_method=DiscoverySource.OCCURANCE,
+                                sagn_timeout=600)
+    dv.compute(path='var', slpn_path=slpn_path )
     return dv
 
 

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lab.discovery import DiscoveryCombo
+from lab.discovery import DiscoveryCombo, DiscoveryResult
 from lab.exp_disco_degrade import run_disco_degrade
 
 FAKE_METRICS = {'weight_coverage': 0.5, 'skipprob': 0.1,
@@ -23,7 +23,7 @@ class ZeroLevelDedupTest(unittest.TestCase):
 
     def setUp(self):
         self.tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
-        self.combos = {'fake': DiscoveryCombo('fake', lambda log: 'FAKE_TREE', has_estimator=True)}
+        self.combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult('FAKE_TREE'))}
         self.degradations = {'activity': degrade_stub, 'trace': degrade_stub}
 
     def test_compute_metrics_called_once_for_level_zero(self):
@@ -71,7 +71,7 @@ class NotImplementedComboTest(unittest.TestCase):
         def not_implemented(log):
             raise NotImplementedError('no discovery yet')
 
-        combos = {'stub': DiscoveryCombo('stub', not_implemented, has_estimator=True)}
+        combos = {'stub': DiscoveryCombo('stub', not_implemented)}
         degradations = {'activity': degrade_stub}
         tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
 
@@ -91,7 +91,7 @@ class ComputeMetricsErrorTest(unittest.TestCase):
     # than crashing the sweep, and should not be mistaken for 'ok'.
 
     def test_level_zero_error_is_recorded_and_not_crashing(self):
-        combos = {'fake': DiscoveryCombo('fake', lambda log: 'FAKE_TREE', has_estimator=True)}
+        combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult('FAKE_TREE'))}
         degradations = {'activity': degrade_stub}
         tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
 
@@ -106,11 +106,11 @@ class ComputeMetricsErrorTest(unittest.TestCase):
             self.assertIsNone(df.iloc[0]['weight_coverage'])
 
     def test_nonzero_level_error_does_not_block_other_levels(self):
-        combos = {'fake': DiscoveryCombo('fake', lambda log: 'FAKE_TREE', has_estimator=True)}
+        combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult('FAKE_TREE'))}
         degradations = {'activity': degrade_stub}
         tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
 
-        def flaky(log, tree, slpn_path, has_estimator=True):
+        def flaky(log, tree, slpn_path, ppt_weights=None):
             if log == 'FAKE_LOG':
                 return dict(FAKE_METRICS)
             raise RuntimeError('boom')
