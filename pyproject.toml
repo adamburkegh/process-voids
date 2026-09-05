@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "process-voids"
-version = "0.1.0"
+version = "0.4.0"
 description = "Characterising unobserved activities in process event data."
 requires-python = ">=3.10"
 dependencies = [
     "pm4py>=2.7,<=2.8",
     "rustxes>=0.2.10",
     "skipalignments @ file:../skip-alignments",
-    "pm4py_config @ file:../pm4py-config",
+    "pm4py_config>=0.1.0,<=0.9",
     "matplotlib",
 ]
 
