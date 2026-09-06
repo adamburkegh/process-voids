@@ -7,3 +7,4 @@ pvoid/
 *.egg-info/
 log.xes
 model.pnml
+logs/
