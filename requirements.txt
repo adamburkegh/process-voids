@@ -1,7 +1,35 @@
-pm4py >= 2.7, <= 2.8
-rustxes >= 0.2.10
-matplotlib >= 3.11.1
-# skipalignments and pm4py_config are not yet published/tagged
-# anywhere real. Use `pip install -e .` instead (pyproject.toml
-# points at local ../skip-alignments and ../pm4py-config checkouts).
-# Once they're pushed and tagged, replace with real pins here too.
+# Exact environment used for a build (`pip freeze` output, minus this
+# project's own self-referential entry). Declared/abstract dependency
+# ranges live in pyproject.toml - this file is a concrete record of
+# what was actually installed, not something to hand-edit. Regenerate
+# with `pip freeze` after any dependency change.
+colorama==0.4.6
+contourpy==1.3.3
+cvxopt==1.3.3
+cycler==0.12.1
+fonttools==4.64.0
+graphviz==0.21
+kiwisolver==1.5.1
+lxml==6.1.2
+matplotlib==3.11.1
+networkx==3.6.1
+numpy==2.5.2
+packaging==26.3
+pandas==3.0.5
+pillow==12.3.0
+pm4py==2.7.23.7
+pm4py_config==0.1.0
+polars==1.44.1
+polars-runtime-32==1.44.1
+pyarrow==25.0.1
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+pytz==2026.3.post1
+rustxes==0.2.11
+scipy==1.18.1
+setuptools==84.0.0
+six==1.17.0
+skipalignments==0.2.1
+tqdm==4.70.0
+tzdata==2026.3
+wheel==0.48.0
