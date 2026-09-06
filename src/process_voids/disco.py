@@ -1,8 +1,8 @@
 
 import sys
 
-import pm4py
-from pm4py.convert import convert_to_petri_net
+import pm4py_config as pm4py
+from pm4py_config.convert import convert_to_petri_net
 
 
 

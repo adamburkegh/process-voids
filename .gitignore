@@ -1,3 +1,9 @@
+build/
+refs/
 var/
-pv/
+pvoid/
 *.pyc
+*.swp
+*.egg-info/
+log.xes
+model.pnml

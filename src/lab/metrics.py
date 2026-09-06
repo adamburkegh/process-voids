@@ -1,0 +1,60 @@
+"""
+Metric computation for a single (log, model) run, built on top of the
+existing skip-probability pipeline in process_voids.pvoid.
+
+Captures the metrics currently available:
+  - weight_coverage: coveragemass.mass_by_weight, weighted by tree/leaf
+    occurrence weights
+  - skipprob: mean skip probability across Activity leaves
+  - duration_coverage: coveragemass.coverage_by_duration, estimating
+    coverage from the implied duration of activities present in the
+    model but missing from the log
+  - alignment_coverage: coveragemass.coverage_by_alignment (zero
+    convention - matches the paper; favours flagging a possible void
+    over silently absorbing a subprocess that ran but wasn't recorded)
+
+More metrics are expected to land here later.
+"""
+
+from pathlib import Path
+
+from skipalignments import Activity
+
+from process_voids import pvoid, slpn_importer
+from process_voids.coveragemass import mass_by_weight, transfer_pt_weights, \
+    coverage_by_duration, log_to_traces, dur, coverage_by_alignment
+
+
+def mean_skipprob(tree, skip_probs):
+    values = [prob for node, prob in skip_probs.items()
+              if isinstance(node, Activity)]
+    return sum(values) / len(values) if values else 0.0
+
+
+def compute_metrics(log, tree, slpn_path, ppt_weights=None):
+    """
+    Run the skip-alignment pipeline for (log, tree) and return the
+    weight-coverage and skipprob summary metrics.
+
+    ppt_weights: the (weights, loop_taus) pair from a toothpaste
+    discovery - passed through to pvoid.skipprob so DerivationPipeline
+    uses DiscoverySource.TOOTHPASTE (exact PPT weights) instead of
+    estimating occurrence-based weights from the log. Either way,
+    compute() writes a resolved SLPN to slpn_path (estimated for
+    OCCURANCE, exactly compiled from the PPT for TOOTHPASTE) with the
+    same transitions/label/weight shape, so the same transfer_pt_weights
+    read-back works unconditionally for both.
+    """
+    Path(slpn_path).parent.mkdir(parents=True, exist_ok=True)
+    dv = pvoid.skipprob(log, tree, slpn_path, ppt_weights=ppt_weights)
+    slpn = slpn_importer.read_slpn(slpn_path)
+    transfer_pt_weights(tree, slpn)
+    traces = log_to_traces(log)
+    total_dur = sum(dur(sigma) for sigma in traces)
+    return {
+        'weight_coverage': mass_by_weight(tree, dv.skip_probs),
+        'skipprob': mean_skipprob(tree, dv.skip_probs),
+        'duration_coverage': coverage_by_duration(
+            tree, traces, dv.skip_probs, total_dur),
+        'alignment_coverage': coverage_by_alignment(tree, dv),
+    }

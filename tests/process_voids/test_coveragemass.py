@@ -2,9 +2,9 @@
 import sys
 import unittest
 
-from processtree import *
-from coveragemass import *
-from slpn import *
+from skipalignments import *
+from process_voids.coveragemass import *
+from process_voids.slpn import *
 
 
 
@@ -72,14 +72,14 @@ class CoverageMassTest(unittest.TestCase):
         self.assertEqual( choice.weight, 3)
         self.assertEqual( seq.weight, 3)
 
-    def test_coverage_mass(self):
+    def test_mass_by_weight(self):
         a = activity('a',1)
         b = activity('b',2)
         c = activity('c',3)
         #
         choice = Xor(None, [b,c])
         choice.id = '4'
-        set_parent( [b,c], choice) 
+        set_parent( [b,c], choice)
         #
         seq = Sequence( None, [a,choice] )
         seq.id = '5'
@@ -89,13 +89,13 @@ class CoverageMassTest(unittest.TestCase):
         a.weight, b.weight, c.weight = 3, 2, 1
         #
         infer_operator_weights(tree)
-        skip_probs = { a: 0.1, b: 0.9, c: 0, choice: 0.1, seq: 0.2 } 
-        self.assertEqual( coverage_mass( a, skip_probs), 0.9 )
+        skip_probs = { a: 0.1, b: 0.9, c: 0, choice: 0.1, seq: 0.2 }
+        self.assertEqual( mass_by_weight( a, skip_probs), 0.9 )
         # choice = 0.1* 2/3 + 1.0 * 1/3 ~= 0.399
-        self.assertAlmostEqual( coverage_mass(choice, skip_probs ), 0.399, 
+        self.assertAlmostEqual( mass_by_weight(choice, skip_probs ), 0.399,
                                 delta = 0.002 )
         # seq    = (0.9 + 0.399) / 2
-        self.assertAlmostEqual( coverage_mass(tree, skip_probs ), 0.6495,
+        self.assertAlmostEqual( mass_by_weight(tree, skip_probs ), 0.6495,
                                 delta = 0.002)
 
     def test_transfer_pt_weights(self):

@@ -1,4 +1,4 @@
-#Usage: python bpmn_colour.py model.bpmn model_coloured.bpmn --var-path var
+#Usage: python -m process_voids.bpmn_colour model.bpmn model_coloured.bpmn --var-path var
 
 import argparse
 import pickle
@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Optional
 
-from processtree import ProcessTree, Activity, Tau
+from skipalignments import ProcessTree, Activity, Tau
 
 
 # BPMN, BPMNDI, DC, DI, BIOC Namespaces
