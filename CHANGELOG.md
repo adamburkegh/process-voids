@@ -2,8 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
+## [0.4.0] - 2026-09-06
 
 ### Added
 
@@ -26,12 +25,20 @@ All notable changes to this project will be documented in this file.
 * Removed `has_estimator` from the discovery-combo interface; weight
   transfer from a discovered model now works the same way regardless of
   discovery source.
+* Introduced  `pm4py_config` dependency to configure pm4py
+* `requirements.txt` is now a `pip freeze` record of the exact environment
+  used for a build, not a hand-maintained duplicate of the dependency
+  ranges in `pyproject.toml`.
 
 ### Fixed
 
 * `write_xes` no longer crashes on logs with timezone-aware timestamps
   (normalises to naive UTC before writing, matching what `pm4py.read_xes`
   produces for tz-aware sources).
+* Two `ZeroDivisionError`s in skip-alignments' `compute()`/`coninciding_agns()`
+  when a fully-degraded (empty) log leaves no variants to average over -
+  fixed upstream in skip-alignments 0.2.1; process-voids now surfaces this
+  boundary case as a clear `ValueError` from `coverage_by_duration` instead.
 
 ### Removed
 
