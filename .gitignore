@@ -1,6 +1,7 @@
+build/
 refs/
 var/
-pv/
+pvoid/
 *.pyc
 *.swp
 *.egg-info/
