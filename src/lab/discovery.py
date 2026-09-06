@@ -30,9 +30,18 @@ def discover_inductive(log, noise_threshold=0.0):
     return DiscoveryResult(from_pm4py(pt_pm4py))
 
 
+def discover_inductive_noise80(log):
+    return discover_inductive(log, noise_threshold=0.8)
+
+
 def discover_toothpaste(log):
     from lab.toothpaste_bridge import discover
     return discover(log)
+
+
+def discover_toothpaste_noise10(log):
+    from lab.toothpaste_bridge import discover
+    return discover(log, noise=0.1)
 
 
 def _not_implemented(name):
@@ -44,6 +53,8 @@ def _not_implemented(name):
 
 COMBOS = {
     'inductive': DiscoveryCombo('inductive', discover_inductive),
+    'inductive_noise80': DiscoveryCombo('inductive_noise80', discover_inductive_noise80),
     'indulpet': DiscoveryCombo('indulpet', _not_implemented('indulpet')),
     'toothpaste': DiscoveryCombo('toothpaste', discover_toothpaste),
+    'toothpaste_noise10': DiscoveryCombo('toothpaste_noise10', discover_toothpaste_noise10),
 }
