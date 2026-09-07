@@ -43,26 +43,35 @@ def _format_dropped(dropped, limit=50):
     return ', '.join(items), len(items)
 
 
-SUMMARY_KEY_COLS = ['log', 'combo', 'degradation_dim', 'degradation_level', 'distribution']
-NODE_KEY_COLS = SUMMARY_KEY_COLS + ['node_id']
+CELL_COLS = ['log', 'combo', 'degradation_dim', 'degradation_level']
 
 
-def _merge_write(df, path, key_cols):
+def _merge_write(df, path, cell_cols=CELL_COLS):
     """
-    Upsert `df` into the CSV at `path` by `key_cols`: rows already on
-    disk whose key matches a row in `df` are replaced by the new one,
-    everything else on disk is kept, and the combined result is written
-    back. This is the only way results ever reach disk here - callers
-    never need to juggle separate output paths or merge runs by hand to
-    add a combo/level without re-running (and possibly clobbering) what
-    was already there.
+    Upsert `df` into the CSV at `path` by `cell_cols`: existing rows on
+    disk whose cell (log, combo, dim, level) matches a row in `df` are
+    dropped entirely and replaced by df's rows for that cell, everything
+    else on disk is kept, and the combined result is written back.
+
+    Purging by cell rather than by each row's own full key matters
+    because a cell's rows are produced atomically (both distribution
+    variants together, or a single error row with no distribution set)
+    - keying by the full row would leave a stale error row behind after
+    a rerun succeeds (its distribution is NaN, so it never matches the
+    new self/baseline rows' keys), or leave orphaned node rows behind
+    for node_ids that no longer exist if the tree changed between runs.
+
+    This is the only way results ever reach disk here - callers never
+    need to juggle separate output paths or merge runs by hand to add a
+    combo/level without re-running (and possibly clobbering or
+    duplicating) what was already there.
     """
     path = Path(path)
-    keys = df[key_cols].fillna('').apply(tuple, axis=1)
+    cells = set(df[cell_cols].fillna('').apply(tuple, axis=1))
     if path.exists():
         existing = pd.read_csv(path)
-        existing_keys = existing[key_cols].fillna('').apply(tuple, axis=1)
-        existing = existing[~existing_keys.isin(set(keys))]
+        existing_cells = existing[cell_cols].fillna('').apply(tuple, axis=1)
+        existing = existing[~existing_cells.isin(cells)]
         combined = pd.concat([existing, df], ignore_index=True)
     else:
         combined = df
@@ -226,8 +235,8 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
                             'degradation_level': level, 'status': f'error: {e}'})
                         logger.warning('%s - error: %s', sub_cell, e)
 
-    node_df = _merge_write(pd.DataFrame(node_rows), out_csv, NODE_KEY_COLS)
-    summary_df = _merge_write(pd.DataFrame(summary_rows), summary_csv, SUMMARY_KEY_COLS)
+    node_df = _merge_write(pd.DataFrame(node_rows), out_csv)
+    summary_df = _merge_write(pd.DataFrame(summary_rows), summary_csv)
     return node_df, summary_df
 
 
