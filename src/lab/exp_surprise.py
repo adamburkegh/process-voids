@@ -65,8 +65,14 @@ def _merge_write(df, path, cell_cols=CELL_COLS):
     need to juggle separate output paths or merge runs by hand to add a
     combo/level without re-running (and possibly clobbering or
     duplicating) what was already there.
+
+    An empty df (nothing computed this run - e.g. every cell errored)
+    has no columns to key by, so there is nothing to purge or add -
+    leave whatever's on disk untouched rather than crash on cell_cols.
     """
     path = Path(path)
+    if df.empty:
+        return pd.read_csv(path) if path.exists() else df
     cells = set(df[cell_cols].fillna('').apply(tuple, axis=1))
     if path.exists():
         existing = pd.read_csv(path)

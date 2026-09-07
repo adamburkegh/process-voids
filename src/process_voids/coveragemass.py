@@ -364,3 +364,119 @@ def coverage_by_alignment(pt:ProcessTree, dv, convention='zero'):
     mass = alignment_mass(pt, dv.skip_dict_backup, dv.pl, convention)
     return (1 - dv.skip_probs[pt]) * mass
 
+
+'''
+=====================================================================================
+Voidmass / Voidage
+
+Per voidmass-brief.md: where alignment_mass averages a match/movecount
+ratio per execution and then averages those ratios up (smoothing out
+severity), voidmass sums deficit (= movecount - matchcount, the model
+moves) and movecount separately across every execution of every optimal
+alignment of every trace variant, and divides once at the end. This
+keeps severity: a subprocess entirely missing across many traces reads
+as more void than the same subprocess missing in only one.
+
+Two divisor choices give two variants, sharing everything except the
+divisor:
+  voidmass_subprocess (variant 1) - sum(deficit)/sum(movecount) over
+      pt's own executions. Scale-free: a 1-activity and a 20-activity
+      subprocess both entirely missing both score 1.0.
+  voidmass_process (variant 2) - sum(deficit) over pt / sum(movecount)
+      over the WHOLE model. Size-preserving and additive: subprocess
+      values sum over any antichain through the decomposition, so the
+      root equals the sum of everything below it - a decomposable root
+      headline, which neither alignment_mass nor skipprob provide.
+
+A further factor of skip_prob(pt) (from the same DerivationPipeline
+already used by coverage_by_alignment) gives voidage, variants 3 and 4
+- voidmass_table's skip_probs parameter. These lose the additivity
+variant 2 has, since skip_prob varies per node and a product of
+per-node quantities does not sum over a cut the way voidmass_process
+does - confirmed numerically rather than assumed (per the brief), see
+tests/test_voidmass.py.
+
+Reference: voidmass-brief.md's worked example on the payment running
+example; see tests/test_voidmass.py, checked against the real aligner's
+output on that same fixture (not the brief's own hand-picked
+alignments, which may not match what the real aligner actually finds -
+see test_coverage_by_alignment.py's own TiesAcrossOptimalAlignmentsTest
+for a precedent of that divergence).
+'''
+
+def deficit(execution):
+    '''Model moves in this execution: movecount - matchcount.'''
+    return movecount(execution) - matchcount(execution)
+
+
+def voidmass_terms(pt:ProcessTree, skip_dict:dict, variant_probs:dict):
+    '''
+    (deficit_sum, movecount_sum) for pt: summed - NOT averaged - over
+    every execution of every optimal alignment of every trace variant,
+    weighted by variant probability. Multiple tied optimal alignments
+    within one variant share that variant's weight equally (same
+    convention as alignment_mass's per-state averaging).
+    '''
+    deficit_sum = 0.0
+    movecount_sum = 0.0
+    for variant, weight in variant_probs.items():
+        states = skip_dict.get(_variant_key(variant), [])
+        if not states:
+            continue
+        share = weight / len(states)
+        for state in states:
+            for e in executions(state.path, pt):
+                deficit_sum += share * deficit(e)
+                movecount_sum += share * movecount(e)
+    return deficit_sum, movecount_sum
+
+
+def voidmass_table(tree:ProcessTree, skip_dict:dict, variant_probs:dict, skip_probs:dict=None):
+    '''
+    node -> {deficit, movecount, voidmass_subprocess, voidmass_process}
+    (plus voidage_subprocess, voidage_process when skip_probs is given -
+    see below) for every node in tree, computed in one pass (well, one
+    pass per node - see voidmass_terms; performance not yet a concern
+    here, no real log has exercised this path at scale).
+
+    Pass skip_probs (a computed DerivationPipeline's dv.skip_probs, the
+    same P_skip already used by coverage_by_alignment) to also get
+    voidage_subprocess and voidage_process (variants 3 and 4 -
+    voidmass * skip_prob(node)). Omit for just variants 1/2, which need
+    no DerivationPipeline/skip_prob at all.
+
+    Variants 3/4 lose the additivity variant 2 has - but this is
+    conditional, not universal: it only breaks when two or more siblings
+    each have nonzero deficit AND different skip_probs (a product of
+    per-node quantities doesn't sum over a cut in general). It can
+    coincidentally hold, e.g. when only one child ever contributes
+    deficit. See tests/test_voidmass.py's VoidageTest (a degenerate case
+    where it happens to hold, documented as such) and
+    VoidageAdditivityLossTest (a constructed non-degenerate case
+    confirming the brief's claim genuinely does hold in general) - per
+    the brief's own instruction not to assume it either way.
+    '''
+    _, root_movecount = voidmass_terms(tree, skip_dict, variant_probs)
+    table = {}
+
+    def _walk(node):
+        d, m = voidmass_terms(node, skip_dict, variant_probs)
+        v1 = d / m if m else 0.0
+        v2 = d / root_movecount if root_movecount else 0.0
+        row = {
+            'deficit': d,
+            'movecount': m,
+            'voidmass_subprocess': v1,
+            'voidmass_process': v2,
+        }
+        if skip_probs is not None:
+            sp = skip_probs[node]
+            row['voidage_subprocess'] = sp * v1
+            row['voidage_process'] = sp * v2
+        table[node] = row
+        for child in node.children:
+            _walk(child)
+
+    _walk(tree)
+    return table
+

@@ -83,3 +83,33 @@ DEGRADATIONS = {
     'activity_gradual': degrade_activity_wise_gradual,
     'trace': degrade_trace_wise,
 }
+
+
+def degrade_target_subprocess(log: pd.DataFrame, target_activities: Set[str],
+                               n_drop_cases: int, seed: int = 42) -> Tuple[pd.DataFrame, Set[str]]:
+    '''
+    Remove every event whose activity is in target_activities from
+    exactly n_drop_cases cases - an explicit count, not a fraction (see
+    voidmass-brief.md's E2: fractions rounding to the same integer count
+    at low levels produced duplicate, uninformative rows). Only cases
+    that actually contain at least one target-activity event are
+    eligible - dropping from a case that never had the target would
+    silently waste a dose-response level. Selection is a seeded shuffle
+    of eligible cases, so lower counts are always a subset of what
+    higher counts drop. Only the target's own events are removed from a
+    dropped case - everything else in that case is untouched.
+
+    Not part of DEGRADATIONS: this parameterises by (target, count), not
+    a single [0,1] level, so it doesn't fit that registry's shape - used
+    directly by lab/exp_voidmass.py's dose-response sweep instead.
+    '''
+    eligible_mask = log['concept:name'].isin(target_activities)
+    eligible_cases = sorted(log.loc[eligible_mask, 'case:concept:name'].unique())
+    if n_drop_cases > len(eligible_cases):
+        raise ValueError(f'n_drop_cases={n_drop_cases} exceeds '
+                          f'{len(eligible_cases)} eligible cases')
+    rng = random.Random(seed)
+    rng.shuffle(eligible_cases)
+    dropped_cases = set(eligible_cases[:n_drop_cases])
+    drop_mask = log['case:concept:name'].isin(dropped_cases) & eligible_mask
+    return log[~drop_mask].copy(), dropped_cases

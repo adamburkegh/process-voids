@@ -8,7 +8,9 @@ import unittest
 
 import pandas as pd
 
-from lab.degradation import degrade_activity_wise, degrade_activity_wise_gradual
+from lab.degradation import (
+    degrade_activity_wise, degrade_activity_wise_gradual, degrade_target_subprocess,
+)
 
 
 def make_log(activities, n_per_activity=10):
@@ -78,6 +80,67 @@ class GradualActivityDegradationTest(unittest.TestCase):
         self.assertEqual(len(dropped), 2)
         counts = degraded['concept:name'].value_counts().to_dict()
         self.assertTrue(all(c in (0, 10) for c in counts.values()))
+
+
+def make_case_log(case_activities):
+    '''case_activities: {case_id: [activities...]}.'''
+    rows = []
+    for case, activities in case_activities.items():
+        for a in activities:
+            rows.append({'case:concept:name': case, 'concept:name': a})
+    return pd.DataFrame(rows)
+
+
+class TargetSubprocessDegradationTest(unittest.TestCase):
+    def setUp(self):
+        # 3 cases contain 'x' (the target), 2 don't - eligible = 3
+        self.log = make_case_log({
+            'c1': ['o', 'x', 'p'],
+            'c2': ['o', 'x', 'p'],
+            'c3': ['o', 'x', 'p'],
+            'c4': ['o', 'p'],
+            'c5': ['o', 'p'],
+        })
+
+    def test_zero_drops_leaves_log_unchanged(self):
+        degraded, dropped = degrade_target_subprocess(self.log, {'x'}, 0)
+        self.assertEqual(dropped, set())
+        self.assertEqual(len(degraded), len(self.log))
+        self.assertEqual((degraded['concept:name'] == 'x').sum(), 3)
+
+    def test_partial_drop_removes_only_target_from_dropped_cases(self):
+        degraded, dropped = degrade_target_subprocess(self.log, {'x'}, 2)
+        self.assertEqual(len(dropped), 2)
+        self.assertTrue(dropped.issubset({'c1', 'c2', 'c3'}))
+        # exactly 1 'x' event remains (3 eligible cases - 2 dropped)
+        self.assertEqual((degraded['concept:name'] == 'x').sum(), 1)
+        # non-target activities in dropped cases are untouched
+        for case in dropped:
+            case_rows = degraded[degraded['case:concept:name'] == case]
+            self.assertEqual(set(case_rows['concept:name']), {'o', 'p'})
+        # untouched cases (c4, c5, and whichever of c1-c3 wasn't dropped)
+        # still have all their original events
+        self.assertEqual(len(degraded), len(self.log) - 2)
+
+    def test_full_drop_removes_target_from_whole_log(self):
+        degraded, dropped = degrade_target_subprocess(self.log, {'x'}, 3)
+        self.assertEqual(dropped, {'c1', 'c2', 'c3'})
+        self.assertEqual((degraded['concept:name'] == 'x').sum(), 0)
+
+    def test_exceeding_eligible_cases_raises(self):
+        with self.assertRaises(ValueError):
+            degrade_target_subprocess(self.log, {'x'}, 4)
+
+    def test_monotonically_nested_across_counts(self):
+        _, dropped_1 = degrade_target_subprocess(self.log, {'x'}, 1)
+        _, dropped_2 = degrade_target_subprocess(self.log, {'x'}, 2)
+        self.assertTrue(dropped_1.issubset(dropped_2))
+
+    def test_ineligible_cases_never_touched(self):
+        for n in (0, 1, 2, 3):
+            with self.subTest(n=n):
+                _, dropped = degrade_target_subprocess(self.log, {'x'}, n)
+                self.assertFalse(dropped & {'c4', 'c5'})
 
 
 if __name__ == '__main__':
