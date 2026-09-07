@@ -63,9 +63,19 @@ def tail_probability(vals, d):
     pre-sorted for exactly this reason) - this is called once per event,
     and "cheap, no alignments" is the metric's whole argument, so it
     locates the tail by bisection rather than an O(n) linear scan.
+
+    Floored at 1/(n+1): the same probability the in-sample maximum gets,
+    rather than letting it hit exactly 0 (and -log2(0) blow up) for a
+    value more extreme than anything vals ever observed. Unreachable
+    when vals is an activity's own self-estimated distribution (its own
+    value is always already in the sample), but real when scoring
+    against a different reference distribution - e.g. event_surprise's
+    baseline-obs path, where a degraded log's event can legitimately
+    exceed the undegraded log's historical range for that activity.
     '''
     n = len(vals)
-    return (n - bisect_left(vals, d)) / (n + 1)
+    count = n - bisect_left(vals, d)
+    return max(count, 1) / (n + 1)
 
 
 def event_surprise(traces, obs=None):

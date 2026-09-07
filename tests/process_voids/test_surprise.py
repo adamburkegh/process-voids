@@ -83,11 +83,20 @@ class TailProbabilityTest(unittest.TestCase):
         ps = [tail_probability(vals, d) for d in (0.0, 5.0, 9.0, 20.0, 100.0)]
         self.assertEqual(ps, sorted(ps, reverse=True))
 
-    def test_empty_observations_gives_probability_zero(self):
+    def test_empty_observations_floors_at_one(self):
         # never hit via event_surprise(traces) in practice - any activity
         # iterated there necessarily contributed to its own obs entry - but
         # pins tail_probability's own behavior as a standalone function.
-        self.assertEqual(tail_probability([], 5.0), 0.0)
+        # count=0 (no observations at all) floors to 1, same as any other
+        # value more extreme than the reference distribution has ever seen.
+        self.assertEqual(tail_probability([], 5.0), 1.0)
+
+    def test_value_beyond_reference_max_floors_at_min_probability(self):
+        # a value more extreme than anything ever observed gets the same
+        # probability the in-sample maximum would - not 0.0.
+        vals = [1.0, 2.0, 3.0]
+        self.assertEqual(tail_probability(vals, 100.0), tail_probability(vals, 3.0))
+        self.assertEqual(tail_probability(vals, 100.0), 1 / 4)
 
 
 class EventSurpriseTest(unittest.TestCase):
