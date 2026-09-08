@@ -98,6 +98,35 @@ class CoverageMassTest(unittest.TestCase):
         self.assertAlmostEqual( mass_by_weight(tree, skip_probs ), 0.6495,
                                 delta = 0.002)
 
+    def test_voidage_by_weight(self):
+        a = activity('a',1)
+        b = activity('b',2)
+        c = activity('c',3)
+        #
+        choice = Xor(None, [b,c])
+        choice.id = '4'
+        set_parent( [b,c], choice)
+        #
+        seq = Sequence( None, [a,choice] )
+        seq.id = '5'
+        set_parent( [a,choice], seq )
+        #
+        tree = seq
+        a.weight, b.weight, c.weight = 3, 2, 1
+        #
+        infer_operator_weights(tree)
+        skip_probs = { a: 0.1, b: 0.9, c: 0, choice: 0.1, seq: 0.2 }
+        # same fixture as test_mass_by_weight - voidage_by_weight is
+        # exactly 1 - mass_by_weight at every node, leaf or not
+        for node in (a, choice, tree):
+            with self.subTest(node=node):
+                self.assertAlmostEqual(
+                    voidage_by_weight(node, skip_probs),
+                    1 - mass_by_weight(node, skip_probs), delta=1e-9)
+        self.assertAlmostEqual(voidage_by_weight(a, skip_probs), 0.1, delta=1e-9)
+        self.assertAlmostEqual(voidage_by_weight(choice, skip_probs), 0.601, delta=0.002)
+        self.assertAlmostEqual(voidage_by_weight(tree, skip_probs), 0.3505, delta=0.002)
+
     def test_transfer_pt_weights(self):
         a = activity('a',1)
         b = activity('b',2)

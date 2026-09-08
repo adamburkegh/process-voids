@@ -79,14 +79,22 @@ def degrade_trace_wise(log: pd.DataFrame, level: float,
 
 
 DEGRADATIONS = {
-    'activity': degrade_activity_wise,
+    # 'activity' (the step version) dropped from the default roster -
+    # activity_gradual supersedes it for sweep purposes (same fixed drop
+    # order, but a continuous ramp instead of a k-step staircase, so it
+    # never wastes/collapses levels the way the step version can on a
+    # small alphabet - see degrade_activity_wise_gradual's own
+    # docstring). degrade_activity_wise itself is untouched and still
+    # directly importable for anything that specifically wants the step
+    # behaviour.
     'activity_gradual': degrade_activity_wise_gradual,
     'trace': degrade_trace_wise,
 }
 
 
 def degrade_target_subprocess(log: pd.DataFrame, target_activities: Set[str],
-                               n_drop_cases: int, seed: int = 42) -> Tuple[pd.DataFrame, Set[str]]:
+                               n_drop_cases: int, seed: int = 42,
+                               exclude_cases: Set[str] = None) -> Tuple[pd.DataFrame, Set[str]]:
     '''
     Remove every event whose activity is in target_activities from
     exactly n_drop_cases cases - an explicit count, not a fraction (see
@@ -99,12 +107,23 @@ def degrade_target_subprocess(log: pd.DataFrame, target_activities: Set[str],
     higher counts drop. Only the target's own events are removed from a
     dropped case - everything else in that case is untouched.
 
+    exclude_cases removes cases from eligibility entirely, before the
+    shuffle - for a case that would confound the experiment if it were
+    ever ablated (eg it's the log's one deliberately-deviated trace, so
+    dropping it would remove that deviation as an accidental side effect
+    of the ablation rather than the ablation itself producing the
+    result - see exp_claims_degrade.py). Not the same as "eligible but
+    never happens to be picked": excluded cases are never candidates at
+    any n_drop_cases, deliberately, not by chance of the shuffle.
+
     Not part of DEGRADATIONS: this parameterises by (target, count), not
     a single [0,1] level, so it doesn't fit that registry's shape - used
     directly by lab/exp_voidmass.py's dose-response sweep instead.
     '''
     eligible_mask = log['concept:name'].isin(target_activities)
     eligible_cases = sorted(log.loc[eligible_mask, 'case:concept:name'].unique())
+    if exclude_cases:
+        eligible_cases = [c for c in eligible_cases if c not in exclude_cases]
     if n_drop_cases > len(eligible_cases):
         raise ValueError(f'n_drop_cases={n_drop_cases} exceeds '
                           f'{len(eligible_cases)} eligible cases')

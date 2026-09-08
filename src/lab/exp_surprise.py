@@ -45,6 +45,12 @@ def _format_dropped(dropped, limit=50):
 
 CELL_COLS = ['log', 'combo', 'degradation_dim', 'degradation_level']
 
+# The metric ids this experiment emits, per (distribution in {self,
+# baseline}) - see lab.metric_registry, whose drift test imports these
+# directly rather than re-deriving them from the CSV output.
+NODE_METRIC_KEYS = ('containment_bits', 'predecessor_bits')
+SUMMARY_METRIC_KEYS = ('headline_bits', 'bits_per_event')
+
 
 def _merge_write(df, path, cell_cols=CELL_COLS):
     """
@@ -112,6 +118,7 @@ def _discover_cached(log_name, combo_name, combo, base_log):
 def _node_rows(log_name, combo_name, dim, level, distribution, containment, pred_totals):
     rows = []
     for node in set(containment) | set(pred_totals):
+        metric_values = (containment.get(node, 0.0), pred_totals.get(node, 0.0))
         rows.append({
             'log': log_name,
             'combo': combo_name,
@@ -121,8 +128,7 @@ def _node_rows(log_name, combo_name, dim, level, distribution, containment, pred
             'node_id': node.id,
             'node_type': type(node).__name__,
             'alphabet': ','.join(sorted(set(node.get_leaf_labels()))),
-            'containment_bits': containment.get(node, 0.0),
-            'predecessor_bits': pred_totals.get(node, 0.0),
+            **dict(zip(NODE_METRIC_KEYS, metric_values)),
         })
     return rows
 
@@ -134,10 +140,10 @@ def _compute_variant(tree, predecessors, traces, obs):
         predecessor_totals(tree, rows, predecessors)
     n_events = len(rows)
     headline = containment[tree]
+    summary_values = (headline, headline / n_events if n_events else None)
     return (containment, pred_totals), {
         'n_events': n_events,
-        'headline_bits': headline,
-        'bits_per_event': headline / n_events if n_events else None,
+        **dict(zip(SUMMARY_METRIC_KEYS, summary_values)),
         'ambiguous_event_count': ambiguous_count,
         'unattributable_event_count': unattributable_count,
         'out_of_alphabet_event_count': out_of_alphabet_count,

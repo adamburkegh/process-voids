@@ -53,6 +53,21 @@ def mass_by_weight(pt:ProcessTree, skip_probs:dict):
 
 
 '''
+Weight-averaged void mass: same tree aggregation as mass_by_weight
+(Xor weighted by relative child weight, And/Sequence/Loop averaged
+uniformly across children) but skip_probs[leaf] directly rather than
+its complement, ie skipprob * mass instead of (1-skipprob) * mass.
+
+Both aggregations are (weighted) averages, and averaging distributes
+linearly over the complement (avg(1-x_i) == 1-avg(x_i)) - so by
+induction voidage_by_weight(pt) == 1 - mass_by_weight(pt, skip_probs)
+for every node, leaf or not. No separate tree-walk needed.
+'''
+def voidage_by_weight(pt:ProcessTree, skip_probs:dict):
+    return 1 - mass_by_weight(pt, skip_probs)
+
+
+'''
 =====================================================================================
 Coverage by Duration
 

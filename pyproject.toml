@@ -10,7 +10,12 @@ requires-python = ">=3.10"
 dependencies = [
     "pm4py>=2.7,<=2.8",
     "rustxes>=0.2.10",
-    "skipalignments >= 0.2.1,<=0.9",
+    # main tracks skip-alignments' own dev HEAD (editable, local path) rather
+    # than a PyPI release - process-voids' main is itself a dev branch, and
+    # currently depends on unreleased skip-alignments API (tau_ids,
+    # id_loop_list). A tagged process-voids release should pin this to
+    # whatever skipalignments release exists on PyPI at that point instead.
+    "skipalignments @ file:../skip-alignments",
     "pm4py_config>=0.1.0,<=0.9",
     "matplotlib",
 ]

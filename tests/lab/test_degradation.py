@@ -142,6 +142,31 @@ class TargetSubprocessDegradationTest(unittest.TestCase):
                 _, dropped = degrade_target_subprocess(self.log, {'x'}, n)
                 self.assertFalse(dropped & {'c4', 'c5'})
 
+    def test_exclude_cases_removes_them_from_eligibility(self):
+        # A case with a known confound (eg it's also the one deliberately-
+        # deviated trace in the log) must never be a candidate for
+        # ablation-dropping, so a dose-response run against it can't be
+        # accidentally confounded by removing the deviation as a side
+        # effect of the ablation - see session notes, exp_claims_degrade's
+        # appeal_seq run before this fix.
+        for n in (1, 2):
+            with self.subTest(n=n):
+                _, dropped = degrade_target_subprocess(
+                    self.log, {'x'}, n, exclude_cases={'c1'})
+                self.assertNotIn('c1', dropped)
+                self.assertEqual(len(dropped), n)
+
+    def test_exclude_cases_shrinks_the_eligible_pool_for_the_bound_check(self):
+        # c1 excluded leaves only c2, c3 eligible - asking for 3 must now
+        # raise, even though 3 would have been valid without the exclusion.
+        with self.assertRaises(ValueError):
+            degrade_target_subprocess(self.log, {'x'}, 3, exclude_cases={'c1'})
+
+    def test_excluding_a_non_eligible_case_is_a_no_op(self):
+        _, dropped = degrade_target_subprocess(
+            self.log, {'x'}, 3, exclude_cases={'c4'})
+        self.assertEqual(dropped, {'c1', 'c2', 'c3'})
+
 
 if __name__ == '__main__':
     unittest.main()
