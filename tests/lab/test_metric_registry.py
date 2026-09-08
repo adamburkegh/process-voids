@@ -1,7 +1,10 @@
 import unittest
 
 from lab.exp_disco_degrade import CLASSICAL_METRIC_KEYS
-from lab.exp_surprise import NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS
+from lab.exp_surprise import (
+    NODE_METRIC_KEYS, NODE_METRIC_BASELINE_KEYS,
+    SUMMARY_METRIC_KEYS, SUMMARY_METRIC_BASELINE_KEYS,
+)
 from lab.metric_registry import METRICS, format_registry
 from lab.metrics import METRIC_KEYS
 
@@ -38,16 +41,17 @@ class DriftTest(unittest.TestCase):
         node_ids = {mid for mid, m in METRICS.items()
                     if m.source in ('process_voids.surprise.surprise_totals',
                                      'process_voids.surprise.predecessor_totals')}
-        self.assertEqual(set(NODE_METRIC_KEYS), node_ids)
+        self.assertEqual(set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS), node_ids)
 
     def test_surprise_summary_keys_match_registry(self):
         summary_ids = {mid for mid, m in METRICS.items()
                        if m.source == 'lab.exp_surprise._compute_variant'}
-        self.assertEqual(set(SUMMARY_METRIC_KEYS), summary_ids)
+        self.assertEqual(set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS), summary_ids)
 
     def test_every_registered_id_is_emitted_by_at_least_one_script(self):
         all_emitted = (set(METRIC_KEYS) | set(CLASSICAL_METRIC_KEYS)
-                       | set(NODE_METRIC_KEYS) | set(SUMMARY_METRIC_KEYS))
+                       | set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS)
+                       | set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS))
         self.assertEqual(set(METRICS), all_emitted)
 
     def test_every_metric_declares_a_nonempty_script_list(self):

@@ -6,7 +6,17 @@ A tree is discovered once per (log, combo) from the original, undegraded
 log - the same fixed-reference-model design as exp_disco_degrade.py.
 Each degradation dimension x level then degrades the log and recomputes
 surprise (both attribution schemes) against that same fixed tree,
-reporting per-node totals alongside root-level headline figures.
+reporting per-node totals alongside root-level headline figures. Each
+metric is reported under two separate ids/columns, not a shared id plus
+a distribution column: unsuffixed ('containment_bits', 'predecessor_bits',
+'headline_bits', 'bits_per_event') estimates the tail distribution from
+the log being scored ('self', the metric's normal, deployable mode);
+the '_baseline' suffix reruns the same events against the *undegraded*
+log's distribution instead - a benchmark-only oracle comparison not
+available under real missing-activity scenarios, since no undegraded
+reference log exists there. See NODE_METRIC_KEYS/NODE_METRIC_BASELINE_KEYS/
+SUMMARY_METRIC_KEYS/SUMMARY_METRIC_BASELINE_KEYS below and
+_compute_cell's docstring.
 
 Usage:
     python -m lab.exp_surprise <log_path> [<log_path> ...] \\
@@ -45,11 +55,18 @@ def _format_dropped(dropped, limit=50):
 
 CELL_COLS = ['log', 'combo', 'degradation_dim', 'degradation_level']
 
-# The metric ids this experiment emits, per (distribution in {self,
-# baseline}) - see lab.metric_registry, whose drift test imports these
-# directly rather than re-deriving them from the CSV output.
+# The metric ids this experiment emits - see lab.metric_registry, whose
+# drift test imports these directly rather than re-deriving them from
+# the CSV output. 'self' (unsuffixed) and 'baseline' (_baseline
+# suffix) are separate ids, not a shared id plus a distribution column
+# - they're different quantities (self is the deployable metric,
+# baseline is a benchmark-only oracle comparison against the undegraded
+# log's distribution - see _compute_cell), not two readings of the same
+# one.
 NODE_METRIC_KEYS = ('containment_bits', 'predecessor_bits')
+NODE_METRIC_BASELINE_KEYS = ('containment_bits_baseline', 'predecessor_bits_baseline')
 SUMMARY_METRIC_KEYS = ('headline_bits', 'bits_per_event')
+SUMMARY_METRIC_BASELINE_KEYS = ('headline_bits_baseline', 'bits_per_event_baseline')
 
 
 def _merge_write(df, path, cell_cols=CELL_COLS):
@@ -60,12 +77,13 @@ def _merge_write(df, path, cell_cols=CELL_COLS):
     else on disk is kept, and the combined result is written back.
 
     Purging by cell rather than by each row's own full key matters
-    because a cell's rows are produced atomically (both distribution
-    variants together, or a single error row with no distribution set)
-    - keying by the full row would leave a stale error row behind after
-    a rerun succeeds (its distribution is NaN, so it never matches the
-    new self/baseline rows' keys), or leave orphaned node rows behind
-    for node_ids that no longer exist if the tree changed between runs.
+    because a cell's rows are produced atomically (self and baseline
+    columns together per node, or a single error row with everything
+    else NaN) - keying by the full row would leave a stale error row
+    behind after a rerun succeeds (its metric columns are NaN, so it
+    never matches the new row's key), or leave orphaned node rows
+    behind for node_ids that no longer exist if the tree changed
+    between runs.
 
     This is the only way results ever reach disk here - callers never
     need to juggle separate output paths or merge runs by hand to add a
@@ -115,20 +133,29 @@ def _discover_cached(log_name, combo_name, combo, base_log):
     return tree
 
 
-def _node_rows(log_name, combo_name, dim, level, distribution, containment, pred_totals):
+def _node_rows(log_name, combo_name, dim, level, self_totals, baseline_totals):
+    """One row per tree node, self and baseline bits as separate columns
+    (NODE_METRIC_KEYS / NODE_METRIC_BASELINE_KEYS) rather than a shared
+    id plus a distribution column - see the module-level constants'
+    docstring."""
+    self_containment, self_pred = self_totals
+    baseline_containment, baseline_pred = baseline_totals
     rows = []
-    for node in set(containment) | set(pred_totals):
-        metric_values = (containment.get(node, 0.0), pred_totals.get(node, 0.0))
+    all_nodes = (set(self_containment) | set(self_pred)
+                 | set(baseline_containment) | set(baseline_pred))
+    for node in all_nodes:
+        self_values = (self_containment.get(node, 0.0), self_pred.get(node, 0.0))
+        baseline_values = (baseline_containment.get(node, 0.0), baseline_pred.get(node, 0.0))
         rows.append({
             'log': log_name,
             'combo': combo_name,
             'degradation_dim': dim,
             'degradation_level': level,
-            'distribution': distribution,
             'node_id': node.id,
             'node_type': type(node).__name__,
             'alphabet': ','.join(sorted(set(node.get_leaf_labels()))),
-            **dict(zip(NODE_METRIC_KEYS, metric_values)),
+            **dict(zip(NODE_METRIC_KEYS, self_values)),
+            **dict(zip(NODE_METRIC_BASELINE_KEYS, baseline_values)),
         })
     return rows
 
@@ -150,23 +177,24 @@ def _compute_variant(tree, predecessors, traces, obs):
     }
 
 
-def _compute_cell(tree, predecessors, log, base_obs=None):
+def _compute_cell(tree, predecessors, log, base_obs):
     """
-    {distribution -> (node_totals, summary_fields)} for one (tree, log)
-    pairing. 'self' always estimates the tail distribution from `log`
-    itself (the metric's normal, self-contained mode - see surprise.py's
-    module docstring on why this is self-limiting under heavy loss).
-    When base_obs is given (the distribution estimated from the
-    *undegraded* log), an additional 'baseline' variant reruns the same
-    degraded events against that fixed, uncontaminated distribution -
-    isolating whether the metric's response to degradation is real
-    signal or an artifact of the estimator degrading along with the log.
+    (self_totals, self_fields, baseline_totals, baseline_fields) for one
+    (tree, log) pairing. 'self' estimates the tail distribution from
+    `log` itself (the metric's normal, self-contained mode - see
+    surprise.py's module docstring on why this is self-limiting under
+    heavy loss). 'baseline' reruns the same events against base_obs (the
+    distribution estimated from the *undegraded* log) instead - a
+    benchmark-only oracle comparison isolating whether the metric's
+    response to degradation is real signal or an artifact of the
+    self-estimator degrading along with the log; not available under
+    real missing-activity scenarios, where no undegraded reference log
+    exists.
     """
     traces = log_to_traces(log)
-    variants = {'self': _compute_variant(tree, predecessors, traces, None)}
-    if base_obs is not None:
-        variants['baseline'] = _compute_variant(tree, predecessors, traces, base_obs)
-    return variants
+    self_totals, self_fields = _compute_variant(tree, predecessors, traces, None)
+    baseline_totals, baseline_fields = _compute_variant(tree, predecessors, traces, base_obs)
+    return self_totals, self_fields, baseline_totals, baseline_fields
 
 
 def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.0,),
@@ -210,34 +238,35 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
             # level 0.0 drops nothing regardless of dimension, so it's the
             # same (tree, log) computation under every dim - compute it
             # once here and reuse across dims, mirroring exp_disco_degrade.
-            zero_level_variants = None
+            zero_level_cell = None
             if 0.0 in levels:
-                zero_level_variants = _compute_cell(tree, predecessors, base_log,
-                                                     base_obs=base_obs)
+                zero_level_cell = _compute_cell(tree, predecessors, base_log, base_obs)
 
             for dim, degrade in degradations.items():
                 for level in levels:
                     sub_cell = f'{cell} / {dim} / {level}'
                     started = time.monotonic()
                     try:
-                        if level == 0.0 and zero_level_variants is not None:
-                            variants = zero_level_variants
+                        if level == 0.0 and zero_level_cell is not None:
+                            self_totals, self_fields, baseline_totals, baseline_fields = zero_level_cell
                             dropped_str, dropped_count = '', 0
                         else:
                             degraded_log, dropped = degrade(base_log, level)
                             dropped_str, dropped_count = _format_dropped(dropped)
-                            variants = _compute_cell(tree, predecessors, degraded_log,
-                                                      base_obs=base_obs)
+                            self_totals, self_fields, baseline_totals, baseline_fields = \
+                                _compute_cell(tree, predecessors, degraded_log, base_obs)
 
-                        for distribution, ((containment, pred_totals), fields) in variants.items():
-                            node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         distribution, containment, pred_totals))
-                            summary_rows.append({
-                                'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
-                                'degradation_level': level, 'distribution': distribution,
-                                'dropped_count': dropped_count, 'status': 'ok', **fields,
-                            })
-                        self_fields = variants['self'][1]
+                        node_rows.extend(_node_rows(log_name, combo_name, dim, level,
+                                                     self_totals, baseline_totals))
+
+                        baseline_summary_values = (baseline_fields['headline_bits'],
+                                                    baseline_fields['bits_per_event'])
+                        summary_rows.append({
+                            'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
+                            'degradation_level': level, 'dropped_count': dropped_count,
+                            'status': 'ok', **self_fields,
+                            **dict(zip(SUMMARY_METRIC_BASELINE_KEYS, baseline_summary_values)),
+                        })
                         logger.info('%s - done in %.1fs (%d events, %.2f bits)',
                                     sub_cell, time.monotonic() - started,
                                     self_fields['n_events'], self_fields['headline_bits'])
@@ -253,17 +282,16 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
 
 
 def top_nodes(node_df, column, n=15):
-    """The n rows with the highest `column` value, one row per (log, combo, dim, level, distribution)."""
+    """The n rows with the highest `column` value, one row per (log, combo, dim, level)."""
     if node_df.empty:
         return node_df
     return (node_df.sort_values(column, ascending=False)
-                    .groupby(['log', 'combo', 'degradation_dim', 'degradation_level',
-                              'distribution'], sort=False)
+                    .groupby(['log', 'combo', 'degradation_dim', 'degradation_level'], sort=False)
                     .head(n))
 
 
 def format_node_table(df, column):
-    cols = ['log', 'combo', 'degradation_dim', 'degradation_level', 'distribution',
+    cols = ['log', 'combo', 'degradation_dim', 'degradation_level',
             'node_id', 'node_type', 'alphabet', column]
     return df[cols].to_string(index=False) if not df.empty else '  (no nodes)'
 

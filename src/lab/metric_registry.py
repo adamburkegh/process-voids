@@ -19,13 +19,20 @@ producing script without a matching registry update fails that test,
 the same silent-drift failure mode that left plot_dose_response's
 METRICS list stale earlier in this project's history.
 
-The 'self'/'baseline' distribution split (see lab.exp_surprise's
-_compute_cell docstring) applies to every exp_surprise metric below as
-an orthogonal modifier, not a separate metric id: 'self' estimates the
-tail distribution from the log being scored, 'baseline' scores it
-against the undegraded log's distribution instead, to separate real
-degradation signal from the self-estimator degrading along with the
-log.
+Every exp_surprise metric is registered twice: an unsuffixed id ('self'
+- the deployable mode, tail distribution estimated from the log being
+scored) and a '_baseline'-suffixed id (scored against the *undegraded*
+log's distribution instead - a benchmark-only oracle comparison,
+isolating real degradation signal from the self-estimator degrading
+along with the log; unavailable under real missing-activity scenarios,
+where no undegraded reference exists). These were originally a single
+id plus a 'distribution' column, but self and baseline are different
+quantities with different deployability - self is a dead end on its
+own (all signal vanishes without a baseline to compare against, hence
+this split), baseline is a genuine standing benchmark metric - so they
+get separate ids like every other metric here, not a shared one plus a
+modifier column. See lab.exp_surprise's module docstring and
+_compute_cell.
 """
 
 from dataclasses import dataclass
@@ -121,7 +128,19 @@ METRICS = {
                     'containment attribution: every node whose alphabet '
                     'contains the event activity (leaf and all ancestors). '
                     'Puts the signal on whatever ran late, which for a '
-                    'missing subprocess is the wrong node.',
+                    "missing subprocess is the wrong node. Self-distribution "
+                    "(tail estimated from the log being scored) - see "
+                    "containment_bits_baseline for the oracle-comparison "
+                    'counterpart.',
+        source='process_voids.surprise.surprise_totals',
+        scripts=('exp_surprise',),
+    ),
+    'containment_bits_baseline': Metric(
+        id='containment_bits_baseline',
+        description='containment_bits scored against the undegraded log\'s '
+                    'interval distribution instead of the (possibly degraded) '
+                    'scored log\'s own - a benchmark-only oracle comparison, '
+                    'unavailable under real missing-activity scenarios.',
         source='process_voids.surprise.surprise_totals',
         scripts=('exp_surprise',),
     ),
@@ -133,21 +152,49 @@ METRICS = {
                     'the event, then its ancestors. A structural '
                     'approximation of true (alignment-resolved) predecessor '
                     'attribution - Xor/And exits are genuinely ambiguous and '
-                    'get charged to the composite node rather than a branch.',
+                    'get charged to the composite node rather than a branch. '
+                    'Self-distribution - see predecessor_bits_baseline for '
+                    'the oracle-comparison counterpart.',
+        source='process_voids.surprise.predecessor_totals',
+        scripts=('exp_surprise',),
+    ),
+    'predecessor_bits_baseline': Metric(
+        id='predecessor_bits_baseline',
+        description='predecessor_bits scored against the undegraded log\'s '
+                    'interval distribution instead of the scored log\'s own - '
+                    'a benchmark-only oracle comparison, unavailable under '
+                    'real missing-activity scenarios.',
         source='process_voids.surprise.predecessor_totals',
         scripts=('exp_surprise',),
     ),
     'headline_bits': Metric(
         id='headline_bits',
         description="Root-level total interval-surprise bits (containment's "
-                    "total at the tree root) - the whole log's surprise under "
-                    'one distribution.',
+                    "total at the tree root) - the whole log's surprise, "
+                    'self-distribution.',
+        source='lab.exp_surprise._compute_variant',
+        scripts=('exp_surprise',),
+    ),
+    'headline_bits_baseline': Metric(
+        id='headline_bits_baseline',
+        description='headline_bits scored against the undegraded log\'s '
+                    'interval distribution - a benchmark-only oracle '
+                    'comparison.',
         source='lab.exp_surprise._compute_variant',
         scripts=('exp_surprise',),
     ),
     'bits_per_event': Metric(
         id='bits_per_event',
-        description='headline_bits / n_events - mean surprise per event.',
+        description='headline_bits / n_events - mean surprise per event, '
+                    'self-distribution.',
+        source='lab.exp_surprise._compute_variant',
+        scripts=('exp_surprise',),
+    ),
+    'bits_per_event_baseline': Metric(
+        id='bits_per_event_baseline',
+        description='bits_per_event scored against the undegraded log\'s '
+                    'interval distribution - a benchmark-only oracle '
+                    'comparison.',
         source='lab.exp_surprise._compute_variant',
         scripts=('exp_surprise',),
     ),
