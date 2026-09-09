@@ -1,27 +1,34 @@
 """
-Dose-response plots for degradation-sweep experiment output.
+Dose-response plots for exp_disco_degrade output (log, combo,
+degradation_dim, degradation_level columns - the one schema every
+degradation sweep in this project produces now, including the claims
+fixture via lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS
+registration, so there's a single plot function rather than one per
+experiment script).
 
-plot_dose_response: exp_disco_degrade's shape (log, degradation_dim,
-combo, degradation_level columns) - weight_coverage / skipprob /
-salign_coverage / alignment_coverage_pn / voidmass_subprocess /
-voidmass_process vs degradation_level, one line per discovery+estimator
-combo, faceted by (log, degradation dimension). weight_voidage isn't
-plotted separately - it's exactly 1 - weight_coverage, so its own panel
-would just be a mirror image with no new signal.
+plot_dose_response: weight_coverage / skipprob / salign_coverage /
+alignment_coverage_pn / voidmass_subprocess / voidmass_process vs
+degradation_level, one figure per (log, facet value), one line per
+`line_by` value within it. weight_voidage isn't plotted separately -
+it's exactly 1 - weight_coverage, so its own panel would just be a
+mirror image with no new signal.
 
-plot_claims_degrade: exp_claims_degrade's shape (target, n_drop_cases
-columns) - the same three metrics plus voidmass_subprocess/
-voidmass_process vs n_drop_cases, one line per ablation target. Not
-sharing a y-axis range with the coverage metrics: voidmass values sit
-in a much smaller range (0-0.05ish here) than the coverage-style
-metrics (near 1), so a shared 0-1 range would flatten them to nothing.
+line_by='combo' (default): compare discovery/estimator combos under
+one fixed degradation dimension - faceted by (log, degradation_dim).
+The natural question for a real discovered-model sweep: "which combo
+holds up best as this dimension degrades?"
 
-main() dispatches on the CSV's columns - pass either experiment's
-output and it picks the right plot.
+line_by='degradation_dim': compare degradation dimensions (eg ablation
+targets) for one fixed combo - faceted by (log, combo). The natural
+question when combo is a single fixed value, eg claims_known: "does
+this ablation target behave differently from that one?" - this is what
+exp_claims_degrade.py's own dedicated plot function used to do, before
+its output converged onto this same schema and made a separate
+function unnecessary.
 
 Usage:
     python -m lab.plots var/lab/results/exp_disco_degrade.csv
-    python -m lab.plots var/lab/results/exp_claims_degrade.csv
+    python -m lab.plots var/lab/results/claims_degrade.csv --line-by degradation_dim
     python -m lab.plots var/lab/results/exp_disco_degrade.csv --out-dir var/lab/results/plots
 """
 
@@ -60,48 +67,58 @@ def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
-                        fmt: str = 'png'):
+                        fmt: str = 'png', line_by: str = 'combo'):
     """
-    Writes one figure per (log, degradation_dim), each with a subplot
-    per metric in METRICS, one line per combo. Pass fmt='pdf' for
-    vector output that drops straight into a LaTeX build. Returns the
-    list of paths written. See _exclude_degenerate for what's dropped
-    before plotting.
+    Writes one figure per (log, facet value), each with a subplot per
+    metric in METRICS, one line per `line_by` value within it - see
+    this module's docstring for line_by='combo' vs 'degradation_dim'.
+    Pass fmt='pdf' for vector output that drops straight into a LaTeX
+    build. Returns the list of paths written. See _exclude_degenerate
+    for what's dropped before plotting.
+
+    No fixed y-axis range: voidmass_subprocess/voidmass_process sit in
+    a much smaller range (0-0.05ish on the claims fixture) than the
+    coverage-style metrics (near 1), so a shared 0-1 range would
+    flatten them to nothing - each panel auto-scales to its own data.
     """
+    if line_by not in ('combo', 'degradation_dim'):
+        raise ValueError(f"line_by must be 'combo' or 'degradation_dim', got {line_by!r}")
+    facet_by = 'degradation_dim' if line_by == 'combo' else 'combo'
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
 
     ok = _exclude_degenerate(df)
 
-    for (log, dim), group in df.groupby(['log', 'degradation_dim']):
+    for (log, facet_val), group in df.groupby(['log', facet_by]):
         fig, axes = plt.subplots(1, len(METRICS), figsize=(5 * len(METRICS), 4))
         if len(METRICS) == 1:
             axes = [axes]
 
-        group_ok = ok[(ok['log'] == log) & (ok['degradation_dim'] == dim)]
+        group_ok = ok[(ok['log'] == log) & (ok[facet_by] == facet_val)]
         for ax, metric in zip(axes, METRICS):
             # skipprob is a skip probability (higher = worse); every other
             # metric here is a coverage proxy (higher = better) - plot
             # 1-skipprob so all four panels read the same direction.
             label = '1 - skipprob' if metric == 'skipprob' else metric
-            for combo, combo_group in group_ok.groupby('combo'):
-                combo_group = combo_group.sort_values('degradation_level')
-                if combo_group.empty:
+            for line_val, line_group in group_ok.groupby(line_by):
+                line_group = line_group.sort_values('degradation_level')
+                if line_group.empty:
                     continue
-                y = (1 - combo_group[metric] if metric == 'skipprob'
-                     else combo_group[metric])
-                ax.plot(combo_group['degradation_level'], y,
-                        marker='o', label=combo)
-            ax.set_xlabel(f'{dim}-wise degradation level')
+                y = (1 - line_group[metric] if metric == 'skipprob'
+                     else line_group[metric])
+                ax.plot(line_group['degradation_level'], y,
+                        marker='o', label=line_val)
+            ax.set_xlabel(f'{facet_val}-wise degradation level' if facet_by == 'degradation_dim'
+                           else 'degradation level')
             ax.set_ylabel(label)
-            ax.set_ylim(-0.05, 1.05)
             ax.legend()
 
-        fig.suptitle(f'{log} - {dim}-wise degradation')
+        fig.suptitle(f'{log} - {facet_val}')
         fig.tight_layout()
 
-        out_path = out_dir / f'{log}_{dim}.{fmt}'
+        out_path = out_dir / f'{log}_{facet_val}.{fmt}'
         fig.savefig(out_path)
         plt.close(fig)
         written.append(out_path)
@@ -109,68 +126,25 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
     return written
 
 
-CLAIMS_METRICS = ['weight_coverage', 'skipprob', 'salign_coverage', 'alignment_coverage_pn',
-                   'voidmass_subprocess', 'voidmass_process']
-
-
-def plot_claims_degrade(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
-                         fmt: str = 'png'):
-    """
-    One figure for exp_claims_degrade output: a subplot per metric in
-    CLAIMS_METRICS, one line per ablation target, x-axis n_drop_cases.
-    Returns the list of paths written (always one, for consistency with
-    plot_dose_response's return shape).
-    """
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    ok = df[df['status'] == 'ok']
-
-    fig, axes = plt.subplots(1, len(CLAIMS_METRICS), figsize=(5 * len(CLAIMS_METRICS), 4))
-    if len(CLAIMS_METRICS) == 1:
-        axes = [axes]
-
-    for ax, metric in zip(axes, CLAIMS_METRICS):
-        # skipprob is a skip probability (higher = worse); every other
-        # metric here is a coverage/void proxy in its own natural
-        # direction - plot 1-skipprob so its panel reads the same way
-        # as weight_coverage/salign_coverage (higher = better);
-        # voidmass panels are deliberately left as-is (higher = worse,
-        # the opposite direction) since they're not coverage proxies.
-        label = '1 - skipprob' if metric == 'skipprob' else metric
-        for target, group in ok.groupby('target'):
-            group = group.sort_values('n_drop_cases')
-            if group.empty:
-                continue
-            y = (1 - group[metric] if metric == 'skipprob' else group[metric])
-            ax.plot(group['n_drop_cases'], y, marker='o', label=target)
-        ax.set_xlabel('n_drop_cases')
-        ax.set_ylabel(label)
-        ax.legend()
-
-    fig.suptitle('Claims fixture - degradation vs the known generating tree')
-    fig.tight_layout()
-
-    out_path = out_dir / f'claims_degrade.{fmt}'
-    fig.savefig(out_path)
-    plt.close(fig)
-    return [out_path]
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description='Plot dose-response curves from exp_disco_degrade or '
-                     'exp_claims_degrade output (auto-detected from the CSV columns).')
+        description='Plot dose-response curves from exp_disco_degrade output '
+                     '(including the claims fixture, run via lab.claims_fixture\'s '
+                     'CLAIMS_COMBOS/CLAIMS_DEGRADATIONS registration).')
     parser.add_argument('csv', help='experiment result CSV path')
     parser.add_argument('--out-dir', default='var/lab/results/plots')
     parser.add_argument('--format', default='png', choices=['pdf', 'png', 'svg'],
                          help='output format (default: png; pdf for LaTeX inclusion)')
+    parser.add_argument('--line-by', default='combo', choices=['combo', 'degradation_dim'],
+                         help="'combo' (default): compare combos under one degradation "
+                              "dimension. 'degradation_dim': compare degradation "
+                              "dimensions for one combo - use this for claims-fixture "
+                              "output, where combo is always the single fixed "
+                              "'claims_known' value.")
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)
-    if 'target' in df.columns and 'n_drop_cases' in df.columns:
-        written = plot_claims_degrade(df, out_dir=args.out_dir, fmt=args.format)
-    else:
-        written = plot_dose_response(df, out_dir=args.out_dir, fmt=args.format)
+    written = plot_dose_response(df, out_dir=args.out_dir, fmt=args.format, line_by=args.line_by)
     for path in written:
         print(f'Wrote {path}')
 

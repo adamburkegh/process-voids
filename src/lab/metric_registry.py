@@ -1,12 +1,15 @@
 """
 Single source of truth for every analytical metric id this package's
-experiment scripts (lab.exp_disco_degrade, lab.exp_claims_degrade,
-lab.exp_surprise) can emit into a results CSV.
+experiment scripts (lab.exp_disco_degrade, lab.exp_surprise) can emit
+into a results CSV. exp_claims_degrade.py was retired once
+lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS let the claims
+fixture run through exp_disco_degrade directly - same schema, no
+separate bespoke script or registry entries needed for it.
 
 Deliberately scoped to analytical quantities only - not administrative/
 bookkeeping columns each script also writes (log, combo, degradation_dim,
 degradation_level, status, dropped_count, elapsed_s, node_id, node_type,
-alphabet, target, n_drop_cases, n_events, and the surprise diagnostics
+alphabet, n_events, and the surprise diagnostics
 ambiguous_event_count/unattributable_event_count/out_of_alphabet_event_count).
 
 This is the executable source of truth, not documentation of it: every
@@ -55,7 +58,7 @@ METRICS = {
                     "alignment machinery - only borrows skip_probs as a leaf "
                     "input, the same as skipprob does directly.",
         source='process_voids.coveragemass.mass_by_weight',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'weight_voidage': Metric(
         id='weight_voidage',
@@ -63,7 +66,7 @@ METRICS = {
                     'linearly over the complement - a convenience read-out, '
                     'not a separately-derived quantity).',
         source='process_voids.coveragemass.voidage_by_weight',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'skipprob': Metric(
         id='skipprob',
@@ -71,7 +74,7 @@ METRICS = {
                     "skip-alignments' own dv.skip_probs output, unmodified "
                     'beyond averaging.',
         source='lab.metrics.mean_skipprob',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'salign_coverage': Metric(
         id='salign_coverage',
@@ -80,7 +83,20 @@ METRICS = {
                     'execution contributes 0). Genuinely alignment-machinery-'
                     'based, unlike weight_coverage.',
         source='process_voids.coveragemass.coverage_by_alignment',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
+    ),
+    'node_skip_prob': Metric(
+        id='node_skip_prob',
+        description="A specific node's own skip probability - "
+                    "skip-alignments' dv.skip_probs[node], unmodified. Distinct "
+                    "from 'skipprob', which is mean_skipprob's average over "
+                    'EVERY Activity leaf in the whole tree regardless of which '
+                    'node was passed to it (see that function\'s docstring) - '
+                    'not that node\'s own value. Only emitted in '
+                    "exp_disco_degrade's per-node CSV, since it's only "
+                    'meaningful once every node (not just the root) is scored.',
+        source='lab.exp_disco_degrade._node_rows',
+        scripts=('exp_disco_degrade',),
     ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',
@@ -90,11 +106,11 @@ METRICS = {
                     'Inductive Miner at noise_threshold=0.0 wraps nearly every '
                     'leaf in Xor(Tau, activity), making this near-zero and every '
                     'void metric uninformative by construction on such a tree. '
-                    'Scored at the tree root in exp_disco_degrade, at the target '
-                    'node in exp_claims_degrade - same scoping as every other '
-                    'per-node metric in each script.',
+                    'Scored at the tree root in the root-level CSV, and at every '
+                    'node (including claims-fixture ablation targets like '
+                    'appeal_seq) in the per-node CSV.',
         source='process_voids.coveragemass.mandatory_node_count',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'total_node_count': Metric(
         id='total_node_count',
@@ -103,7 +119,7 @@ METRICS = {
                     'rather than a bare count only meaningful relative to a '
                     'specific tree\'s size. Same scoping as mandatory_node_count.',
         source='process_voids.coveragemass.total_node_count',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'voidmass_deficit': Metric(
         id='voidmass_deficit',
@@ -112,28 +128,28 @@ METRICS = {
                     "formally-correct replacement for skip-alignments' lumped "
                     'normal form.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'voidmass_movecount': Metric(
         id='voidmass_movecount',
         description='Pooled non-silent move count at the scored node - the '
                     'denominator of voidmass_subprocess.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'voidmass_subprocess': Metric(
         id='voidmass_subprocess',
         description='voidmass_deficit / voidmass_movecount at the scored node - '
                     "voidmass as a fraction of that node's own moves.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'voidmass_process': Metric(
         id='voidmass_process',
         description='1 - voidmass_subprocess (alignment_mass_pooled) at the '
                     'scored node.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'alignment_coverage_pn': Metric(
         id='alignment_coverage_pn',
@@ -143,7 +159,7 @@ METRICS = {
                     'skip_probs unchanged rather than deriving a separate '
                     'estimate.',
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
-        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+        scripts=('exp_disco_degrade',),
     ),
     'containment_bits': Metric(
         id='containment_bits',

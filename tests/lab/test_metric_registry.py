@@ -1,6 +1,6 @@
 import unittest
 
-from lab.exp_disco_degrade import CLASSICAL_METRIC_KEYS
+from lab.exp_disco_degrade import CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS
 from lab.exp_surprise import (
     NODE_METRIC_KEYS, NODE_METRIC_BASELINE_KEYS,
     SUMMARY_METRIC_KEYS, SUMMARY_METRIC_BASELINE_KEYS,
@@ -22,10 +22,6 @@ class DriftTest(unittest.TestCase):
     list stale earlier in this project's history.
     """
 
-    def _ids_for(self, script_name):
-        return {metric_id for metric_id, metric in METRICS.items()
-                if script_name in metric.scripts}
-
     def test_compute_metrics_keys_match_registry(self):
         skip_alignment_sources = {
             'process_voids.coveragemass.mass_by_weight',
@@ -36,6 +32,20 @@ class DriftTest(unittest.TestCase):
         skip_alignment_ids = {mid for mid, m in METRICS.items()
                                if m.source in skip_alignment_sources}
         self.assertEqual(set(METRIC_KEYS), skip_alignment_ids)
+
+    def test_per_node_metric_keys_match_registry(self):
+        # weight_coverage/weight_voidage/salign_coverage are the same
+        # ids/sources as METRIC_KEYS above (same functions, evaluated at
+        # an arbitrary node instead of only the root); node_skip_prob is
+        # the one id unique to the per-node CSV.
+        skip_alignment_sources = {
+            'process_voids.coveragemass.mass_by_weight',
+            'process_voids.coveragemass.voidage_by_weight',
+            'process_voids.coveragemass.coverage_by_alignment',
+        }
+        per_node_ids = ({mid for mid, m in METRICS.items() if m.source in skip_alignment_sources}
+                         | {'node_skip_prob'})
+        self.assertEqual(set(PER_NODE_METRIC_KEYS), per_node_ids)
 
     def test_classical_metric_keys_match_registry(self):
         classical_ids = {mid for mid, m in METRICS.items()
@@ -63,7 +73,7 @@ class DriftTest(unittest.TestCase):
         all_emitted = (set(METRIC_KEYS) | set(CLASSICAL_METRIC_KEYS)
                        | set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS)
                        | set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS)
-                       | set(TREE_METRIC_KEYS))
+                       | set(TREE_METRIC_KEYS) | set(PER_NODE_METRIC_KEYS))
         self.assertEqual(set(METRICS), all_emitted)
 
     def test_every_metric_declares_a_nonempty_script_list(self):

@@ -25,6 +25,8 @@ from pathlib import Path
 import pandas as pd
 from skipalignments import Activity, And, Loop, Sequence, Tau, Xor
 
+from lab.degradation import degrade_target_subprocess
+from lab.discovery import DiscoveryCombo, DiscoveryResult
 from process_voids import dtlog
 
 ACTIVITY_COST = 100000
@@ -260,6 +262,81 @@ def summarize_ground_truth(ground_truth):
                           ['case', 'loop_iterations', 'appeal', 'deviation']].to_string(index=False),
     ]
     return '\n'.join(lines)
+
+
+'''
+=====================================================================================
+Registration for the generic experiment harness (lab.exp_disco_degrade)
+
+Lets the claims fixture run through the SAME machinery real discovered
+logs do, rather than a bespoke sweep script: register the known
+generating tree as a "combo" (ignores its log argument entirely -
+nothing to discover, the tree is exactly known already) and each
+ablation target as its own [0,1]-level degradation dimension, so:
+
+    python -m lab.exp_disco_degrade data/claims.xes \\
+        --combos claims_known --degradations assess loop_block appeal_seq
+
+runs the same targeted, ground-truth-aware ablation exp_claims_degrade.py
+used to run bespoke, but through Experiment/--dry-run/Timer/the per-node
+CSV - every node's own metrics, not just the three named targets'.
+
+CLAIMS_EXCLUDE_CASES is read once here from the checked-in ground truth
+CSV: the cases the fixture deliberately deviated from the model,
+excluded from ablation eligibility everywhere below so an ablation
+can't accidentally erase the log's only genuine deviation as a side
+effect of dropping cases (see degrade_target_subprocess's own
+exclude_cases docstring - this bit before it was fixed, on the
+original appeal_seq run).
+'''
+
+CLAIMS_TARGETS = {
+    'assess': {'assess'},
+    'loop_block': {'request_docs', 'receive_docs'},
+    'appeal_seq': {'lodge_appeal', 'decide_appeal'},
+}
+
+
+def deviated_cases(ground_truth_csv=CLAIMS_GROUND_TRUTH_CSV):
+    '''Case ids with a non-empty 'deviation' in the ground truth CSV.'''
+    ground_truth = pd.read_csv(ground_truth_csv)
+    deviated = ground_truth.loc[ground_truth['deviation'].notna()
+                                 & (ground_truth['deviation'] != ''), 'case']
+    return set(deviated)
+
+
+CLAIMS_EXCLUDE_CASES = deviated_cases()
+
+
+def _target_degradation(target_activities):
+    '''
+    [0,1]-level degradation for one named target subprocess:
+    level * (that target's own eligible case count, i.e. cases with at
+    least one of target_activities, minus CLAIMS_EXCLUDE_CASES) becomes
+    an explicit n_drop_cases for degrade_target_subprocess - matching
+    DEGRADATIONS' [0,1]-level shape without changing
+    degrade_target_subprocess's own explicit-count interface (see its
+    docstring on why fractions alone are the wrong parameterisation).
+    '''
+    def degrade(log, level):
+        eligible_cases = set(log.loc[
+            log['concept:name'].isin(target_activities), 'case:concept:name'
+        ].unique()) - CLAIMS_EXCLUDE_CASES
+        n_drop = round(level * len(eligible_cases))
+        if n_drop == 0:
+            return log, set()
+        return degrade_target_subprocess(log, target_activities, n_drop,
+                                          exclude_cases=CLAIMS_EXCLUDE_CASES)
+    return degrade
+
+
+CLAIMS_COMBOS = {
+    'claims_known': DiscoveryCombo('claims_known',
+                                    lambda log: DiscoveryResult(build_claims_tree())),
+}
+
+CLAIMS_DEGRADATIONS = {name: _target_degradation(activities)
+                        for name, activities in CLAIMS_TARGETS.items()}
 
 
 if __name__ == '__main__':
