@@ -38,6 +38,7 @@ lab/runs.py (RUNS), runnable by name:
 import argparse
 import logging
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -47,6 +48,9 @@ import pm4py_config as pm4py
 from lab.logconfig import configure, enable_skipalignments_debug
 from lab.metrics import compute_metrics
 from lab.params import ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS
+from lab.runs import Experiment, RUNS
+from lab.timing import Timer
+from process_voids.coveragemass import TREE_METRIC_KEYS, mandatory_node_count, total_node_count
 from process_voids.voidmass_pn import build_id_net, voidmass_table_pn, coverage_by_alignment_pn
 
 logger = logging.getLogger(__name__)
@@ -138,8 +142,9 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                 tree, ppt_weights = None, None
                 discover_status = 'not_implemented'
             except Exception as e:
+                logger.exception('Discovery: log=%s combo=%s - exception', log_name, combo_name)
                 tree, ppt_weights = None, None
-                discover_status = f'discovery error: {e}'
+                discover_status = f'discovery error: {type(e).__name__}: {e}'
             logger.info('Discovery: log=%s combo=%s -> %s (%.1fs)',
                         log_name, combo_name, discover_status,
                         time.monotonic() - started_discover)
@@ -150,6 +155,16 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
             # the tree/ppt_weights fixed-reference-model design.
             classical_net = build_id_net(tree) if tree is not None else None
 
+            # mandatory_node_count/total_node_count depend only on the
+            # discovered tree's structure, not the (possibly degraded)
+            # log - same fixed-per-(log, combo) computation as above, and
+            # unaffected by whether a particular cell's metric
+            # computation below succeeds or errors, so merged into every
+            # row for this (log, combo) unconditionally once known.
+            tree_metrics = (dict(zip(TREE_METRIC_KEYS,
+                                      (mandatory_node_count(tree), total_node_count(tree))))
+                            if tree is not None else {k: None for k in TREE_METRIC_KEYS})
+
             # Level 0.0 applies zero drops regardless of dimension, so it's
             # the same (log, tree) computation under every dim - compute it
             # once here and reuse the result across dims below, rather than
@@ -157,26 +172,28 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
             # dimension.
             zero_level_status = None
             zero_level_metrics = None
+            zero_level_elapsed_s = None
             if tree is not None and 0.0 in levels:
                 cell = f'{log_name} / {combo_name} / (all dims) / 0.0'
-                started = time.monotonic()
                 logger.debug('%s - starting', cell)
                 slpn_path = f'var/lab/disco_degrade_{log_name}_{combo_name}_level0.slpn'
-                try:
-                    zero_level_metrics, dv = compute_metrics(
-                        base_log, tree, slpn_path, ppt_weights=ppt_weights, return_dv=True)
-                    net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                    zero_level_metrics.update(_classical_metrics(
-                        tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv))
-                    zero_level_status = 'ok'
-                except Exception as e:
-                    zero_level_status = f'error: {e}'
-                elapsed = time.monotonic() - started
+                with Timer() as t:
+                    try:
+                        zero_level_metrics, dv = compute_metrics(
+                            base_log, tree, slpn_path, ppt_weights=ppt_weights, return_dv=True)
+                        net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
+                        zero_level_metrics.update(_classical_metrics(
+                            tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv))
+                        zero_level_status = 'ok'
+                    except Exception as e:
+                        logger.exception('%s - exception', cell)
+                        zero_level_status = f'error: {type(e).__name__}: {e}'
+                zero_level_elapsed_s = t.elapsed_s
                 if zero_level_status == 'ok':
-                    logger.info('%s - done in %.1fs', cell, elapsed)
+                    logger.info('%s - done in %.1fs', cell, zero_level_elapsed_s)
                 else:
                     logger.warning('%s - done in %.1fs (status=%s)',
-                                    cell, elapsed, zero_level_status)
+                                    cell, zero_level_elapsed_s, zero_level_status)
 
             for dim, degrade in degradations.items():
                 for level in levels:
@@ -187,9 +204,11 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'log': log_name, 'combo': combo_name,
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': discover_status,
+                            'elapsed_s': None,
                             'weight_coverage': None, 'weight_voidage': None, 'skipprob': None,
                             'salign_coverage': None,
                             **{k: None for k in CLASSICAL_METRIC_KEYS},
+                            **tree_metrics,
                         }
                         rows.append(row)
                         logger.info('%s - skipped (%s)', cell, discover_status)
@@ -200,6 +219,8 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'log': log_name, 'combo': combo_name,
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': zero_level_status,
+                            'elapsed_s': zero_level_elapsed_s,
+                            **tree_metrics,
                         }
                         if zero_level_status == 'ok':
                             row.update(zero_level_metrics)
@@ -211,7 +232,6 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         logger.debug('%s - reused level-0.0 result', cell)
                         continue
 
-                    started = time.monotonic()
                     logger.debug('%s - starting', cell)
 
                     degraded_log, dropped = degrade(base_log, level)
@@ -223,31 +243,35 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         'degradation_level': level,
                         'dropped': dropped_str,
                         'dropped_count': dropped_count,
+                        **tree_metrics,
                     }
                     slpn_path = (f'var/lab/disco_degrade_{log_name}_{combo_name}_'
                                  f'{dim}_{level}.slpn')
-                    try:
-                        metrics, dv = compute_metrics(
-                            degraded_log, tree, slpn_path,
-                            ppt_weights=ppt_weights, return_dv=True)
-                        net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                        metrics.update(_classical_metrics(
-                            tree, degraded_log, net, im, fm, activity_to_id, tau_ids,
-                            id_loop_list, dv))
-                        row['status'] = 'ok'
-                        row.update(metrics)
-                    except Exception as e:
-                        row.update(status=f'error: {e}', weight_coverage=None,
-                                    weight_voidage=None, skipprob=None, salign_coverage=None,
-                                    **{k: None for k in CLASSICAL_METRIC_KEYS})
+                    with Timer() as t:
+                        try:
+                            metrics, dv = compute_metrics(
+                                degraded_log, tree, slpn_path,
+                                ppt_weights=ppt_weights, return_dv=True)
+                            net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
+                            metrics.update(_classical_metrics(
+                                tree, degraded_log, net, im, fm, activity_to_id, tau_ids,
+                                id_loop_list, dv))
+                            row['status'] = 'ok'
+                            row.update(metrics)
+                        except Exception as e:
+                            logger.exception('%s - exception', cell)
+                            row.update(status=f'error: {type(e).__name__}: {e}',
+                                        weight_coverage=None, weight_voidage=None, skipprob=None,
+                                        salign_coverage=None,
+                                        **{k: None for k in CLASSICAL_METRIC_KEYS})
+                    row['elapsed_s'] = t.elapsed_s
                     rows.append(row)
 
-                    elapsed = time.monotonic() - started
                     if row['status'] == 'ok':
-                        logger.info('%s - done in %.1fs', cell, elapsed)
+                        logger.info('%s - done in %.1fs', cell, t.elapsed_s)
                     else:
                         logger.warning('%s - done in %.1fs (status=%s)',
-                                        cell, elapsed, row['status'])
+                                        cell, t.elapsed_s, row['status'])
 
     df = pd.DataFrame(rows)
     Path(out_csv).parent.mkdir(parents=True, exist_ok=True)
@@ -274,6 +298,28 @@ def _timestamped(path):
     return str(path.with_name(f'{path.stem}_{stamp}{path.suffix}'))
 
 
+def _resolve_experiment(args, parser):
+    """
+    The Experiment this invocation resolves to, from either --run or ad
+    hoc logs/--combos/--levels - the single place both --dry-run and
+    the real run derive their configuration from, so the two can never
+    show/do different things.
+    """
+    if args.run:
+        if args.run not in RUNS:
+            parser.error(f'Unknown run {args.run!r}; choices: {sorted(RUNS)}')
+        out_csv = args.out or f'var/lab/results/{args.run}.csv'
+        return replace(RUNS[args.run], out_csv=out_csv)
+
+    if not args.logs:
+        parser.error('logs are required unless --run is given')
+    combos = {name: ALL_COMBOS[name] for name in args.combos} if args.combos else ALL_COMBOS
+    levels = args.levels or ALL_LEVELS
+    out_csv = args.out or 'var/lab/results/exp_disco_degrade.csv'
+    return Experiment(name='ad hoc', log_paths=args.logs, combos=combos,
+                       degradations=ALL_DEGRADATIONS, levels=levels, out_csv=out_csv)
+
+
 def main():
     configure()
     logger.info('Starting exp_disco_degrade')
@@ -294,32 +340,27 @@ def main():
     parser.add_argument('--verbose', action='store_true',
                          help='Enable skip-alignments debug logging '
                               '(waste ratios, per-variant timing)')
+    parser.add_argument('--dry-run', action='store_true',
+                         help='Print the resolved experiment configuration '
+                              '(logs/combos/degradations/levels/cell count) and '
+                              'exit without computing anything.')
     args = parser.parse_args()
 
     if args.verbose:
         enable_skipalignments_debug()
 
-    if args.run:
-        from lab.runs import RUNS
-        if args.run not in RUNS:
-            parser.error(f'Unknown run {args.run!r}; choices: {sorted(RUNS)}')
-        kwargs = dict(RUNS[args.run])
-        kwargs['out_csv'] = args.out or f'var/lab/results/{args.run}.csv'
-    else:
-        if not args.logs:
-            parser.error('logs are required unless --run is given')
-        kwargs = dict(log_paths=args.logs)
-        if args.combos:
-            kwargs['combos'] = {name: ALL_COMBOS[name] for name in args.combos}
-        if args.levels:
-            kwargs['levels'] = args.levels
-        kwargs['out_csv'] = args.out or 'var/lab/results/exp_disco_degrade.csv'
+    experiment = _resolve_experiment(args, parser)
 
-    kwargs['out_csv'] = _timestamped(kwargs['out_csv'])
+    if args.dry_run:
+        print(experiment.describe())
+        return
 
-    df = run_disco_degrade(**kwargs)
+    out_csv = _timestamped(experiment.out_csv)
+    df = run_disco_degrade(log_paths=experiment.log_paths, combos=experiment.combos,
+                            degradations=experiment.degradations, levels=experiment.levels,
+                            out_csv=out_csv)
     print(df)
-    logger.info("Wrote %s", kwargs['out_csv'])
+    logger.info("Wrote %s", out_csv)
 
 
 if __name__ == '__main__':

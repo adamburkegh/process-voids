@@ -36,6 +36,7 @@ import pm4py_config as pm4py
 from lab.degradation import DEGRADATIONS
 from lab.discovery import COMBOS
 from lab.logconfig import configure
+from lab.timing import Timer
 from process_voids.coveragemass import log_to_traces
 from process_voids.surprise import (
     event_surprise, observed_intervals, surprise_totals,
@@ -220,16 +221,19 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
                     for level in levels:
                         summary_rows.append({
                             'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
-                            'degradation_level': level, 'status': 'not_implemented'})
+                            'degradation_level': level, 'status': 'not_implemented',
+                            'elapsed_s': None})
                 logger.info('%s - skipped (not_implemented)', cell)
                 continue
             except Exception as e:
+                logger.exception('%s - discovery exception', cell)
                 for dim in degradations:
                     for level in levels:
                         summary_rows.append({
                             'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
-                            'degradation_level': level, 'status': f'discovery error: {e}'})
-                logger.warning('%s - discovery error: %s', cell, e)
+                            'degradation_level': level,
+                            'status': f'discovery error: {type(e).__name__}: {e}',
+                            'elapsed_s': None})
                 continue
             logger.info('%s - discovered in %.1fs', cell, time.monotonic() - started)
 
@@ -239,42 +243,60 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
             # same (tree, log) computation under every dim - compute it
             # once here and reuse across dims, mirroring exp_disco_degrade.
             zero_level_cell = None
+            zero_level_elapsed_s = None
             if 0.0 in levels:
-                zero_level_cell = _compute_cell(tree, predecessors, base_log, base_obs)
+                with Timer() as t:
+                    zero_level_cell = _compute_cell(tree, predecessors, base_log, base_obs)
+                zero_level_elapsed_s = t.elapsed_s
 
             for dim, degrade in degradations.items():
                 for level in levels:
                     sub_cell = f'{cell} / {dim} / {level}'
-                    started = time.monotonic()
-                    try:
-                        if level == 0.0 and zero_level_cell is not None:
-                            self_totals, self_fields, baseline_totals, baseline_fields = zero_level_cell
-                            dropped_str, dropped_count = '', 0
-                        else:
-                            degraded_log, dropped = degrade(base_log, level)
-                            dropped_str, dropped_count = _format_dropped(dropped)
-                            self_totals, self_fields, baseline_totals, baseline_fields = \
-                                _compute_cell(tree, predecessors, degraded_log, base_obs)
+                    with Timer() as t:
+                        try:
+                            if level == 0.0 and zero_level_cell is not None:
+                                self_totals, self_fields, baseline_totals, baseline_fields = zero_level_cell
+                                dropped_str, dropped_count = '', 0
+                            else:
+                                degraded_log, dropped = degrade(base_log, level)
+                                dropped_str, dropped_count = _format_dropped(dropped)
+                                self_totals, self_fields, baseline_totals, baseline_fields = \
+                                    _compute_cell(tree, predecessors, degraded_log, base_obs)
 
-                        node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                     self_totals, baseline_totals))
+                            node_rows.extend(_node_rows(log_name, combo_name, dim, level,
+                                                         self_totals, baseline_totals))
 
-                        baseline_summary_values = (baseline_fields['headline_bits'],
-                                                    baseline_fields['bits_per_event'])
-                        summary_rows.append({
-                            'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
-                            'degradation_level': level, 'dropped_count': dropped_count,
-                            'status': 'ok', **self_fields,
-                            **dict(zip(SUMMARY_METRIC_BASELINE_KEYS, baseline_summary_values)),
-                        })
+                            baseline_summary_values = (baseline_fields['headline_bits'],
+                                                        baseline_fields['bits_per_event'])
+                            summary_row = {
+                                'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
+                                'degradation_level': level, 'dropped_count': dropped_count,
+                                'status': 'ok', **self_fields,
+                                **dict(zip(SUMMARY_METRIC_BASELINE_KEYS, baseline_summary_values)),
+                            }
+                        except Exception as e:
+                            logger.exception('%s - exception', sub_cell)
+                            summary_row = {
+                                'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
+                                'degradation_level': level,
+                                'status': f'error: {type(e).__name__}: {e}',
+                            }
+                    # level 0.0 reuses the shared computation above (same
+                    # rationale as zero_level_metrics elsewhere in this
+                    # project) - report that computation's own elapsed_s
+                    # rather than the near-zero time this iteration itself
+                    # took to just look the cached result up.
+                    elapsed_s = (zero_level_elapsed_s if level == 0.0 and zero_level_cell is not None
+                                 else t.elapsed_s)
+                    summary_row['elapsed_s'] = elapsed_s
+                    summary_rows.append(summary_row)
+                    if summary_row['status'] == 'ok':
                         logger.info('%s - done in %.1fs (%d events, %.2f bits)',
-                                    sub_cell, time.monotonic() - started,
+                                    sub_cell, elapsed_s,
                                     self_fields['n_events'], self_fields['headline_bits'])
-                    except Exception as e:
-                        summary_rows.append({
-                            'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
-                            'degradation_level': level, 'status': f'error: {e}'})
-                        logger.warning('%s - error: %s', sub_cell, e)
+                    else:
+                        logger.warning('%s - done in %.1fs (status=%s)',
+                                        sub_cell, elapsed_s, summary_row['status'])
 
     node_df = _merge_write(pd.DataFrame(node_rows), out_csv)
     summary_df = _merge_write(pd.DataFrame(summary_rows), summary_csv)

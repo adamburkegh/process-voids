@@ -44,11 +44,17 @@ def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
     Level 1.0 is excluded on ANY dimension (activity, activity_gradual,
     or trace) because the degraded log is then literally empty (every
     activity or every case dropped), and every metric falls through its
-    own "no data" default there rather than measuring anything - see
-    session notes. Those defaults don't even agree with each other (some
-    land at their "perfect" identity value, salign_coverage at its
-    "worst"), so the level=1.0 point is actively misleading on a dose-
-    response curve, not just an uninteresting edge case.
+    own "no data" default there rather than measuring anything. Those
+    defaults don't even agree with each other (some land at their
+    "perfect" identity value, salign_coverage at its "worst"), so the
+    level=1.0 point is actively misleading on a dose-response curve, not
+    just an uninteresting edge case.
+
+    lab.params.ALL_LEVELS no longer includes 1.0 at all (a wasted,
+    uninformative compute point, not just an unplottable one), so this
+    filter is now defensive rather than load-bearing for a default run -
+    it still matters for older result CSVs on disk, or a call that
+    passes an explicit --levels including 1.0.
     """
     return df[(df['status'] == 'ok') & (df['degradation_level'] != 1.0)]
 

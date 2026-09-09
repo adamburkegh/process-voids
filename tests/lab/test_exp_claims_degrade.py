@@ -191,7 +191,7 @@ class ComputeErrorTest(unittest.TestCase):
         ok_row = df[df['n_drop_cases'] == 0].iloc[0]
         err_row = df[df['n_drop_cases'] == 1].iloc[0]
         self.assertEqual(ok_row['status'], 'ok')
-        self.assertIn('error: boom', err_row['status'])
+        self.assertIn('RuntimeError: boom', err_row['status'])
 
 
 class MergeWriteTargetDimensionTest(unittest.TestCase):

@@ -1,10 +1,12 @@
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 from lab.discovery import DiscoveryCombo, DiscoveryResult
-from lab.exp_disco_degrade import run_disco_degrade, CLASSICAL_METRIC_KEYS
+from lab.exp_disco_degrade import run_disco_degrade, main, CLASSICAL_METRIC_KEYS
 
 FAKE_METRICS = {'weight_coverage': 0.5, 'weight_voidage': 0.5, 'skipprob': 0.1,
                  'salign_coverage': 0.7}
@@ -42,7 +44,9 @@ class ZeroLevelDedupTest(unittest.TestCase):
                    return_value=(dict(FAKE_METRICS), FAKE_DV)) as mock_cm, \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             run_disco_degrade(['fake_log.xes'], combos=self.combos,
                                degradations=self.degradations, levels=[0.0, 0.5],
                                out_csv=str(self.tmp_out))
@@ -54,7 +58,9 @@ class ZeroLevelDedupTest(unittest.TestCase):
                    return_value=(dict(FAKE_METRICS), FAKE_DV)), \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df = run_disco_degrade(['fake_log.xes'], combos=self.combos,
                                     degradations=self.degradations, levels=[0.0],
                                     out_csv=str(self.tmp_out))
@@ -71,7 +77,9 @@ class ZeroLevelDedupTest(unittest.TestCase):
                    return_value=(dict(FAKE_METRICS), FAKE_DV)) as mock_cm, \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df = run_disco_degrade(['fake_log.xes'], combos=self.combos,
                                     degradations=self.degradations, levels=[0.5, 1.0],
                                     out_csv=str(self.tmp_out))
@@ -96,7 +104,9 @@ class NotImplementedComboTest(unittest.TestCase):
         with patch('lab.exp_disco_degrade.compute_metrics') as mock_cm, \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df = run_disco_degrade(['fake_log.xes'], combos=combos,
                                     degradations=degradations, levels=[0.0, 0.5],
                                     out_csv=str(tmp_out))
@@ -120,12 +130,14 @@ class ComputeMetricsErrorTest(unittest.TestCase):
                    side_effect=RuntimeError('boom')), \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df = run_disco_degrade(['fake_log.xes'], combos=combos,
                                     degradations=degradations, levels=[0.0],
                                     out_csv=str(tmp_out))
             self.assertEqual(len(df), 1)
-            self.assertIn('error: boom', df.iloc[0]['status'])
+            self.assertIn('RuntimeError: boom', df.iloc[0]['status'])
             self.assertIsNone(df.iloc[0]['weight_coverage'])
             self.assertIsNone(df.iloc[0]['voidmass_deficit'])
 
@@ -142,7 +154,9 @@ class ComputeMetricsErrorTest(unittest.TestCase):
         with patch('lab.exp_disco_degrade.compute_metrics', side_effect=flaky), \
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
-             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)):
+             patch('lab.exp_disco_degrade._classical_metrics', return_value=dict(FAKE_CLASSICAL_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df = run_disco_degrade(['fake_log.xes'], combos=combos,
                                     degradations=degradations, levels=[0.0, 0.5],
                                     out_csv=str(tmp_out))
@@ -150,7 +164,47 @@ class ComputeMetricsErrorTest(unittest.TestCase):
             zero_row = df[df['degradation_level'] == 0.0].iloc[0]
             nonzero_row = df[df['degradation_level'] == 0.5].iloc[0]
             self.assertEqual(zero_row['status'], 'ok')
-            self.assertIn('error: boom', nonzero_row['status'])
+            self.assertIn('RuntimeError: boom', nonzero_row['status'])
+
+
+class DryRunTest(unittest.TestCase):
+    """--dry-run prints the resolved Experiment and exits without
+    calling compute_metrics or run_disco_degrade at all - main()'s
+    describe-then-return path must never fall through into computing
+    anything."""
+
+    def test_dry_run_with_run_name_prints_and_computes_nothing(self):
+        with patch('sys.argv', ['exp_disco_degrade', '--run', 'smoke', '--dry-run']), \
+             patch('lab.exp_disco_degrade.configure'), \
+             patch('lab.exp_disco_degrade.compute_metrics') as mock_cm, \
+             patch('lab.exp_disco_degrade.build_id_net') as mock_build_id_net:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                main()
+            output = buf.getvalue()
+
+        mock_cm.assert_not_called()
+        mock_build_id_net.assert_not_called()
+        self.assertIn('Experiment: smoke', output)
+        self.assertIn('rtfm', output)
+        self.assertIn('inductive', output)
+        self.assertIn('cells:', output)
+
+    def test_dry_run_with_ad_hoc_logs_prints_and_computes_nothing(self):
+        with patch('sys.argv', ['exp_disco_degrade', 'fake_log.xes',
+                                 '--combos', 'inductive', '--levels', '0.0', '--dry-run']), \
+             patch('lab.exp_disco_degrade.configure'), \
+             patch('lab.exp_disco_degrade.compute_metrics') as mock_cm, \
+             patch('lab.exp_disco_degrade.build_id_net') as mock_build_id_net:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                main()
+            output = buf.getvalue()
+
+        mock_cm.assert_not_called()
+        mock_build_id_net.assert_not_called()
+        self.assertIn('Experiment: ad hoc', output)
+        self.assertIn('fake_log', output)
 
 
 if __name__ == '__main__':

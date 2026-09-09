@@ -32,7 +32,6 @@ Usage:
 
 import argparse
 import logging
-import time
 from pathlib import Path
 
 import pandas as pd
@@ -43,6 +42,8 @@ from lab.degradation import degrade_target_subprocess
 from lab.logconfig import configure
 from lab.metrics import compute_metrics
 from lab.exp_disco_degrade import CLASSICAL_METRIC_KEYS
+from lab.timing import Timer
+from process_voids.coveragemass import TREE_METRIC_KEYS, mandatory_node_count, total_node_count
 from process_voids.voidmass_pn import build_id_net, voidmass_table_pn, coverage_by_alignment_pn
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,15 @@ def run_claims_degradation(target_names=None, n_drops=None,
         target_activities = TARGETS[target_name]
         target_node = _target_node(tree, target_activities)
 
+        # mandatory_node_count/total_node_count are scoped to the target
+        # node's own subtree (not the whole claims tree) - same scoping
+        # as every other metric in this script, which reports on the
+        # target subprocess specifically. Fixed for this target across
+        # every n_drop_cases level below (structure doesn't change),
+        # same reasoning as exp_disco_degrade's per-(log, combo) reuse.
+        tree_metrics = dict(zip(TREE_METRIC_KEYS,
+                                 (mandatory_node_count(target_node), total_node_count(target_node))))
+
         eligible_cases = set(base_log.loc[
             base_log['concept:name'].isin(target_activities), 'case:concept:name'
         ].unique()) - exclude_cases
@@ -150,42 +160,48 @@ def run_claims_degradation(target_names=None, n_drops=None,
 
         for n in levels:
             cell = f'{target_name} / n_drop_cases={n}'
-            started = time.monotonic()
-            try:
-                if n == 0:
-                    degraded_log, dropped = base_log, set()
-                else:
-                    degraded_log, dropped = degrade_target_subprocess(
-                        base_log, target_activities, n, exclude_cases=exclude_cases)
+            with Timer() as t:
+                try:
+                    if n == 0:
+                        degraded_log, dropped = base_log, set()
+                    else:
+                        degraded_log, dropped = degrade_target_subprocess(
+                            base_log, target_activities, n, exclude_cases=exclude_cases)
 
-                slpn_path = SLPN_DIR / f'claims_{target_name}_n{n}.slpn'
-                metrics, dv = compute_metrics(degraded_log, tree, str(slpn_path), return_dv=True)
+                    slpn_path = SLPN_DIR / f'claims_{target_name}_n{n}.slpn'
+                    metrics, dv = compute_metrics(degraded_log, tree, str(slpn_path),
+                                                   return_dv=True)
 
-                variant_probs = _variant_probs(degraded_log)
-                vm_table = voidmass_table_pn(tree, variant_probs, net, im, fm,
-                                              activity_to_id, tau_ids,
-                                              id_loop_list=id_loop_list, timeout=60)
-                target_row = vm_table[target_node]
-                classical_values = (
-                    target_row['deficit'],
-                    target_row['movecount'],
-                    target_row['voidmass_subprocess'],
-                    target_row['voidmass_process'],
-                    coverage_by_alignment_pn(target_node, dv.skip_probs[target_node], vm_table),
-                )
+                    variant_probs = _variant_probs(degraded_log)
+                    vm_table = voidmass_table_pn(tree, variant_probs, net, im, fm,
+                                                  activity_to_id, tau_ids,
+                                                  id_loop_list=id_loop_list, timeout=60)
+                    target_row = vm_table[target_node]
+                    classical_values = (
+                        target_row['deficit'],
+                        target_row['movecount'],
+                        target_row['voidmass_subprocess'],
+                        target_row['voidmass_process'],
+                        coverage_by_alignment_pn(target_node, dv.skip_probs[target_node], vm_table),
+                    )
 
-                rows.append({
-                    'target': target_name, 'n_drop_cases': n,
-                    'dropped_case_count': len(dropped), 'status': 'ok',
-                    **metrics,
-                    **dict(zip(CLASSICAL_METRIC_KEYS, classical_values)),
-                    'elapsed_s': time.monotonic() - started,
-                })
-                logger.info('%s - done in %.1fs', cell, time.monotonic() - started)
-            except Exception as e:
-                rows.append({'target': target_name, 'n_drop_cases': n,
-                              'status': f'error: {e}'})
-                logger.warning('%s - error: %s', cell, e)
+                    row = {
+                        'target': target_name, 'n_drop_cases': n,
+                        'dropped_case_count': len(dropped), 'status': 'ok',
+                        **metrics,
+                        **dict(zip(CLASSICAL_METRIC_KEYS, classical_values)),
+                        **tree_metrics,
+                    }
+                except Exception as e:
+                    logger.exception('%s - exception', cell)
+                    row = {'target': target_name, 'n_drop_cases': n,
+                           'status': f'error: {type(e).__name__}: {e}', **tree_metrics}
+            row['elapsed_s'] = t.elapsed_s
+            rows.append(row)
+            if row['status'] == 'ok':
+                logger.info('%s - done in %.1fs', cell, t.elapsed_s)
+            else:
+                logger.warning('%s - done in %.1fs (status=%s)', cell, t.elapsed_s, row['status'])
 
     return _merge_write(pd.DataFrame(rows), out_csv)
 

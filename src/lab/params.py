@@ -20,4 +20,10 @@ ALL_COMBOS = COMBOS
 
 ALL_DEGRADATIONS = DEGRADATIONS
 
-ALL_LEVELS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+# 1.0 (full degradation) deliberately excluded - the degraded log is
+# empty there, so every metric falls through its own (disagreeing) "no
+# data" default rather than measuring anything - see plots.py's
+# _exclude_degenerate, which still filters level=1.0 out defensively
+# for any CSV that has it anyway (old results, or an explicit --levels
+# override) even though the default roster no longer produces it.
+ALL_LEVELS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]

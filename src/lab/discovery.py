@@ -83,7 +83,9 @@ def _not_implemented(name):
 
 COMBOS = {
     'inductive': DiscoveryCombo('inductive', discover_inductive),
-    'inductive_noise80': DiscoveryCombo('inductive_noise80', discover_inductive_noise80),
+    # inductive_noise80 (aggressive filtering) is off the default roster -
+    # discover_inductive_noise80 itself is untouched/still directly
+    # importable, same pattern as degradation.py's 'activity' entry.
     'inductive_noise20': DiscoveryCombo('inductive_noise20', discover_inductive_noise20),
     'indulpet': DiscoveryCombo('indulpet', _not_implemented('indulpet')),
     'toothpaste': DiscoveryCombo('toothpaste', discover_toothpaste),
