@@ -90,26 +90,24 @@ def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
     process_voids.coveragemass's mandatory_node_count/total_node_count:
     a Tau leaf represents "do nothing", not a thing whose coverage/void
     reading should pull the average toward its own degenerate values
-    (eg node_skip_prob=1.0, weight_coverage=0.0 on every Tau node,
-    regardless of how the rest of the tree is actually behaving).
+    (eg skipprob=1.0, weight_coverage=0.0 on every Tau node, regardless
+    of how the rest of the tree is actually behaving).
 
-    Feed the result straight into plot_dose_response - node_skip_prob
-    is renamed to skipprob (the per-node CSV has no root-only 'skipprob'
-    column to average in the first place - see PER_NODE_METRIC_KEYS'
-    docstring on why they're different ids) and a 'status'='ok' column
-    is added, so the output matches the root-level CSV's shape exactly.
+    Feed the result straight into plot_dose_response - a 'status'='ok'
+    column is added so the output matches the root-level CSV's shape
+    exactly (the per-node CSV has no status column of its own; a node
+    CSV only ever holds successful cells, see run_disco_degrade).
     degradation_level=1.0 rows are dropped before averaging (rather than
     left to _exclude_degenerate downstream) since a single degenerate
     node's reading would otherwise contaminate that cell's average even
     when other nodes in it look fine.
     """
-    metric_cols = ['weight_coverage', 'node_skip_prob', 'salign_coverage',
+    metric_cols = ['weight_coverage', 'skipprob', 'salign_coverage',
                    'alignment_coverage_pn', 'voidmass_subprocess', 'voidmass_process']
     group_cols = ['log', 'combo', 'degradation_dim', 'degradation_level']
 
     filtered = node_df[(node_df['node_type'] != 'Tau') & (node_df['degradation_level'] != 1.0)]
     averaged = filtered.groupby(group_cols)[metric_cols].mean().reset_index()
-    averaged = averaged.rename(columns={'node_skip_prob': 'skipprob'})
     averaged['status'] = 'ok'
     return averaged
 

@@ -27,24 +27,27 @@ class DriftTest(unittest.TestCase):
             'process_voids.coveragemass.mass_by_weight',
             'process_voids.coveragemass.voidage_by_weight',
             'process_voids.coveragemass.coverage_by_alignment',
-            'lab.metrics.mean_skipprob',
+            'dv.skip_probs (direct lookup, no computation of its own)',
+            'lab.metrics.mean_leaf_skipprob',
         }
         skip_alignment_ids = {mid for mid, m in METRICS.items()
                                if m.source in skip_alignment_sources}
         self.assertEqual(set(METRIC_KEYS), skip_alignment_ids)
 
     def test_per_node_metric_keys_match_registry(self):
-        # weight_coverage/weight_voidage/salign_coverage are the same
-        # ids/sources as METRIC_KEYS above (same functions, evaluated at
-        # an arbitrary node instead of only the root); node_skip_prob is
-        # the one id unique to the per-node CSV.
-        skip_alignment_sources = {
+        # weight_coverage/weight_voidage/skipprob/salign_coverage are the
+        # same ids/sources as METRIC_KEYS above (same functions/lookups,
+        # evaluated at an arbitrary node instead of only the root) -
+        # mean_leaf_skipprob is the one METRIC_KEYS id that's root-only,
+        # not emitted per-node (always the same whole-tree average
+        # regardless of node, so a per-node column would be meaningless).
+        per_node_sources = {
             'process_voids.coveragemass.mass_by_weight',
             'process_voids.coveragemass.voidage_by_weight',
             'process_voids.coveragemass.coverage_by_alignment',
+            'dv.skip_probs (direct lookup, no computation of its own)',
         }
-        per_node_ids = ({mid for mid, m in METRICS.items() if m.source in skip_alignment_sources}
-                         | {'node_skip_prob'})
+        per_node_ids = {mid for mid, m in METRICS.items() if m.source in per_node_sources}
         self.assertEqual(set(PER_NODE_METRIC_KEYS), per_node_ids)
 
     def test_classical_metric_keys_match_registry(self):

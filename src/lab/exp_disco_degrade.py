@@ -31,9 +31,11 @@ root-level row was always a lossy collapse of data already computed
 per-node internally (voidmass_table_pn builds a full table; only
 vm_table[tree] was ever kept) - this project is fundamentally about
 subprocess-level voids, so throwing that away by default was the wrong
-call. node_skip_prob is a new id there, not a reuse of the root CSV's
-'skipprob' (which is mean_skipprob's average over every Activity leaf
-in the whole tree, not any one node's own value).
+call. skipprob here is dv.skip_probs[node] directly (skip-alignments'
+own published definition), same id and same computation as the
+root-level CSV's 'skipprob' column - not lab.metrics.mean_leaf_skipprob
+(a different, unrelated statistic that used to be wired to the
+'skipprob' name by mistake - see lab.metrics' module docstring).
 
 NOTE on the classical-alignment metrics specifically: they're computed
 via align_pn_all with id_loop_list=[] (skip-alignments' own
@@ -120,18 +122,16 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit', 'voidmass_movecount',
                           'voidmass_subprocess', 'voidmass_process',
                           'alignment_coverage_pn')
 
-# weight_coverage/weight_voidage/salign_coverage are the SAME quantities
-# (same functions, same registry entries) as lab.metrics.METRIC_KEYS -
-# just evaluated at an arbitrary node instead of only the tree root,
-# same as CLASSICAL_METRIC_KEYS/TREE_METRIC_KEYS already are per-node in
-# voidmass_table_pn / mandatory_node_count. node_skip_prob is new: the
-# root-level 'skipprob' column is mean_skipprob's mean over every
-# Activity leaf in the WHOLE tree regardless of subtree (see that
-# function's docstring - it ignores its own tree argument for scoping),
-# not this specific node's own probability, so it can't be reused here
-# without silently changing what the id means - see lab.metric_registry
-# for why every id must mean exactly one thing.
-PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'node_skip_prob', 'salign_coverage')
+# weight_coverage/weight_voidage/skipprob/salign_coverage are the SAME
+# quantities (same functions/lookups, same registry entries) as
+# lab.metrics.METRIC_KEYS - just evaluated at an arbitrary node instead
+# of only the tree root, same as CLASSICAL_METRIC_KEYS/TREE_METRIC_KEYS
+# already are per-node in voidmass_table_pn / mandatory_node_count.
+# skipprob = dv.skip_probs[node] directly (skip-alignments' own
+# definition) - NOT lab.metrics.mean_leaf_skipprob, a different,
+# unrelated statistic that used to be wired to the 'skipprob' name by
+# mistake (see lab.metrics' module docstring).
+PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage')
 
 
 def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv,

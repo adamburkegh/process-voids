@@ -52,16 +52,16 @@ def fake_claims_shaped_df():
 def fake_node_df():
     '''Shape of exp_disco_degrade's *_nodes.csv (see lab.exp_disco_degrade
     _node_rows/PER_NODE_METRIC_KEYS): one row per (log, combo,
-    degradation_dim, degradation_level, node_id), node_skip_prob not
-    skipprob, no status column at all (a node CSV only ever holds
-    successful cells - see run_disco_degrade).'''
-    def row(node_id, node_type, weight_coverage, node_skip_prob,
+    degradation_dim, degradation_level, node_id), no status column at
+    all (a node CSV only ever holds successful cells - see
+    run_disco_degrade).'''
+    def row(node_id, node_type, weight_coverage, skipprob,
              voidmass_subprocess, voidmass_process, level=0.0):
         return {
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
             'alphabet': 'a', 'weight_coverage': weight_coverage,
-            'weight_voidage': 1 - weight_coverage, 'node_skip_prob': node_skip_prob,
+            'weight_voidage': 1 - weight_coverage, 'skipprob': skipprob,
             'salign_coverage': 0.9, 'voidmass_deficit': 0.1, 'voidmass_movecount': 1.0,
             'voidmass_subprocess': voidmass_subprocess, 'voidmass_process': voidmass_process,
             'alignment_coverage_pn': 0.9, 'mandatory_node_count': 1, 'total_node_count': 1,
@@ -86,11 +86,6 @@ class AverageOverNodesTest(unittest.TestCase):
         # pulled toward the Tau row's 0.0
         self.assertAlmostEqual(row['weight_coverage'], 0.75)
         self.assertAlmostEqual(row['skipprob'], 0.25)
-
-    def test_renames_node_skip_prob_to_skipprob(self):
-        averaged = average_over_nodes(fake_node_df())
-        self.assertIn('skipprob', averaged.columns)
-        self.assertNotIn('node_skip_prob', averaged.columns)
 
     def test_adds_an_ok_status_column(self):
         averaged = average_over_nodes(fake_node_df())

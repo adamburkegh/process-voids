@@ -248,7 +248,7 @@ class NodeRowsTest(unittest.TestCase):
         for key in PER_NODE_METRIC_KEYS + CLASSICAL_METRIC_KEYS + TREE_METRIC_KEYS:
             self.assertIn(key, row)
 
-        self.assertEqual(row['node_skip_prob'], 0.2)
+        self.assertEqual(row['skipprob'], 0.2)
         self.assertEqual(row['voidmass_deficit'], 0.5)
         self.assertEqual(row['voidmass_movecount'], 1.0)
         self.assertEqual(row['salign_coverage'], 0.77)

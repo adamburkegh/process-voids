@@ -70,10 +70,31 @@ METRICS = {
     ),
     'skipprob': Metric(
         id='skipprob',
-        description='Mean skip probability across Activity leaves - '
-                    "skip-alignments' own dv.skip_probs output, unmodified "
-                    'beyond averaging.',
-        source='lab.metrics.mean_skipprob',
+        description="Skip-alignments' own published skip probability - "
+                    'dv.skip_probs[node], unmodified, evaluated at whichever node '
+                    'is being scored (the root in the root-level CSV, any node in '
+                    "the per-node CSV - same id, same computation, both places). "
+                    "Until a naming fix, this id was wired to mean_leaf_skipprob "
+                    "(lab.metrics) by mistake - a different, unrelated statistic "
+                    "that happened to get this term's name. A result CSV written "
+                    "before that fix has the wrong quantity under this column.",
+        source='dv.skip_probs (direct lookup, no computation of its own)',
+        scripts=('exp_disco_degrade',),
+    ),
+    'mean_leaf_skipprob': Metric(
+        id='mean_leaf_skipprob',
+        description='Mean of skip_probs[leaf] over EVERY Activity leaf in the '
+                    "whole tree, regardless of which node is passed in (see that "
+                    "function's own docstring on the tree argument it ignores for "
+                    "scoping) - NOT skip-alignments' own \"skipprob\" (see that "
+                    'id\'s entry - this used to be wired to the \'skipprob\' name '
+                    'by mistake). A separate, home-grown blended statistic, kept '
+                    'under an honest name rather than dropped outright since '
+                    "it's not yet established whether it's actually informative. "
+                    'Root-level only - not meaningful per-node, since it always '
+                    'returns the same whole-tree average regardless of the node '
+                    'argument.',
+        source='lab.metrics.mean_leaf_skipprob',
         scripts=('exp_disco_degrade',),
     ),
     'salign_coverage': Metric(
@@ -83,19 +104,6 @@ METRICS = {
                     'execution contributes 0). Genuinely alignment-machinery-'
                     'based, unlike weight_coverage.',
         source='process_voids.coveragemass.coverage_by_alignment',
-        scripts=('exp_disco_degrade',),
-    ),
-    'node_skip_prob': Metric(
-        id='node_skip_prob',
-        description="A specific node's own skip probability - "
-                    "skip-alignments' dv.skip_probs[node], unmodified. Distinct "
-                    "from 'skipprob', which is mean_skipprob's average over "
-                    'EVERY Activity leaf in the whole tree regardless of which '
-                    'node was passed to it (see that function\'s docstring) - '
-                    'not that node\'s own value. Only emitted in '
-                    "exp_disco_degrade's per-node CSV, since it's only "
-                    'meaningful once every node (not just the root) is scored.',
-        source='lab.exp_disco_degrade._node_rows',
         scripts=('exp_disco_degrade',),
     ),
     'mandatory_node_count': Metric(
