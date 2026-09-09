@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from lab.plots import plot_dose_response, _exclude_degenerate
+from lab.plots import plot_dose_response, average_over_nodes, _exclude_degenerate
 
 
 def fake_disco_df():
@@ -47,6 +47,64 @@ def fake_claims_shaped_df():
     rows.append({'log': 'claims', 'combo': 'claims_known', 'degradation_dim': 'assess',
                  'degradation_level': 0.9, 'status': 'error: boom'})
     return pd.DataFrame(rows)
+
+
+def fake_node_df():
+    '''Shape of exp_disco_degrade's *_nodes.csv (see lab.exp_disco_degrade
+    _node_rows/PER_NODE_METRIC_KEYS): one row per (log, combo,
+    degradation_dim, degradation_level, node_id), node_skip_prob not
+    skipprob, no status column at all (a node CSV only ever holds
+    successful cells - see run_disco_degrade).'''
+    def row(node_id, node_type, weight_coverage, node_skip_prob,
+             voidmass_subprocess, voidmass_process, level=0.0):
+        return {
+            'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
+            'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
+            'alphabet': 'a', 'weight_coverage': weight_coverage,
+            'weight_voidage': 1 - weight_coverage, 'node_skip_prob': node_skip_prob,
+            'salign_coverage': 0.9, 'voidmass_deficit': 0.1, 'voidmass_movecount': 1.0,
+            'voidmass_subprocess': voidmass_subprocess, 'voidmass_process': voidmass_process,
+            'alignment_coverage_pn': 0.9, 'mandatory_node_count': 1, 'total_node_count': 1,
+        }
+    return pd.DataFrame([
+        row('1', 'Activity', 1.0, 0.0, 0.0, 1.0),
+        row('2', 'Activity', 0.5, 0.5, 0.5, 0.5),
+        # a Tau row at the same cell, with values far outside the two
+        # Activity rows' range - must not pull the average toward it
+        row('3', 'Tau', 0.0, 1.0, 1.0, 0.0),
+        # a second cell (level=1.0) that must be dropped entirely
+        row('1', 'Activity', 0.0, 1.0, 1.0, 0.0, level=1.0),
+    ])
+
+
+class AverageOverNodesTest(unittest.TestCase):
+    def test_excludes_tau_nodes_from_the_average(self):
+        averaged = average_over_nodes(fake_node_df())
+        row = averaged[(averaged['degradation_dim'] == 'activity')
+                        & (averaged['degradation_level'] == 0.0)].iloc[0]
+        # mean of the two Activity rows only (1.0, 0.5) -> 0.75, not
+        # pulled toward the Tau row's 0.0
+        self.assertAlmostEqual(row['weight_coverage'], 0.75)
+        self.assertAlmostEqual(row['skipprob'], 0.25)
+
+    def test_renames_node_skip_prob_to_skipprob(self):
+        averaged = average_over_nodes(fake_node_df())
+        self.assertIn('skipprob', averaged.columns)
+        self.assertNotIn('node_skip_prob', averaged.columns)
+
+    def test_adds_an_ok_status_column(self):
+        averaged = average_over_nodes(fake_node_df())
+        self.assertTrue((averaged['status'] == 'ok').all())
+
+    def test_drops_degradation_level_one_before_averaging(self):
+        averaged = average_over_nodes(fake_node_df())
+        self.assertNotIn(1.0, set(averaged['degradation_level']))
+
+    def test_result_feeds_directly_into_plot_dose_response(self):
+        out_dir = tempfile.mkdtemp()
+        written = plot_dose_response(average_over_nodes(fake_node_df()), out_dir=out_dir)
+        self.assertEqual(len(written), 1)
+        self.assertTrue(Path(written[0]).exists())
 
 
 class ExcludeDegenerateTest(unittest.TestCase):

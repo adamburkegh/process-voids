@@ -26,10 +26,18 @@ exp_claims_degrade.py's own dedicated plot function used to do, before
 its output converged onto this same schema and made a separate
 function unnecessary.
 
+average_over_nodes + --average-nodes: a THIRD view, alongside (not
+instead of) the root-level one above - collapses the per-node CSV
+(exp_disco_degrade's *_nodes.csv) into one smoothed curve per cell by
+averaging each metric across every non-Tau node. Root-only is one
+number with no subprocess information; plotting every node as its own
+line is unreadable past a handful of nodes; this is the middle ground.
+
 Usage:
     python -m lab.plots var/lab/results/exp_disco_degrade.csv
     python -m lab.plots var/lab/results/claims_degrade.csv --line-by degradation_dim
     python -m lab.plots var/lab/results/exp_disco_degrade.csv --out-dir var/lab/results/plots
+    python -m lab.plots var/lab/results/exp_disco_degrade_nodes.csv --average-nodes
 """
 
 import argparse
@@ -64,6 +72,46 @@ def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
     passes an explicit --levels including 1.0.
     """
     return df[(df['status'] == 'ok') & (df['degradation_level'] != 1.0)]
+
+
+def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Collapses exp_disco_degrade's per-node CSV (one row per (log, combo,
+    degradation_dim, degradation_level, node_id)) into one row per
+    (log, combo, degradation_dim, degradation_level) by averaging each
+    metric across every non-Tau node - a smoothed, subprocess-aware
+    middle ground between the root-only view (one number, no subprocess
+    information at all) and plotting every node as its own line (too
+    noisy to read with more than a handful of nodes). The root-level
+    plots remain the primary view - this is an additional one, not a
+    replacement.
+
+    Tau nodes are excluded, same convention as
+    process_voids.coveragemass's mandatory_node_count/total_node_count:
+    a Tau leaf represents "do nothing", not a thing whose coverage/void
+    reading should pull the average toward its own degenerate values
+    (eg node_skip_prob=1.0, weight_coverage=0.0 on every Tau node,
+    regardless of how the rest of the tree is actually behaving).
+
+    Feed the result straight into plot_dose_response - node_skip_prob
+    is renamed to skipprob (the per-node CSV has no root-only 'skipprob'
+    column to average in the first place - see PER_NODE_METRIC_KEYS'
+    docstring on why they're different ids) and a 'status'='ok' column
+    is added, so the output matches the root-level CSV's shape exactly.
+    degradation_level=1.0 rows are dropped before averaging (rather than
+    left to _exclude_degenerate downstream) since a single degenerate
+    node's reading would otherwise contaminate that cell's average even
+    when other nodes in it look fine.
+    """
+    metric_cols = ['weight_coverage', 'node_skip_prob', 'salign_coverage',
+                   'alignment_coverage_pn', 'voidmass_subprocess', 'voidmass_process']
+    group_cols = ['log', 'combo', 'degradation_dim', 'degradation_level']
+
+    filtered = node_df[(node_df['node_type'] != 'Tau') & (node_df['degradation_level'] != 1.0)]
+    averaged = filtered.groupby(group_cols)[metric_cols].mean().reset_index()
+    averaged = averaged.rename(columns={'node_skip_prob': 'skipprob'})
+    averaged['status'] = 'ok'
+    return averaged
 
 
 def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
@@ -141,9 +189,18 @@ def main():
                               "dimensions for one combo - use this for claims-fixture "
                               "output, where combo is always the single fixed "
                               "'claims_known' value.")
+    parser.add_argument('--average-nodes', action='store_true',
+                         help='Treat csv as exp_disco_degrade\'s per-node output '
+                              '(the *_nodes.csv file, not the root-level one) and '
+                              'average each metric across every non-Tau node per cell '
+                              'before plotting - a smoothed, subprocess-aware curve. '
+                              'Does not replace plotting the root-level CSV directly, '
+                              'just an additional view.')
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)
+    if args.average_nodes:
+        df = average_over_nodes(df)
     written = plot_dose_response(df, out_dir=args.out_dir, fmt=args.format, line_by=args.line_by)
     for path in written:
         print(f'Wrote {path}')
