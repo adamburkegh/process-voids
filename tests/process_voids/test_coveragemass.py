@@ -150,3 +150,94 @@ class CoverageMassTest(unittest.TestCase):
         self.assertEqual( seq.weight, 3)
 
 
+class MandatoryNodeCountTest(unittest.TestCase):
+    """
+    has_silent_alternative / mandatory_node_count / total_node_count -
+    the tree-structural diagnostic for how much of a discovered tree
+    the void/coverage metrics can actually speak about (see
+    coveragemass.py's Mandatory Node Count section docstring).
+    """
+
+    def test_leaf_directly_under_xor_tau_has_a_silent_alternative(self):
+        a = activity('a', 1)
+        tau = Tau(None, 'tau', 0)
+        choice = Xor(None, [tau, a])
+        set_parent([tau, a], choice)
+
+        self.assertTrue(has_silent_alternative(a))
+        self.assertFalse(has_silent_alternative(choice))  # choice itself has no parent
+
+    def test_xor_without_tau_is_a_real_choice_not_a_silent_alternative(self):
+        b = activity('b', 1)
+        c = activity('c', 2)
+        choice = Xor(None, [b, c])
+        set_parent([b, c], choice)
+
+        self.assertFalse(has_silent_alternative(b))
+        self.assertFalse(has_silent_alternative(c))
+
+    def test_silent_alternative_further_up_the_ancestor_chain_still_counts(self):
+        # Xor(Tau, Sequence(a, b)) - a and b's immediate parent is the
+        # Sequence, not the Xor, but the whole Sequence (and therefore
+        # both a and b) can be silently skipped via the Xor above it.
+        a = activity('a', 1)
+        b = activity('b', 2)
+        seq = Sequence(None, [a, b])
+        set_parent([a, b], seq)
+        tau = Tau(None, 'tau', 0)
+        choice = Xor(None, [tau, seq])
+        set_parent([tau, seq], choice)
+
+        self.assertTrue(has_silent_alternative(a))
+        self.assertTrue(has_silent_alternative(b))
+        self.assertTrue(has_silent_alternative(seq))
+
+    def test_loop_redo_child_has_a_silent_alternative_even_without_tau(self):
+        do = activity('do', 1)
+        redo = activity('redo', 2)
+        loop = Loop(None, [do, redo])
+        set_parent([do, redo], loop)
+
+        self.assertFalse(has_silent_alternative(do))
+        self.assertTrue(has_silent_alternative(redo))
+
+    def test_mandatory_and_total_counts_on_the_inductive_degenerate_pattern(self):
+        # Sequence(Xor(Tau, a), Xor(Tau, b)) - the classic Inductive
+        # Miner noise_threshold=0.0 pattern every leaf gets wrapped in.
+        a = activity('a', 1)
+        tau1 = Tau(None, 'tau1', 0)
+        choice1 = Xor(None, [tau1, a])
+        set_parent([tau1, a], choice1)
+
+        b = activity('b', 2)
+        tau2 = Tau(None, 'tau2', 0)
+        choice2 = Xor(None, [tau2, b])
+        set_parent([tau2, b], choice2)
+
+        seq = Sequence(None, [choice1, choice2])
+        set_parent([choice1, choice2], seq)
+
+        # Non-Tau nodes: seq, choice1, a, choice2, b = 5 total.
+        self.assertEqual(total_node_count(seq), 5)
+        # Mandatory: seq (no parent), choice1, choice2 (their own
+        # parent isn't an Xor) - neither leaf a nor b is mandatory,
+        # since each sits directly under an Xor with a Tau sibling.
+        self.assertEqual(mandatory_node_count(seq), 3)
+
+    def test_root_is_always_mandatory(self):
+        a = activity('a', 1)
+        self.assertFalse(has_silent_alternative(a))  # a has no parent at all here
+        self.assertEqual(mandatory_node_count(a), 1)
+        self.assertEqual(total_node_count(a), 1)
+
+    def test_tau_nodes_excluded_from_both_counts(self):
+        a = activity('a', 1)
+        tau = Tau(None, 'tau', 0)
+        choice = Xor(None, [tau, a])
+        set_parent([tau, a], choice)
+
+        # Non-Tau nodes: choice, a = 2. Mandatory: choice only.
+        self.assertEqual(total_node_count(choice), 2)
+        self.assertEqual(mandatory_node_count(choice), 1)
+
+

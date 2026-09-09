@@ -32,6 +32,97 @@ def transfer_pt_weights(pt:ProcessTree, slpn):
 
 
 '''
+=====================================================================================
+Mandatory Node Count
+
+Diagnostic, not a void/coverage metric - no log, alignment, or skip_probs
+needed, purely a property of the discovered tree's structure. Counts how
+much of a tree the void/coverage metrics can actually speak about.
+
+A node has no silent alternative - is "mandatory" - if nowhere on its
+path to the root can it be silently skipped: no ancestor Xor has a Tau
+sibling along that path (the model could choose to do nothing instead
+of this node's subtree), and no ancestor Loop position on that path is
+the redo-child (a Loop can always iterate zero extra times, regardless
+of whether Tau appears explicitly there).
+
+Inductive Miner at noise_threshold=0.0 wraps nearly every leaf in
+Xor(Tau, activity) to guarantee it perfectly replays its own source log
+(see lab.discovery's discover_inductive docstring) - on such a tree
+almost nothing is mandatory, skip_prob(root) is trivially 0, and every
+void metric built on skip_prob is uninformative by construction, not
+because there is genuinely nothing missing. mandatory_node_count /
+total_node_count is a cheap sanity check for that failure mode: a low
+ratio is a warning sign that a void metric's near-zero reading reflects
+the model's own permissiveness, not real coverage.
+
+Both counts exclude Tau nodes themselves - a Tau leaf represents "do
+nothing", not a thing a void/coverage metric could ever meaningfully be
+asked about.
+'''
+
+TREE_METRIC_KEYS = ('mandatory_node_count', 'total_node_count')
+
+
+def has_silent_alternative(pt: ProcessTree):
+    '''
+    True if `pt` can be silently skipped: somewhere on its path to the
+    root, either an ancestor Xor has a Tau sibling (the model can choose
+    to do nothing instead of pt's subtree), or an ancestor Loop position
+    on that path is the redo-child (structurally optional regardless of
+    Tau - a Loop can always iterate zero extra times).
+
+    Walks the FULL ancestor chain, not just pt's immediate parent - a
+    silent alternative anywhere above pt makes pt itself skippable even
+    when pt's own immediate parent is a plain Sequence/And.
+    '''
+    current = pt
+    while current.parent is not None:
+        parent = current.parent
+        if isinstance(parent, Xor) and any(isinstance(sibling, Tau)
+                                            for sibling in parent.children):
+            return True
+        if isinstance(parent, Loop) and parent.children[1] is current:
+            return True
+        current = parent
+    return False
+
+
+def mandatory_node_count(pt: ProcessTree):
+    '''Number of non-Tau nodes (leaf and internal) in `pt` with no
+    silent alternative - see this section's module docstring.'''
+    count = 0
+
+    def _walk(node):
+        nonlocal count
+        if not isinstance(node, Tau) and not has_silent_alternative(node):
+            count += 1
+        for child in node.children:
+            _walk(child)
+
+    _walk(pt)
+    return count
+
+
+def total_node_count(pt: ProcessTree):
+    '''Number of non-Tau nodes (leaf and internal) in `pt` - the
+    denominator for reading mandatory_node_count as a fraction rather
+    than a bare count only meaningful relative to a specific tree's
+    size.'''
+    count = 0
+
+    def _walk(node):
+        nonlocal count
+        if not isinstance(node, Tau):
+            count += 1
+        for child in node.children:
+            _walk(child)
+
+    _walk(pt)
+    return count
+
+
+'''
 Metric which indicates how much of the process is tracked by the data.
 
 Pre: Tree has weights

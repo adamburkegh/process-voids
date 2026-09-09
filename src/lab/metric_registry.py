@@ -12,7 +12,7 @@ ambiguous_event_count/unattributable_event_count/out_of_alphabet_event_count).
 This is the executable source of truth, not documentation of it: every
 id here is one of the *_KEYS constants each producing script actually
 builds its output dict from (METRIC_KEYS, CLASSICAL_METRIC_KEYS,
-NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS) - see tests/lab/
+NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS, TREE_METRIC_KEYS) - see tests/lab/
 test_metric_registry.py, which imports those constants directly and
 asserts this registry's ids match them exactly. A metric renamed in its
 producing script without a matching registry update fails that test,
@@ -80,6 +80,29 @@ METRICS = {
                     'execution contributes 0). Genuinely alignment-machinery-'
                     'based, unlike weight_coverage.',
         source='process_voids.coveragemass.coverage_by_alignment',
+        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+    ),
+    'mandatory_node_count': Metric(
+        id='mandatory_node_count',
+        description='Number of non-Tau nodes in the scored tree with no silent '
+                    'alternative (see coveragemass.py\'s Mandatory Node Count '
+                    'section) - a diagnostic, not a void/coverage metric. '
+                    'Inductive Miner at noise_threshold=0.0 wraps nearly every '
+                    'leaf in Xor(Tau, activity), making this near-zero and every '
+                    'void metric uninformative by construction on such a tree. '
+                    'Scored at the tree root in exp_disco_degrade, at the target '
+                    'node in exp_claims_degrade - same scoping as every other '
+                    'per-node metric in each script.',
+        source='process_voids.coveragemass.mandatory_node_count',
+        scripts=('exp_disco_degrade', 'exp_claims_degrade'),
+    ),
+    'total_node_count': Metric(
+        id='total_node_count',
+        description='Number of non-Tau nodes in the scored tree - the '
+                    'denominator for reading mandatory_node_count as a fraction '
+                    'rather than a bare count only meaningful relative to a '
+                    'specific tree\'s size. Same scoping as mandatory_node_count.',
+        source='process_voids.coveragemass.total_node_count',
         scripts=('exp_disco_degrade', 'exp_claims_degrade'),
     ),
     'voidmass_deficit': Metric(
