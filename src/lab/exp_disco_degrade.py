@@ -18,8 +18,9 @@ skip-
 alignments-based weight_coverage/weight_voidage/skipprob/salign_coverage,
 plus process_voids.voidmass_pn's classical-alignment voidmass_deficit/
 voidmass_movecount/voidmass_subprocess/voidmass_process/
-alignment_coverage_pn. duration_coverage stays off the roster (dropped
-- see lab.metrics).
+alignment_coverage_pn, plus process_voids.coveragemass's skip-alignment-
+based, real-elapsed-time voidsat. duration_coverage stays off the roster
+(dropped - see lab.metrics).
 
 Writes TWO CSVs per run (node_out_csv defaults to inserting '_nodes'
 before out_csv's extension): the root-level one above, one row per
@@ -75,7 +76,7 @@ from lab.timing import Timer
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
     mass_by_weight, voidage_by_weight, coverage_by_alignment,
-    make_executions_cache,
+    make_executions_cache, voidsat, make_aligned_duration_cache,
 )
 from process_voids.voidmass_pn import build_id_net, voidmass_table_pn, coverage_by_alignment_pn
 
@@ -134,6 +135,20 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit', 'voidmass_movecount',
 # mistake (see lab.metrics' module docstring).
 PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage')
 
+# voidsat is skip-alignments-based like PER_NODE_METRIC_KEYS (reuses
+# dv.skip_dict_backup/dv.skip_probs, not the classical-alignment path),
+# but needs the REAL log (real per-trace timestamps - duration is a
+# per-instance quantity, see coveragemass.admass) rather than just dv,
+# so it gets its own small key group/helper instead of folding into
+# either PER_NODE_METRIC_KEYS's or CLASSICAL_METRIC_KEYS's existing
+# computation, which don't carry the log through to where it's needed.
+ALIGNED_DURATION_METRIC_KEYS = ('voidsat',)
+
+
+def _aligned_duration_metrics(tree, log, dv):
+    """(root-level {'voidsat': ...} dict) - see ALIGNED_DURATION_METRIC_KEYS."""
+    return dict(zip(ALIGNED_DURATION_METRIC_KEYS, (voidsat(tree, tree, dv, log),)))
+
 
 def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv,
                         timeout=CLASSICAL_ALIGNMENT_TIMEOUT):
@@ -162,20 +177,26 @@ def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_
     return dict(zip(CLASSICAL_METRIC_KEYS, values)), vm_table, variant_probs, skip_dict
 
 
-def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, skip_dict):
+def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, skip_dict, log):
     """
     One row per node in vm_table (every node in the tree - Activity,
     Tau, and composite Sequence/Xor/And/Loop nodes alike), the full
     per-node breakdown the root-level row in `rows` collapses away.
     Every metric here is the SAME quantity/id as the root-level row,
     just evaluated at that specific node - see PER_NODE_METRIC_KEYS.
+
+    `log` is the real (possibly degraded) event log this cell scored -
+    voidsat needs real per-trace timestamps, unlike every other metric
+    here (see coveragemass.admass).
     """
     node_rows = []
     # voidmass_table_pn's own _walk inserts the root first - see that
     # function - so vm_table's first key is the tree root, no separate
     # root parameter needed here. vm_table can be empty in tests that
     # stub out _classical_metrics - nothing to cache/iterate then.
-    executions_cache = make_executions_cache(next(iter(vm_table))) if vm_table else None
+    tree = next(iter(vm_table)) if vm_table else None
+    executions_cache = make_executions_cache(tree) if tree is not None else None
+    aligned_duration_cache = make_aligned_duration_cache(tree) if tree is not None else None
     for node, classical_row in vm_table.items():
         per_node_values = (
             mass_by_weight(node, dv.skip_probs),
@@ -191,6 +212,9 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, sk
             coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
                                       executions_cache=executions_cache),
         )
+        aligned_duration_values = (
+            voidsat(node, tree, dv, log, cache=aligned_duration_cache),
+        )
         tree_values = (mandatory_node_count(node), total_node_count(node))
         node_rows.append({
             'log': log_name, 'combo': combo_name,
@@ -199,6 +223,7 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, sk
             'alphabet': ','.join(sorted(set(node.get_leaf_labels()))),
             **dict(zip(PER_NODE_METRIC_KEYS, per_node_values)),
             **dict(zip(CLASSICAL_METRIC_KEYS, classical_values)),
+            **dict(zip(ALIGNED_DURATION_METRIC_KEYS, aligned_duration_values)),
             **dict(zip(TREE_METRIC_KEYS, tree_values)),
         })
     return node_rows
@@ -277,6 +302,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         classical_metrics, vm_table, variant_probs, skip_dict = _classical_metrics(
                             tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv)
                         zero_level_metrics.update(classical_metrics)
+                        zero_level_metrics.update(_aligned_duration_metrics(tree, base_log, dv))
                         zero_level_dv, zero_level_vm_table = dv, vm_table
                         zero_level_variant_probs, zero_level_skip_dict = variant_probs, skip_dict
                         zero_level_status = 'ok'
@@ -303,6 +329,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'weight_coverage': None, 'weight_voidage': None, 'skipprob': None,
                             'salign_coverage': None,
                             **{k: None for k in CLASSICAL_METRIC_KEYS},
+                            **{k: None for k in ALIGNED_DURATION_METRIC_KEYS},
                             **tree_metrics,
                         }
                         rows.append(row)
@@ -322,11 +349,12 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             node_rows.extend(_node_rows(log_name, combo_name, dim, level,
                                                          zero_level_dv, zero_level_vm_table,
                                                          zero_level_variant_probs,
-                                                         zero_level_skip_dict))
+                                                         zero_level_skip_dict, base_log))
                         else:
                             row.update(weight_coverage=None, weight_voidage=None,
                                        skipprob=None, salign_coverage=None,
-                                       **{k: None for k in CLASSICAL_METRIC_KEYS})
+                                       **{k: None for k in CLASSICAL_METRIC_KEYS},
+                                       **{k: None for k in ALIGNED_DURATION_METRIC_KEYS})
                         rows.append(row)
                         logger.debug('%s - reused level-0.0 result', cell)
                         continue
@@ -356,16 +384,19 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                                 tree, degraded_log, net, im, fm, activity_to_id, tau_ids,
                                 id_loop_list, dv)
                             metrics.update(classical_metrics)
+                            metrics.update(_aligned_duration_metrics(tree, degraded_log, dv))
                             row['status'] = 'ok'
                             row.update(metrics)
                             node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         dv, vm_table, variant_probs, skip_dict))
+                                                         dv, vm_table, variant_probs, skip_dict,
+                                                         degraded_log))
                         except Exception as e:
                             logger.exception('%s - exception', cell)
                             row.update(status=f'error: {type(e).__name__}: {e}',
                                         weight_coverage=None, weight_voidage=None, skipprob=None,
                                         salign_coverage=None,
-                                        **{k: None for k in CLASSICAL_METRIC_KEYS})
+                                        **{k: None for k in CLASSICAL_METRIC_KEYS},
+                                        **{k: None for k in ALIGNED_DURATION_METRIC_KEYS})
                     row['elapsed_s'] = t.elapsed_s
                     rows.append(row)
 

@@ -1,4 +1,6 @@
 
+import bisect
+
 from skipalignments import *
 
 
@@ -736,4 +738,270 @@ def voidmass_table(tree:ProcessTree, skip_dict:dict, variant_probs:dict, skip_pr
 
     _walk(tree)
     return table
+
+
+'''
+=====================================================================================
+Coverage By Aligned Duration
+
+Uses the real elapsed time an alignment's moves are responsible for (per
+Definition [Move Durations]) to estimate a submodel's mass, rather than a
+move count or structural weight. \\voidsat is \\voidat computed over
+skip-alignments' own lumped optimal alignments - see voidsat below; a
+classical-alignment \\covat/\\voidat (not yet requested) would instead need
+paths translated the way voidmass_pn._to_alignment_mass_path does for
+\\covermove.
+
+consumes/nxt/block/mdur implement Definition [Move Durations] exactly,
+including its two corrections found this session against the original
+draft: the move-weights reference was removed (a lumped skip move over an
+entirely-absent subprocess is simply the only non-silent move in its own
+block, so it already takes the whole gap - no separate weighting needed),
+and mdur's zero-guard is on nxt(agn,j) being the FIRST element of
+consumes(agn) (no preceding consumed event to measure a gap from), not on
+the literal alignment position j=1 - several leading model-only moves
+before the first-ever consumed log event all resolve to that same first
+element and must all be zeroed, not just position 1.
+
+adur/admass implement Definition [Aligned Duration Mass]. admass iterates
+every REAL TRACE in the log, not deduplicated variants like
+alignment_mass/voidmass_terms elsewhere in this module - duration is a
+per-instance quantity: two traces sharing one activity-sequence variant
+(and hence the same alignment(s), reused here exactly like everywhere
+else) can still have entirely different real elapsed time. covat/voidat
+implement Definition [Coverage and Voidage by Aligned Duration].
+'''
+
+
+def consumes(path):
+    '''
+    Positions (0-indexed) in `path` that consume a log event: log or
+    synchronous moves, ie log_elem is a real event rather than the
+    nomove symbol '>>'. Definition [Move Durations]' consumes(agn) - the
+    k-th smallest position there (1-indexed) corresponds to sigma[k];
+    here, the k-th element of this list (0-indexed) corresponds to
+    trace[k] where trace is 0-indexed too.
+    '''
+    return [j for j, (log_elem, _model_elem) in enumerate(path) if log_elem != '>>']
+
+
+def nxt(path, j, consumed=None):
+    '''
+    Smallest position >= j in `path` that consumes a log event, or None
+    if there is none - Definition [Move Durations]' nxt(agn,j). Pass
+    consumed (consumes(path), precomputed) when calling this repeatedly
+    over the same path, as block/mdur both do.
+    '''
+    if consumed is None:
+        consumed = consumes(path)
+    idx = bisect.bisect_left(consumed, j)
+    return consumed[idx] if idx < len(consumed) else None
+
+
+def block(path, j, consumed=None):
+    '''
+    Positions sharing the same nxt(path,j) as j, excluding pure silent
+    (tau) moves - Definition [Move Durations]' block(agn,j). Computed as
+    the contiguous run (prev_consumed, target] rather than scanning
+    nxt() for every position in `path`: every position in that range
+    shares the same next-consumed position (target) by construction,
+    since none of them is itself a consuming position before target.
+    '''
+    if consumed is None:
+        consumed = consumes(path)
+    target = nxt(path, j, consumed)
+    if target is None:
+        return []
+    idx = bisect.bisect_left(consumed, target)
+    prev = consumed[idx - 1] if idx > 0 else -1
+    return [p for p in range(prev + 1, target + 1)
+            if _classify_move(path[p][1])[1] != 'tau']
+
+
+def mdur(path, trace, j, consumed=None):
+    '''
+    Definition [Move Durations]' mdur(agn,sigma,j) - `trace` is a real
+    event sequence (each event exposing ['time:timestamp'], the same
+    shape coverage_by_duration's log/trace already use), 0-indexed.
+    Zero where path[j] is a silent (tau) move, where nxt(path,j) is
+    undefined (nothing left to consume after j), or where nxt(path,j)
+    is the FIRST element of consumes(path) (no preceding consumed event
+    to measure a gap from - not merely j==0, see this section's module
+    docstring on this specific correction).
+    '''
+    if consumed is None:
+        consumed = consumes(path)
+    _log_elem, model_elem = path[j]
+    if _classify_move(model_elem)[1] == 'tau':
+        return 0
+    target = nxt(path, j, consumed)
+    if target is None:
+        return 0
+    k = bisect.bisect_left(consumed, target)
+    if k == 0:
+        return 0
+    gap = (trace[k]['time:timestamp'] - trace[k - 1]['time:timestamp']).total_seconds()
+    blk = block(path, j, consumed)
+    return gap / len(blk) if blk else 0
+
+
+def _relevant_positions_by_node(path, tree, ancestor_chains=None, implied_sets=None):
+    '''
+    {node: [positions]} for every node in tree - the union of
+    exec(m,node,path)'s members, for every node at once, WITHOUT
+    grouping into discrete executions (unlike executions_by_node).
+    adur has no per-execution averaging (a flat sum over every relevant
+    position, see this section's module docstring), so the grouped
+    structure executions_by_node builds is unneeded work here; this
+    shares only the structural ancestor_chains/implied_sets maps with
+    it (see make_executions_cache), not its grouping step.
+    '''
+    if ancestor_chains is None:
+        ancestor_chains = _ancestor_chains(tree)
+    if implied_sets is None:
+        implied_sets = _implied_descendant_sets(tree)
+
+    positions_by_node = {}
+    for i, (_log_elem, model_elem) in enumerate(path):
+        node, kind = _classify_move(model_elem)
+        if node is None:
+            continue
+        for pt in ancestor_chains[node]:
+            positions_by_node.setdefault(pt, []).append(i)
+        if kind in ('skip', 'tau'):
+            for pt in implied_sets[node]:
+                if pt is node:
+                    continue
+                positions_by_node.setdefault(pt, []).append(i)
+    return positions_by_node
+
+
+def make_aligned_duration_cache(tree):
+    '''
+    Structural maps for `tree` (ancestor_chains, implied_sets) plus a
+    per-path memo of _relevant_positions_by_node's own output - shared
+    across many adur/admass/covat/voidat/voidsat calls against
+    different nodes of the SAME tree/log (see
+    lab.exp_disco_degrade._node_rows, which calls voidsat once per
+    node), same purpose and shape as coveragemass.make_executions_cache
+    for alignment_mass. Pass the SAME cache object to every one of
+    those calls so the structural maps and each alignment's relevant-
+    positions computation (_relevant_positions_by_node already computes
+    every node's positions from one pass over a path) are done once per
+    report row, not once per node.
+    '''
+    return {
+        'tree': tree,
+        'ancestor_chains': _ancestor_chains(tree),
+        'implied_sets': _implied_descendant_sets(tree),
+        'by_path': {},
+    }
+
+
+def _relevant_positions_for(path, cache):
+    by_node = cache['by_path'].get(id(path))
+    if by_node is None:
+        by_node = _relevant_positions_by_node(path, cache['tree'], cache['ancestor_chains'],
+                                                cache['implied_sets'])
+        cache['by_path'][id(path)] = by_node
+    return by_node
+
+
+def adur(pt, tree, alignments, trace, cache=None):
+    '''
+    Definition [Aligned Duration Mass]'s adur(m,msub,sigma) for one
+    trace paired with its variant's Gamma_sigma (`alignments` - a list
+    of (log_elem, model_elem) paths, eg skip-alignments' own
+    State.path objects for voidsat). (1/|Gamma_sigma|) times the sum,
+    over every alignment and every one of pt's relevant positions in
+    it, of mdur - equivalently, grouping into exec(m,pt,path)'s
+    discrete executions first and summing mdur over every position in
+    every execution, since adur has no per-execution weighting to make
+    that grouping matter (see _relevant_positions_by_node).
+
+    cache: optional, from make_aligned_duration_cache(tree) - pass a
+    shared cache when calling this for many nodes of the same tree over
+    the same alignments (the usual per-node report-row case) to avoid
+    re-deriving each alignment's relevant positions once per node.
+    '''
+    if not alignments:
+        return 0.0
+    total = 0.0
+    for path in alignments:
+        consumed = consumes(path)
+        if cache is not None:
+            positions_by_node = _relevant_positions_for(path, cache)
+        else:
+            positions_by_node = _relevant_positions_by_node(path, tree)
+        for j in positions_by_node.get(pt, []):
+            total += mdur(path, trace, j, consumed)
+    return total / len(alignments)
+
+
+def admass(pt, tree, log, alignments_by_variant, cache=None):
+    '''
+    Definition [Aligned Duration Mass]'s admass(m,msub,L). `log` is a
+    real event log/list of traces (log_to_traces(log)'s shape, same as
+    coverage_by_duration's own `log` parameter - each event exposing
+    ['concept:name']/['time:timestamp']); `alignments_by_variant` maps
+    a variant key (_variant_key of that trace's activity sequence) to
+    its list of optimal-alignment paths, eg
+    {k: [s.path for s in v] for k, v in dv.skip_dict_backup.items()}
+    for voidsat (skip-alignments' own State.path objects already use
+    this module's (log_elem, model_elem) wrapper shape directly - no
+    translation needed, unlike voidmass_pn.py's classical-alignment
+    path).
+
+    Iterates every trace in `log`, not deduplicated variants like
+    alignment_mass/voidmass_terms elsewhere in this module - duration
+    is a per-instance quantity, so two traces sharing one variant (and
+    hence the same alignment(s)) can still have different real elapsed
+    time. A trace whose adur is 0 is excluded from both the sum and the
+    count (Definition [Aligned Duration Mass]'s L' - "traces in which
+    msub has observable duration"), not just given a zero numerator -
+    0.0 overall if no trace has any observable duration for pt.
+
+    cache: optional, see adur - shared across the traces here too, so
+    the SAME alignment reused by several traces of one variant only has
+    its relevant positions computed once.
+    '''
+    total = 0.0
+    n = 0
+    for trace in log_to_traces(log):
+        activities = tuple(e['concept:name'] for e in trace)
+        alignments = alignments_by_variant.get(_variant_key(activities), [])
+        d = adur(pt, tree, alignments, trace, cache)
+        if d > 0:
+            # d > 0 implies duration(trace) > 0: d is a sum of mdur
+            # terms, each a non-negative fraction of some internal gap
+            # of trace, and those gaps telescope to at most trace's own
+            # total duration (see coverage_by_duration's Bounded Mass
+            # lemma for the same argument) - so a positive d can never
+            # be paired with a zero denominator here.
+            total += d / dur(trace)
+            n += 1
+    return total / n if n else 0.0
+
+
+def covat(pt, tree, skip_prob, log, alignments_by_variant, cache=None):
+    '''Definition [Coverage and Voidage by Aligned Duration]'s covat(m,msub,L).'''
+    return (1 - skip_prob) * admass(pt, tree, log, alignments_by_variant, cache)
+
+
+def voidat(pt, tree, skip_prob, log, alignments_by_variant, cache=None):
+    '''Definition [Coverage and Voidage by Aligned Duration]'s voidat(m,msub,L).'''
+    return skip_prob * admass(pt, tree, log, alignments_by_variant, cache)
+
+
+def voidsat(pt, tree, dv, log, cache=None):
+    '''
+    \\voidsat - voidat computed over skip-alignments' own lumped optimal
+    alignments (dv.skip_dict_backup), reusing their State.path objects
+    directly (already in this module's wrapper shape - no translation
+    needed, unlike voidmass_pn.py's classical-alignment path). dv is a
+    computed DerivationPipeline, same as coverage_by_alignment/
+    coverage_by_duration's own dv parameter.
+    '''
+    alignments_by_variant = {k: [s.path for s in v] for k, v in dv.skip_dict_backup.items()}
+    return voidat(pt, tree, dv.skip_probs[pt], log, alignments_by_variant, cache)
 

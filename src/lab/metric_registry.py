@@ -176,6 +176,23 @@ METRICS = {
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
     ),
+    'voidsat': Metric(
+        id='voidsat',
+        description="\\voidsat (defn:aligned-duration), voidat computed over "
+                    "skip-alignments' own lumped optimal alignments: "
+                    "skip_prob * a real-elapsed-time mass estimate (Definition "
+                    "[Move Durations]/[Aligned Duration Mass]), averaged over "
+                    "every actual trace instance (not deduplicated variants - "
+                    "duration is per-instance) and every tied optimal "
+                    "alignment. A lumped skip move over an entirely-missing "
+                    "subprocess shares its time gap with whatever real event "
+                    "immediately follows it, rather than claiming the whole "
+                    "gap - see coveragemass.py's own Coverage By Aligned "
+                    "Duration section for the worked example this was "
+                    "verified against.",
+        source='process_voids.coveragemass.voidsat',
+        scripts=('exp_disco_degrade',),
+    ),
     'containment_bits': Metric(
         id='containment_bits',
         description='Interval-surprise bits charged to a tree node under '

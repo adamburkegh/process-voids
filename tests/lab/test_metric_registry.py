@@ -1,6 +1,8 @@
 import unittest
 
-from lab.exp_disco_degrade import CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS
+from lab.exp_disco_degrade import (
+    CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS, ALIGNED_DURATION_METRIC_KEYS,
+)
 from lab.exp_surprise import (
     NODE_METRIC_KEYS, NODE_METRIC_BASELINE_KEYS,
     SUMMARY_METRIC_KEYS, SUMMARY_METRIC_BASELINE_KEYS,
@@ -55,6 +57,11 @@ class DriftTest(unittest.TestCase):
                           if m.source.startswith('process_voids.voidmass_pn')}
         self.assertEqual(set(CLASSICAL_METRIC_KEYS), classical_ids)
 
+    def test_aligned_duration_metric_keys_match_registry(self):
+        aligned_duration_ids = {mid for mid, m in METRICS.items()
+                                 if m.source == 'process_voids.coveragemass.voidsat'}
+        self.assertEqual(set(ALIGNED_DURATION_METRIC_KEYS), aligned_duration_ids)
+
     def test_tree_metric_keys_match_registry(self):
         tree_ids = {mid for mid, m in METRICS.items()
                     if m.source in ('process_voids.coveragemass.mandatory_node_count',
@@ -76,7 +83,8 @@ class DriftTest(unittest.TestCase):
         all_emitted = (set(METRIC_KEYS) | set(CLASSICAL_METRIC_KEYS)
                        | set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS)
                        | set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS)
-                       | set(TREE_METRIC_KEYS) | set(PER_NODE_METRIC_KEYS))
+                       | set(TREE_METRIC_KEYS) | set(PER_NODE_METRIC_KEYS)
+                       | set(ALIGNED_DURATION_METRIC_KEYS))
         self.assertEqual(set(METRICS), all_emitted)
 
     def test_every_metric_declares_a_nonempty_script_list(self):
