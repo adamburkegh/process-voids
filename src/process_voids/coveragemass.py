@@ -1033,11 +1033,12 @@ as summing leaf.skip_cost, which is scaled by whatever per-leaf model-
 move cost the tree was built with (see voidmass_pn's ceiling fix, which
 needs a real activity count, not a cost-configuration-dependent number).
 
-Used as a conservative ceiling for a variant whose alignment search
-timed out to zero alignments: the model's own minimum executable length
-for a node is computable without any alignment succeeding, and gives an
-upper bound on how much deficit that variant could possibly contribute
-there (see voidmass_pn.voidmass_table_pn).
+min_activity_count(root) is also the non-silent length of the cheapest
+COMPLETE model path (a full traversal to the final state), which is what
+voidmass_pn.timed_out_movecount_bound needs: the alignment "every event
+a log move, plus the cheapest path" always exists. It is a LOWER bound
+on a real variant's movecount, never an upper one - a loop can make an
+optimal path arbitrarily longer.
 '''
 
 
@@ -1053,19 +1054,4 @@ def min_activity_count(node:ProcessTree):
     if isinstance(node, (Sequence, And)):
         return sum(min_activity_count(child) for child in node.children)
     raise ValueError('Unrecognised process tree node', node)
-
-
-def min_activity_count_by_node(tree:ProcessTree):
-    '''{node: min_activity_count(node)} for every node in tree, computed
-    bottom-up in one pass - used where every node needs its own count,
-    not just the root (voidmass_table_pn's per-node ceiling).'''
-    counts = {}
-
-    def _walk(node):
-        for child in node.children:
-            _walk(child)
-        counts[node] = min_activity_count(node)
-
-    _walk(tree)
-    return counts
 

@@ -82,12 +82,25 @@ def _not_implemented(name):
 
 
 COMBOS = {
-    'inductive': DiscoveryCombo('inductive', discover_inductive),
-    # inductive_noise80 (aggressive filtering) is off the default roster -
-    # discover_inductive_noise80 itself is untouched/still directly
-    # importable, same pattern as degradation.py's 'activity' entry.
+    # Vanilla inductive (noise_threshold=0.0) and inductive_noise80
+    # (aggressive filtering) are both off the default roster -
+    # discover_inductive/discover_inductive_noise80 are untouched and
+    # still directly importable, same pattern as degradation.py's
+    # 'activity' entry.
+    #
+    # Vanilla is off because it makes a poor test: discovered at exact
+    # fit from the same log it is then checked against, it absorbs
+    # dropped activities at no cost, staying flat-zero on the voidmass
+    # metrics until degradation level 0.6 on rtfm where toothpaste
+    # responds from 0.2 (2026-09-10 sweep).
+    # inductive_noise20 gives a more responsive signal for the same
+    # per-cell cost.
     'inductive_noise20': DiscoveryCombo('inductive_noise20', discover_inductive_noise20),
-    'indulpet': DiscoveryCombo('indulpet', _not_implemented('indulpet')),
+    # indulpet is off the roster until its invocation is worked out -
+    # the _not_implemented stub factory is kept for whenever that
+    # happens. On the roster it only ever contributed 20 rows of
+    # status='not_implemented' per run (2 dims x 10 levels) at zero
+    # compute, diluting every results CSV for no signal.
     'toothpaste': DiscoveryCombo('toothpaste', discover_toothpaste),
     'toothpaste_noise10': DiscoveryCombo('toothpaste_noise10', discover_toothpaste_noise10),
 }

@@ -2,7 +2,7 @@ import unittest
 
 from skipalignments import Activity, Tau, Sequence, Xor, And, Loop
 
-from process_voids.coveragemass import min_activity_count, min_activity_count_by_node
+from process_voids.coveragemass import min_activity_count
 
 
 def leaf(cls, name, node_id, cost=100000):
@@ -87,29 +87,6 @@ class MinActivityCountTest(unittest.TestCase):
         choice.set_parent(tree)
         loop.set_parent(tree)
         self.assertEqual(min_activity_count(tree), 2)
-
-
-class MinActivityCountByNodeTest(unittest.TestCase):
-    """min_activity_count_by_node(tree) - {node: min_activity_count(node)}
-    for every node in tree, computed bottom-up in one pass (used for the
-    voidmass_table_pn timed-out-variant ceiling, where every node in the
-    tree needs its own count, not just the root)."""
-
-    def setUp(self):
-        self.a = leaf(Activity, 'a', '1')
-        self.b = leaf(Activity, 'b', '2')
-        self.tree = Sequence(None, [self.a, self.b])
-        self.a.set_parent(self.tree)
-        self.b.set_parent(self.tree)
-        self.counts = min_activity_count_by_node(self.tree)
-
-    def test_every_node_present(self):
-        self.assertEqual(set(self.counts), {self.tree, self.a, self.b})
-
-    def test_counts_match_min_activity_count(self):
-        for node in (self.tree, self.a, self.b):
-            with self.subTest(node=node):
-                self.assertEqual(self.counts[node], min_activity_count(node))
 
 
 if __name__ == '__main__':

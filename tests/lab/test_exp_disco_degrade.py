@@ -10,10 +10,11 @@ from skipalignments import Activity, Tau, Xor
 
 from lab.discovery import DiscoveryCombo, DiscoveryResult
 from lab.exp_disco_degrade import (
-    run_disco_degrade, main, _node_rows, CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS,
-    ALIGNED_DURATION_METRIC_KEYS, NODE_ROW_COLUMNS,
+    run_disco_degrade, main, _node_rows, _classical_metrics, CLASSICAL_METRIC_KEYS,
+    PER_NODE_METRIC_KEYS, ALIGNED_DURATION_METRIC_KEYS, NODE_ROW_COLUMNS,
 )
 from process_voids.coveragemass import TREE_METRIC_KEYS
+from process_voids.voidmass_pn import VoidmassPnResult
 
 FAKE_METRICS = {'weight_coverage': 0.5, 'weight_voidage': 0.5, 'skipprob': 0.1,
                  'salign_coverage': 0.7}
@@ -136,6 +137,8 @@ class NotImplementedComboTest(unittest.TestCase):
             self.assertTrue((df['status'] == 'not_implemented').all())
             self.assertTrue(df['weight_coverage'].isna().all())
             self.assertTrue(df['voidmass_deficit_lower'].isna().all())
+            self.assertTrue(df['timed_out_count'].isna().all())
+            self.assertTrue(df['timed_out_weight'].isna().all())
 
 
 class ComputeMetricsErrorTest(unittest.TestCase):
@@ -205,7 +208,7 @@ class ComputeMetricsErrorTest(unittest.TestCase):
 
 class SharedZeroLevelNodeRowsWeightStabilityTest(unittest.TestCase):
     """
-    Regression test for labnotes.md finding A: mass_by_weight/voidage_
+    Regression test for a bug found in the 2026-09-10 runs: mass_by_weight/voidage_
     by_weight read tree.weight/child.weight directly off the shared,
     mutable ProcessTree object - transfer_pt_weights (inside
     compute_metrics) overwrites those attributes on EVERY cell's call,
@@ -239,6 +242,7 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(unittest.TestCase):
         self.dv = FakeDv({self.tree: 0.0, self.a: 0.0, self.b: 1.0})
 
         fake_vm_row = {'deficit_lower': 0.0, 'deficit_upper': 0.0, 'movecount': 0.0,
+                       'movecount_bound': 0.0,
                        'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 0.0,
                        'voidmass_process_lower': 0.0, 'voidmass_process_upper': 0.0}
         self.vm_table = {self.tree: dict(fake_vm_row), self.a: dict(fake_vm_row),
@@ -298,6 +302,44 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(unittest.TestCase):
         # (a=3,b=1 -> 0.75), not whatever a later cell's mutation left
         # behind (a=1,b=3 -> 0.25).
         self.assertAlmostEqual(weight_coverages.pop(), 0.75, places=6)
+
+
+class ClassicalMetricsTimeoutDiagnosticsTest(unittest.TestCase):
+    """
+    _classical_metrics carries voidmass_table_pn's per-cell timeout
+    diagnostics into the root row - the count AND the summed probability
+    weight, since 0.03% of a log timing out is fine and 20% is not, and
+    the count alone can't tell those apart - plus voidmass_movecount_
+    bound alongside the observed voidmass_movecount, rather than
+    overloading one column whose meaning would depend on whether a
+    timeout happened.
+    """
+
+    def test_diagnostics_and_bound_denominator_reach_the_metrics(self):
+        tree = Activity(None, 'a', 100000)
+        tree.id = 'a'
+        root_row = {'deficit_lower': 0.0, 'deficit_upper': 2.0,
+                    'movecount': 1.0, 'movecount_bound': 3.0,
+                    'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 2 / 3,
+                    'voidmass_process_lower': 0.0, 'voidmass_process_upper': 2 / 3}
+        result = VoidmassPnResult(table={tree: root_row}, skip_dict={},
+                                  timed_out_count=2, timed_out_weight=0.25)
+        log = pd.DataFrame({'case:concept:name': ['c1'], 'concept:name': ['a'],
+                            'time:timestamp': [pd.Timestamp('2026-01-01')]})
+
+        class FakeDv:
+            skip_probs = {tree: 0.0}
+
+        with patch('lab.exp_disco_degrade.voidmass_table_pn', return_value=result), \
+             patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.5):
+            metrics, *_rest = _classical_metrics(tree, log, 'NET', 'IM', 'FM', {}, set(), [],
+                                                 FakeDv())
+
+        self.assertEqual(metrics['timed_out_count'], 2)
+        self.assertEqual(metrics['timed_out_weight'], 0.25)
+        self.assertEqual(metrics['voidmass_movecount'], 1.0)
+        self.assertEqual(metrics['voidmass_movecount_bound'], 3.0)
+        self.assertEqual(metrics['voidmass_deficit_upper'], 2.0)
 
 
 class EmptyNodeCsvHasHeaderTest(unittest.TestCase):
@@ -377,12 +419,15 @@ class NodeRowsTest(unittest.TestCase):
         self.dv = FakeDv({self.choice: 0.1, self.a: 0.2, self.tau: 0.0})
         self.vm_table = {
             self.choice: {'deficit_lower': 1.0, 'deficit_upper': 1.0, 'movecount': 2.0,
+                           'movecount_bound': 2.0,
                            'voidmass_subprocess_lower': 0.5, 'voidmass_subprocess_upper': 0.5,
                            'voidmass_process_lower': 0.5, 'voidmass_process_upper': 0.5},
             self.a: {'deficit_lower': 0.5, 'deficit_upper': 0.5, 'movecount': 1.0,
+                     'movecount_bound': 1.5,
                      'voidmass_subprocess_lower': 0.5, 'voidmass_subprocess_upper': 0.5,
                      'voidmass_process_lower': 0.5, 'voidmass_process_upper': 0.5},
             self.tau: {'deficit_lower': 0.0, 'deficit_upper': 0.0, 'movecount': 0.0,
+                       'movecount_bound': 0.0,
                        'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 0.0,
                        'voidmass_process_lower': 1.0, 'voidmass_process_upper': 1.0},
         }
@@ -431,6 +476,7 @@ class NodeRowsTest(unittest.TestCase):
         self.assertEqual(row['voidmass_deficit_lower'], 0.5)
         self.assertEqual(row['voidmass_deficit_upper'], 0.5)
         self.assertEqual(row['voidmass_movecount'], 1.0)
+        self.assertEqual(row['voidmass_movecount_bound'], 1.5)
         self.assertEqual(row['salign_coverage'], 0.77)
         self.assertEqual(row['alignment_coverage_pn_lower'], 0.88)
         self.assertEqual(row['alignment_coverage_pn_upper'], 0.88)
@@ -473,12 +519,12 @@ class DryRunTest(unittest.TestCase):
         mock_build_id_net.assert_not_called()
         self.assertIn('Experiment: smoke', output)
         self.assertIn('rtfm', output)
-        self.assertIn('inductive', output)
+        self.assertIn('inductive_noise20', output)
         self.assertIn('cells:', output)
 
     def test_dry_run_with_ad_hoc_logs_prints_and_computes_nothing(self):
         with patch('sys.argv', ['exp_disco_degrade', 'fake_log.xes',
-                                 '--combos', 'inductive', '--levels', '0.0', '--dry-run']), \
+                                 '--combos', 'inductive_noise20', '--levels', '0.0', '--dry-run']), \
              patch('lab.exp_disco_degrade.configure'), \
              patch('lab.exp_disco_degrade.compute_metrics') as mock_cm, \
              patch('lab.exp_disco_degrade.build_id_net') as mock_build_id_net:

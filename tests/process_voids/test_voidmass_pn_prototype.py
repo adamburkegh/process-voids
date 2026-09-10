@@ -18,10 +18,13 @@ from unittest.mock import patch
 
 from skipalignments.processtree import Sequence, Activity, Xor, Tau, Loop
 
+from skipalignments.alignall import align_pn_all
+
 from lab.fixtures import build_running_example_tree
+from process_voids.coveragemass import min_activity_count
 from process_voids.voidmass_pn import (
-    build_id_net, align_variant, deficit_by_node, voidmass_table_pn,
-    coverage_by_alignment_pn,
+    build_id_net, align_variant, align_variant_all, deficit_by_node, terms_by_node,
+    voidmass_table_pn, coverage_by_alignment_pn, timed_out_movecount_bound,
 )
 
 
@@ -194,8 +197,9 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
             ('o', 'a', 'p'): 1 / 6,
         }
         self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = build_id_net(self.tree)
-        self.table, self.skip_dict = voidmass_table_pn(self.tree, self.variant_probs, self.net, self.im,
-                                                         self.fm, self.activity_to_id, self.tau_ids, timeout=30)
+        result = voidmass_table_pn(self.tree, self.variant_probs, self.net, self.im,
+                                    self.fm, self.activity_to_id, self.tau_ids, timeout=30)
+        self.table, self.skip_dict = result.table, result.skip_dict
 
     def test_matches_skip_alignments_reference_table(self):
         cases = [
@@ -258,8 +262,8 @@ class TiedAlignmentDoubleCountingTest(unittest.TestCase):
 
     def test_deficit_is_symmetric_between_a_and_b_after_dedup(self):
         variant_probs = {('b', 'a'): 1.0}
-        table, _skip_dict = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids, timeout=30)
+        table = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
+                                  self.activity_to_id, self.tau_ids, timeout=30).table
         # Three equally-valid causal stories (skip / blame-a / blame-b) -
         # uniform-over-signatures weighting gives 'a' and 'b' the same
         # deficit share (1/3 each), not whatever ratio the raw,
@@ -304,8 +308,8 @@ class PooledAlignmentMassTest(unittest.TestCase):
 
     def test_full_conformance_gives_pooled_mass_one(self):
         variant_probs = {('s1', 's2', 'l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'w'): 1.0}
-        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids)
+        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                  self.activity_to_id, self.tau_ids).table
         for node in (self.root, self.small_tree, self.large_tree):
             with self.subTest(node=node):
                 self.assertAlmostEqual(table[node]['alignment_mass_pooled_lower'], 1.0, places=6)
@@ -313,8 +317,8 @@ class PooledAlignmentMassTest(unittest.TestCase):
 
     def test_total_ablation_gives_pooled_mass_zero(self):
         variant_probs = {('w',): 1.0}
-        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids)
+        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                  self.activity_to_id, self.tau_ids).table
         for node in (self.small_tree, self.large_tree):
             with self.subTest(node=node):
                 self.assertAlmostEqual(table[node]['alignment_mass_pooled_lower'], 0.0, places=6)
@@ -323,8 +327,8 @@ class PooledAlignmentMassTest(unittest.TestCase):
     def test_partial_ablation_matches_expected_ratio(self):
         # 1 of 2 small activities observed, 4 of 8 large - 50% either way
         variant_probs = {('s1', 'l0', 'l1', 'l2', 'l3', 'w'): 1.0}
-        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids)
+        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                  self.activity_to_id, self.tau_ids).table
         # not asserting an exact value here (that's SizeSensitivityTest's
         # job on the skip-alignments path) - just that pooling behaves
         # sanely: strictly between 0 and 1, matching neither extreme.
@@ -342,7 +346,7 @@ class NonPooledAlignmentCoverageTest(unittest.TestCase):
     execution match/movecount ratios averaged - NOT pooled - verified
     term-by-term against the formal definition (session notes). Uses
     coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs)
-    - skip_dict is voidmass_table_pn's second return value.
+    - skip_dict is voidmass_table_pn's result.skip_dict.
     '''
 
     def setUp(self):
@@ -367,15 +371,15 @@ class NonPooledAlignmentCoverageTest(unittest.TestCase):
 
     def test_total_ablation_gives_zero_coverage_regardless_of_skip_prob(self):
         variant_probs = {('w',): 1.0}
-        _table, skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids)
+        skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                      self.activity_to_id, self.tau_ids).skip_dict
         self.assertAlmostEqual(
             coverage_by_alignment_pn(self.small_tree, 0.3, skip_dict, variant_probs), 0.0)
 
     def test_full_conformance_reduces_to_one_minus_skip_prob(self):
         variant_probs = {('s1', 's2', 'l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'w'): 1.0}
-        _table, skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                               self.activity_to_id, self.tau_ids)
+        skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                      self.activity_to_id, self.tau_ids).skip_dict
         self.assertAlmostEqual(
             coverage_by_alignment_pn(self.root, 0.0, skip_dict, variant_probs), 1.0)
 
@@ -425,8 +429,9 @@ class PooledVsNonPooledDivergenceTest(unittest.TestCase):
 
     def test_pooled_and_non_pooled_diverge_as_hand_derived(self):
         variant_probs = {('x',): 0.5, ('a', 'x', 'y', 'x'): 0.5}
-        table, skip_dict = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
-                                              self.activity_to_id, self.tau_ids, timeout=30)
+        result = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
+                                   self.activity_to_id, self.tau_ids, timeout=30)
+        table, skip_dict = result.table, result.skip_dict
 
         # no variant times out in this fixture, so lower==upper
         pooled = table[self.tree]['alignment_mass_pooled_lower']
@@ -472,19 +477,80 @@ class CoverageByAlignmentPnTimedOutRatioTest(unittest.TestCase):
             0.5, places=6)
 
 
+def _patched_timeout(variants_to_time_out):
+    '''patch.object context forcing align_variant_all to return zero
+    alignments (a per-variant timeout) for the given variants, and run
+    for real on every other one.'''
+    import process_voids.voidmass_pn as voidmass_pn_module
+    real = voidmass_pn_module.align_variant_all
+    timed_out = {tuple(v) for v in variants_to_time_out}
+
+    def fake(variant, *args, **kwargs):
+        if tuple(variant) in timed_out:
+            return []
+        return real(variant, *args, **kwargs)
+
+    return patch.object(voidmass_pn_module, 'align_variant_all', side_effect=fake)
+
+
+def _loop_tree():
+    '''loop(seq(a,b), tau) - the model whose loop lets model moves
+    outnumber any leaf count: each observed 'a' can force another
+    iteration, each needing its own model move of 'b'.'''
+    a = Activity(None, 'a', 100000)
+    a.id = 'a'
+    b = Activity(None, 'b', 100000)
+    b.id = 'b'
+    body = Sequence(None, [a, b])
+    body.id = 'body'
+    a.set_parent(body)
+    b.set_parent(body)
+    tau = Tau(None, 'tau', 0)
+    tau.id = 'tau'
+    loop = Loop(None, [body, tau])
+    loop.id = 'loop'
+    body.set_parent(loop)
+    tau.set_parent(loop)
+    return loop
+
+
+def _xor_tau_tree():
+    '''seq(xor(seq(c,d), tau), e) - cheapest path takes the free tau
+    branch, so min_activity_count(root) = 1.'''
+    c = Activity(None, 'c', 100000)
+    c.id = 'c'
+    d = Activity(None, 'd', 100000)
+    d.id = 'd'
+    cd = Sequence(None, [c, d])
+    cd.id = 'cd'
+    c.set_parent(cd)
+    d.set_parent(cd)
+    tau = Tau(None, 'tau', 0)
+    tau.id = 'tau'
+    choice = Xor(None, [cd, tau])
+    choice.id = 'choice'
+    cd.set_parent(choice)
+    tau.set_parent(choice)
+    e = Activity(None, 'e', 100000)
+    e.id = 'e'
+    root = Sequence(None, [choice, e])
+    root.id = 'root'
+    choice.set_parent(root)
+    e.set_parent(root)
+    return root
+
+
 class TimedOutVariantDoesNotCrashTest(unittest.TestCase):
     '''
-    Regression test for labnotes.md finding C: align_variant_all
-    returning zero alignments for a variant (a real, observed failure
-    mode - a per-variant timeout) used to make voidmass_table_pn's
-    share = weight / len(alignments) raise ZeroDivisionError and take
-    down the entire cell, discarding every other variant's completed
-    work.
+    Regression test for a failure seen in real runs: align_variant_all
+    returning zero alignments for a variant (a per-variant timeout) used
+    to make voidmass_table_pn raise ZeroDivisionError and discard every
+    other variant's completed work.
 
     M: model seq(a,b), two variants each weight 0.5: <a,b> aligns for
-    real (perfect fit), <a> is mocked to return zero raw alignments,
-    standing in for a timed-out search. align_variant_all is patched
-    (not a real slow log) so this stays fast and deterministic.
+    real (perfect fit), <a> is forced to time out. The timed-out variant
+    is bounded by X_max = 2|sigma| + min_activity_count(root) = 2*1 + 2
+    = 4, the SAME X at every node, so it contributes w*X_max = 2.
     '''
 
     def setUp(self):
@@ -493,36 +559,162 @@ class TimedOutVariantDoesNotCrashTest(unittest.TestCase):
             build_id_net(self.tree)
         self.variant_probs = {('a', 'b'): 0.5, ('a',): 0.5}
 
-    def _fake_align_variant_all(self, real_align_variant_all):
-        def fake(variant, *args, **kwargs):
-            if list(variant) == ['a']:
-                return []
-            return real_align_variant_all(variant, *args, **kwargs)
-        return fake
+    def test_does_not_raise_and_reports_the_bounds(self):
+        with _patched_timeout([('a',)]):
+            result = voidmass_table_pn(self.tree, self.variant_probs, self.net, self.im,
+                                       self.fm, self.activity_to_id, self.tau_ids, timeout=30)
 
-    def test_does_not_raise_and_reports_lower_and_upper_bounds(self):
-        import process_voids.voidmass_pn as voidmass_pn_module
-        real = voidmass_pn_module.align_variant_all
-        with patch.object(voidmass_pn_module, 'align_variant_all',
-                           side_effect=self._fake_align_variant_all(real)):
-            table, skip_dict = voidmass_table_pn(
-                self.tree, self.variant_probs, self.net, self.im, self.fm,
-                self.activity_to_id, self.tau_ids, timeout=30)
+        self.assertEqual(result.timed_out_count, 1)
+        self.assertAlmostEqual(result.timed_out_weight, 0.5, places=6)
 
-        # <a,b> is a perfect fit (deficit 0, movecount 2). <a> timed out:
-        # the ceiling uses the TREE's own structural min_activity_count
-        # (2, seq(a,b) - both required) at every node, regardless of
-        # which activities that specific variant's trace happened to
-        # contain (a timed-out variant carries no alignment information
-        # at all, so nothing narrows the ceiling below the node's own
-        # minimum). LOWER credits it 0 deficit, UPPER the full ceiling,
-        # both against the SAME movecount denominator either way.
-        row = table[self.tree]
-        self.assertAlmostEqual(row['movecount'], 0.5 * 2 + 0.5 * 2, places=6)
-        self.assertAlmostEqual(row['deficit_lower'], 0.0, places=6)
-        self.assertAlmostEqual(row['deficit_upper'], 0.5 * 2, places=6)
-        self.assertLessEqual(row['voidmass_subprocess_lower'], row['voidmass_subprocess_upper'])
-        self.assertLessEqual(row['voidmass_process_lower'], row['voidmass_process_upper'])
+        # voidmass_movecount is the OBSERVED total from completed variants
+        # only (<a,b>: movecount 2 at weight 0.5); the bounds' shared
+        # denominator is reported separately as movecount_bound.
+        root = result.table[self.tree]
+        self.assertAlmostEqual(root['movecount'], 1.0, places=6)
+        self.assertAlmostEqual(root['movecount_bound'], 1.0 + 2.0, places=6)
+        self.assertAlmostEqual(root['deficit_lower'], 0.0, places=6)
+        self.assertAlmostEqual(root['deficit_upper'], 2.0, places=6)
+        self.assertAlmostEqual(root['voidmass_subprocess_lower'], 0.0, places=6)
+        self.assertAlmostEqual(root['voidmass_subprocess_upper'], 2.0 / 3.0, places=6)
+
+        # A leaf gets the same w*X_max as the root. That shared X is what
+        # keeps voidmass_process's bounds valid: its numerator is the
+        # node's deficit, its denominator the ROOT's movecount, and a
+        # bound needs the same X on both.
+        leaf = result.table[self.a]
+        self.assertAlmostEqual(leaf['movecount'], 0.5, places=6)
+        self.assertAlmostEqual(leaf['movecount_bound'], 0.5 + 2.0, places=6)
+        self.assertAlmostEqual(leaf['voidmass_subprocess_upper'], 2.0 / 2.5, places=6)
+        self.assertAlmostEqual(leaf['voidmass_process_lower'], 0.0, places=6)
+        self.assertAlmostEqual(leaf['voidmass_process_upper'], 2.0 / 3.0, places=6)
+
+    def test_no_timeout_means_zero_diagnostics_and_coincident_bounds(self):
+        result = voidmass_table_pn(self.tree, {('a', 'b'): 1.0}, self.net, self.im, self.fm,
+                                   self.activity_to_id, self.tau_ids, timeout=30)
+        self.assertEqual(result.timed_out_count, 0)
+        self.assertEqual(result.timed_out_weight, 0.0)
+        for row in result.table.values():
+            self.assertEqual(row['movecount'], row['movecount_bound'])
+            self.assertEqual(row['deficit_lower'], row['deficit_upper'])
+
+
+class TimedOutMovecountBoundTest(unittest.TestCase):
+    '''
+    timed_out_movecount_bound(|sigma|, tree) = 2|sigma| + C_root must
+    bound the movecount of EVERY optimal alignment of sigma, loops
+    included. A bound from the tree's shape alone cannot: loop(seq(a,b),
+    tau) on <a,a,a> has an optimal alignment that syncs every 'a' and
+    model-moves 'b' once per iteration - movecount 6, above a leaf-count
+    bound of |sigma| + 2 = 5.
+    '''
+
+    def setUp(self):
+        self.loop = _loop_tree()
+        self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = \
+            build_id_net(self.loop)
+
+    def _movecounts(self, trace):
+        alignments = align_variant_all(trace, self.net, self.im, self.fm, self.activity_to_id,
+                                       self.tau_ids, id_loop_list=self.id_loop_list, timeout=30)
+        return [terms_by_node(al, self.loop, self.activity_to_id, self.tau_ids)[self.loop][1]
+                for al in alignments]
+
+    def test_bound_holds_for_every_optimal_alignment(self):
+        for trace in (['a', 'a', 'a'], ['a'] * 5, ['b'], ['x', 'x'], ['a', 'x', 'b']):
+            bound = timed_out_movecount_bound(len(trace), self.loop)
+            for m in self._movecounts(trace):
+                with self.subTest(trace=trace):
+                    self.assertLessEqual(m, bound)
+
+    def test_loop_exceeds_a_leaf_count_bound(self):
+        movecounts = self._movecounts(['a', 'a', 'a'])
+        self.assertIn(6, movecounts)
+        self.assertGreater(max(movecounts), 3 + 2)
+
+
+class CostModelPinTest(unittest.TestCase):
+    '''
+    timed_out_movecount_bound's derivation rests on align_pn_all's cost
+    model: log move = labelled model move = 100000, sync = 0, every
+    silent/tau transition = 0. Given that, no optimal alignment costs
+    more than "every event a log move, plus a complete cheapest model
+    path of C_root non-silent moves", so log + model <= |sigma| + C_root.
+
+    Pinned behaviourally rather than by reading constants: a trace of a
+    single unmodelled activity has exactly that alignment as its
+    optimum, so its cost must be exactly 100000 * (1 + C_root). That
+    also checks the premise the bound needs - a complete (final-state-
+    reaching) model path with min_activity_count(root) non-silent moves
+    exists. If the cost model changes, this fails and the bound must be
+    re-derived, rather than silently going invalid.
+    '''
+
+    def test_unmodelled_single_event_costs_one_log_move_plus_cheapest_path(self):
+        for tree in (_loop_tree(), _xor_tau_tree()):
+            net, im, fm, _activity_to_id, tau_ids, id_loop_list = build_id_net(tree)
+            _t, (alignments, code, _first) = align_pn_all(
+                ['x'], net, im, fm, id_loop_list, timeout=30, tau_ids=tau_ids)[0]
+            with self.subTest(tree=tree.id):
+                self.assertEqual(code, 0)
+                for alignment in alignments:
+                    self.assertEqual(alignment['cost'], 100000 * (1 + min_activity_count(tree)))
+
+
+class TimedOutBoundsAreSoundTest(unittest.TestCase):
+    '''
+    The bounds must bracket the value the cell would have had if the
+    variant had NOT timed out. Model loop(seq(a,b), tau): <a,b> at weight
+    0.9 fits perfectly, <a,a,a,a,a> at weight 0.1 has tied optimal
+    alignments iterating the loop up to five times. Computed once for
+    real, then again with <a,a,a,a,a> forced to time out.
+
+    Also records the previous fix's error: substituting the cheapest
+    path's length (min_activity_count) as the timed-out variant's
+    deficit and movecount lands BELOW the real value. Per-variant
+    deficit <= movecount says nothing about a pooled ratio, and the
+    cheapest path's length bounds a variant's movecount from below, not
+    above.
+    '''
+
+    def setUp(self):
+        self.loop = _loop_tree()
+        self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = \
+            build_id_net(self.loop)
+        self.slow = ('a',) * 5
+        self.variant_probs = {('a', 'b'): 0.9, self.slow: 0.1}
+
+    def _run(self):
+        return voidmass_table_pn(self.loop, self.variant_probs, self.net, self.im, self.fm,
+                                 self.activity_to_id, self.tau_ids,
+                                 id_loop_list=self.id_loop_list, timeout=30)
+
+    def test_bounds_bracket_the_real_value_at_every_node(self):
+        real = self._run()
+        with _patched_timeout([self.slow]):
+            bounded = self._run()
+
+        self.assertEqual(real.timed_out_count, 0)
+        self.assertEqual(bounded.timed_out_count, 1)
+        for node, real_row in real.table.items():
+            for metric in ('deficit', 'voidmass_subprocess', 'voidmass_process'):
+                truth = real_row[f'{metric}_lower']
+                with self.subTest(node=node.id, metric=metric):
+                    self.assertEqual(real_row[f'{metric}_lower'], real_row[f'{metric}_upper'])
+                    self.assertLessEqual(bounded.table[node][f'{metric}_lower'], truth + 1e-9)
+                    self.assertGreaterEqual(bounded.table[node][f'{metric}_upper'], truth - 1e-9)
+
+    def test_cheapest_path_substitution_undershoots_the_real_value(self):
+        real = self._run()
+        with _patched_timeout([self.slow]):
+            bounded = self._run()
+
+        truth = real.table[self.loop]['voidmass_subprocess_lower']
+        d0 = bounded.table[self.loop]['deficit_lower']
+        m0 = bounded.table[self.loop]['movecount']
+        wc = bounded.timed_out_weight * min_activity_count(self.loop)
+        previous_upper = (d0 + wc) / (m0 + wc)
+        self.assertGreater(truth, previous_upper)
 
 
 if __name__ == '__main__':

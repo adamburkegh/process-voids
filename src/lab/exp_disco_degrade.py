@@ -120,23 +120,24 @@ def _variant_probs(log):
     return {v: c / n_cases for v, c in variants.items()}
 
 
-# _lower/_upper: align_variant_all can legitimately return zero
-# alignments for a variant (a per-variant timeout - labnotes.md finding
-# C, previously an unhandled ZeroDivisionError in voidmass_table_pn).
-# There's no principled single point estimate for such a variant's
-# contribution, so two conservative bounds are reported instead of
-# guessing - LOWER assumes it fit perfectly, UPPER assumes it fit as
-# badly as possible (see voidmass_table_pn/coveragemass.alignment_mass's
-# own docstrings for the reasoning). voidmass_movecount is NOT split -
-# both bounds use the model's own minimum executable length for a
-# timed-out variant's movecount contribution either way (only how void
-# it's assumed to be differs, not how big); it's well-defined and
-# crash-free on its own now.
+# _lower/_upper: align_variant_all can return zero alignments for a
+# variant (a per-variant timeout, seen in real runs). Its real
+# contribution is unknown, so each cell reports provable bounds on the
+# value it would have had without the timeout - see voidmass_table_pn
+# and coveragemass.alignment_mass for the derivations.
+# voidmass_movecount is the OBSERVED total from completed variants;
+# voidmass_movecount_bound is the denominator the bounds divide by.
 CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
-                          'voidmass_movecount',
+                          'voidmass_movecount', 'voidmass_movecount_bound',
                           'voidmass_subprocess_lower', 'voidmass_subprocess_upper',
                           'voidmass_process_lower', 'voidmass_process_upper',
                           'alignment_coverage_pn_lower', 'alignment_coverage_pn_upper')
+
+# Per-cell bookkeeping, root CSV only (not metrics, so not in
+# lab.metric_registry): how many variants' alignment search timed out,
+# and their summed probability. The weight is what matters - 0.03% of a
+# log timing out is immaterial, 20% is not - which the count can't show.
+TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
 # weight_coverage/weight_voidage/skipprob/salign_coverage are the SAME
 # quantities (same functions/lookups, same registry entries) as
@@ -191,13 +192,15 @@ def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_
     deduped alignments coverage_by_alignment_pn needs, already translated
     into coveragemass.alignment_mass's input shape)."""
     variant_probs = _variant_probs(log)
-    vm_table, skip_dict = voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id,
-                                             tau_ids, id_loop_list=id_loop_list, timeout=timeout)
+    result = voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id,
+                               tau_ids, id_loop_list=id_loop_list, timeout=timeout)
+    vm_table, skip_dict = result.table, result.skip_dict
     root_row = vm_table[tree]
     values = (
         root_row['deficit_lower'],
         root_row['deficit_upper'],
         root_row['movecount'],
+        root_row['movecount_bound'],
         root_row['voidmass_subprocess_lower'],
         root_row['voidmass_subprocess_upper'],
         root_row['voidmass_process_lower'],
@@ -207,7 +210,9 @@ def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_
         coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs,
                                   timed_out_ratio=1.0),
     )
-    return dict(zip(CLASSICAL_METRIC_KEYS, values)), vm_table, variant_probs, skip_dict
+    metrics = dict(zip(CLASSICAL_METRIC_KEYS, values))
+    metrics.update(zip(TIMEOUT_DIAGNOSTIC_KEYS, (result.timed_out_count, result.timed_out_weight)))
+    return metrics, vm_table, variant_probs, skip_dict
 
 
 def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, skip_dict, log):
@@ -241,6 +246,7 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, sk
             classical_row['deficit_lower'],
             classical_row['deficit_upper'],
             classical_row['movecount'],
+            classical_row['movecount_bound'],
             classical_row['voidmass_subprocess_lower'],
             classical_row['voidmass_subprocess_upper'],
             classical_row['voidmass_process_lower'],
@@ -351,8 +357,8 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         # has already reset those attributes to weights
                         # estimated from a degraded log - silently
                         # corrupting the per-node CSV's weight-derived
-                        # columns for every dim after the first (see
-                        # labnotes.md, finding A). dim is stamped in per
+                        # columns for every dim after the first (found
+                        # in the 2026-09-10 runs). dim is stamped in per
                         # use below, since these rows are otherwise
                         # identical regardless of which dim reuses them.
                         zero_level_node_rows = _node_rows(
@@ -382,7 +388,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'weight_coverage': None, 'weight_voidage': None, 'skipprob': None,
                             'salign_coverage': None,
                             **{k: None for k in CLASSICAL_METRIC_KEYS},
-                            **{k: None for k in ALIGNED_DURATION_METRIC_KEYS},
+                            **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS},
                             **tree_metrics,
                         }
                         rows.append(row)
@@ -411,7 +417,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             row.update(weight_coverage=None, weight_voidage=None,
                                        skipprob=None, salign_coverage=None,
                                        **{k: None for k in CLASSICAL_METRIC_KEYS},
-                                       **{k: None for k in ALIGNED_DURATION_METRIC_KEYS})
+                                       **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS})
                         rows.append(row)
                         logger.debug('%s - reused level-0.0 result', cell)
                         continue
@@ -453,7 +459,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                                         weight_coverage=None, weight_voidage=None, skipprob=None,
                                         salign_coverage=None,
                                         **{k: None for k in CLASSICAL_METRIC_KEYS},
-                                        **{k: None for k in ALIGNED_DURATION_METRIC_KEYS})
+                                        **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS})
                     row['elapsed_s'] = t.elapsed_s
                     rows.append(row)
 

@@ -10,7 +10,9 @@ Deliberately scoped to analytical quantities only - not administrative/
 bookkeeping columns each script also writes (log, combo, degradation_dim,
 degradation_level, status, dropped_count, elapsed_s, node_id, node_type,
 alphabet, n_events, and the surprise diagnostics
-ambiguous_event_count/unattributable_event_count/out_of_alphabet_event_count).
+ambiguous_event_count/unattributable_event_count/out_of_alphabet_event_count,
+and exp_disco_degrade's timeout diagnostics timed_out_count/
+timed_out_weight).
 
 This is the executable source of truth, not documentation of it: every
 id here is one of the *_KEYS constants each producing script actually
@@ -147,53 +149,69 @@ METRICS = {
     'voidmass_deficit_upper': Metric(
         id='voidmass_deficit_upper',
         description="Same as voidmass_deficit_lower, but a timed-out variant is "
-                    "credited its full expected deficit instead (the model's own "
-                    "minimum executable length for that node - process_voids."
-                    "coveragemass.min_activity_count - as if it fit as badly as "
-                    "possible, deficit=movecount). Deficit can never exceed "
-                    "movecount, so this is a genuine ceiling, not a guess: the "
-                    "metric can only be overstated by this choice, never "
-                    "understated.",
+                    "credited its largest possible deficit instead: w * X_max, "
+                    "X_max = voidmass_pn.timed_out_movecount_bound (2|sigma| + "
+                    "the model's cheapest complete path length) - every move of "
+                    "the longest path an optimal alignment could take counted "
+                    "as a model move. Derived from the aligner's cost model; "
+                    "see that function for the proof.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_movecount': Metric(
         id='voidmass_movecount',
-        description='Pooled non-silent move count at the scored node - the '
-                    'denominator of voidmass_subprocess_lower/upper. NOT split '
-                    'into lower/upper: a timed-out variant contributes the same '
-                    "expected movecount (min_activity_count) to this total "
-                    "either way - only how void that variant is ASSUMED to be "
-                    "differs between the two deficit bounds, not how big it is "
-                    "counted as.",
+        description='Pooled non-silent move count at the scored node, OBSERVED '
+                    'from completed variants only - a measurement, not a '
+                    'substitution. A timed-out variant contributes nothing '
+                    'here; see voidmass_movecount_bound for the denominator the '
+                    'lower/upper bounds divide by.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_movecount_bound': Metric(
+        id='voidmass_movecount_bound',
+        description="voidmass_movecount plus w * X_max for every timed-out "
+                    "variant (voidmass_pn.timed_out_movecount_bound) - the "
+                    "shared denominator of voidmass_subprocess_lower/upper, "
+                    "reported so the bounds' arithmetic is reproducible. Its "
+                    "own column rather than overloading voidmass_movecount, "
+                    "whose meaning would otherwise depend on whether a timeout "
+                    "happened. Equal to voidmass_movecount when nothing timed "
+                    "out.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_subprocess_lower': Metric(
         id='voidmass_subprocess_lower',
-        description='voidmass_deficit_lower / voidmass_movecount at the scored '
-                    "node - voidmass as a fraction of that node's own moves.",
+        description='voidmass_deficit_lower / voidmass_movecount_bound at the '
+                    "scored node - voidmass as a fraction of that node's own "
+                    'moves. A valid lower bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_subprocess_upper': Metric(
         id='voidmass_subprocess_upper',
-        description='voidmass_deficit_upper / voidmass_movecount at the scored '
-                    "node - voidmass as a fraction of that node's own moves.",
+        description='voidmass_deficit_upper / voidmass_movecount_bound at the '
+                    "scored node - voidmass as a fraction of that node's own "
+                    'moves. A valid upper bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_process_lower': Metric(
         id='voidmass_process_lower',
-        description='1 - voidmass_subprocess_lower (alignment_mass_pooled_lower) '
-                    'at the scored node.',
+        description="voidmass_deficit_lower / the ROOT's voidmass_movecount_bound "
+                    '- missing moves under the scored node as a fraction of the '
+                    "whole model's moves (additive over any cut through the "
+                    'tree). A valid lower bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_process_upper': Metric(
         id='voidmass_process_upper',
-        description='1 - voidmass_subprocess_upper (alignment_mass_pooled_upper) '
-                    'at the scored node.',
+        description="voidmass_deficit_upper / the ROOT's voidmass_movecount_bound "
+                    '- see voidmass_process_lower. A valid upper bound on the '
+                    'no-timeout value: X_max is the same at every node, so '
+                    'numerator and denominator share it.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
