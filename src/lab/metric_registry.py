@@ -129,38 +129,76 @@ METRICS = {
         source='process_voids.coveragemass.total_node_count',
         scripts=('exp_disco_degrade',),
     ),
-    'voidmass_deficit': Metric(
-        id='voidmass_deficit',
-        description='Pooled voidmass deficit at the scored node, from '
-                    'classical (non-lumped) Petri-net alignments - the '
-                    "formally-correct replacement for skip-alignments' lumped "
-                    'normal form.',
+    'voidmass_deficit_lower': Metric(
+        id='voidmass_deficit_lower',
+        description='Pooled voidmass deficit at the scored node, from classical '
+                    "(non-lumped) Petri-net alignments - the formally-correct "
+                    "replacement for skip-alignments' lumped normal form. LOWER "
+                    "bound: a variant whose align_variant_all search timed out "
+                    "to zero alignments (a real, observed failure mode, not "
+                    "hypothetical - see voidmass_table_pn) is credited 0 deficit "
+                    "there, as if it fit perfectly. Equal to voidmass_deficit_"
+                    "upper whenever no variant times out - the two only diverge "
+                    "on a cell that actually hit this case, making the gap "
+                    "itself a visible signal rather than a hidden assumption.",
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_deficit_upper': Metric(
+        id='voidmass_deficit_upper',
+        description="Same as voidmass_deficit_lower, but a timed-out variant is "
+                    "credited its full expected deficit instead (the model's own "
+                    "minimum executable length for that node - process_voids."
+                    "coveragemass.min_activity_count - as if it fit as badly as "
+                    "possible, deficit=movecount). Deficit can never exceed "
+                    "movecount, so this is a genuine ceiling, not a guess: the "
+                    "metric can only be overstated by this choice, never "
+                    "understated.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
     'voidmass_movecount': Metric(
         id='voidmass_movecount',
         description='Pooled non-silent move count at the scored node - the '
-                    'denominator of voidmass_subprocess.',
+                    'denominator of voidmass_subprocess_lower/upper. NOT split '
+                    'into lower/upper: a timed-out variant contributes the same '
+                    "expected movecount (min_activity_count) to this total "
+                    "either way - only how void that variant is ASSUMED to be "
+                    "differs between the two deficit bounds, not how big it is "
+                    "counted as.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
-    'voidmass_subprocess': Metric(
-        id='voidmass_subprocess',
-        description='voidmass_deficit / voidmass_movecount at the scored node - '
-                    "voidmass as a fraction of that node's own moves.",
+    'voidmass_subprocess_lower': Metric(
+        id='voidmass_subprocess_lower',
+        description='voidmass_deficit_lower / voidmass_movecount at the scored '
+                    "node - voidmass as a fraction of that node's own moves.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
-    'voidmass_process': Metric(
-        id='voidmass_process',
-        description='1 - voidmass_subprocess (alignment_mass_pooled) at the '
-                    'scored node.',
+    'voidmass_subprocess_upper': Metric(
+        id='voidmass_subprocess_upper',
+        description='voidmass_deficit_upper / voidmass_movecount at the scored '
+                    "node - voidmass as a fraction of that node's own moves.",
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
     ),
-    'alignment_coverage_pn': Metric(
-        id='alignment_coverage_pn',
+    'voidmass_process_lower': Metric(
+        id='voidmass_process_lower',
+        description='1 - voidmass_subprocess_lower (alignment_mass_pooled_lower) '
+                    'at the scored node.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_process_upper': Metric(
+        id='voidmass_process_upper',
+        description='1 - voidmass_subprocess_upper (alignment_mass_pooled_upper) '
+                    'at the scored node.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'alignment_coverage_pn_lower': Metric(
+        id='alignment_coverage_pn_lower',
         description="\\covermove (defn:move-coverage), the classical-alignment "
                     "analogue of salign_coverage: (1 - skip_prob) * a per-"
                     "execution match/movecount ratio, averaged uniformly across "
@@ -172,7 +210,22 @@ METRICS = {
                     "by mistake - convenient since that table was already "
                     "built, but not what the definition specifies). Reuses "
                     "skip-alignments' own skip_probs unchanged rather than "
-                    "deriving a separate estimate.",
+                    "deriving a separate estimate. LOWER bound: a variant whose "
+                    "alignment search timed out (no alignments at all - "
+                    "previously silently excluded from the weighted average "
+                    "entirely) is treated as contributing a ratio of 0 (as if "
+                    "it matched nothing), the SMALLER of the two coverage "
+                    "readings.",
+        source='process_voids.voidmass_pn.coverage_by_alignment_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'alignment_coverage_pn_upper': Metric(
+        id='alignment_coverage_pn_upper',
+        description="Same as alignment_coverage_pn_lower, but a timed-out "
+                    "variant is treated as contributing a ratio of 1 (as if it "
+                    "matched perfectly) instead of being excluded - the LARGER "
+                    "of the two coverage readings. Equal to alignment_coverage_"
+                    "pn_lower whenever no variant times out.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
     ),

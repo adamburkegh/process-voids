@@ -549,7 +549,7 @@ def _executions_for(path, pt, cache):
 
 
 def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
-                    convention='zero', executions_cache=None):
+                    convention='zero', executions_cache=None, timed_out_ratio=None):
     '''
     The mass term of Coverage by Alignment Correspondence: the (1-P_skip)
     factor is not applied here (see coverage_by_alignment), so this can
@@ -567,6 +567,17 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     each alignment's path once per node. Omit for a one-off single-node
     call (falls back to executions(), itself a facade doing the
     equivalent single-tree-walk work with no cache to share).
+
+    timed_out_ratio: how to treat a variant present in variant_probs
+    whose alignment search timed out to zero alignments (skip_dict maps
+    it to an empty list, not absent - see voidmass_pn.voidmass_table_pn,
+    which always inserts a key per variant it iterates). Default (None)
+    excludes such a variant from the weighted average entirely, same as
+    a variant genuinely missing from skip_dict. A float treats it as
+    contributing that SYNTHETIC per-variant ratio instead - 1.0 (as if
+    it matched perfectly) gives an upper bound on coverage/lower bound
+    on voidage, 0.0 (as if it matched nothing) gives the reverse bound -
+    see coverage_by_alignment_pn's own docstring for the reasoning.
     '''
     if convention not in ('zero', 'renormalised'):
         raise ValueError("convention must be 'zero' or 'renormalised'")
@@ -575,6 +586,8 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     for variant, weight in variant_probs.items():
         states = skip_dict.get(_variant_key(variant), [])
         if not states:
+            if timed_out_ratio is not None:
+                variant_terms.append((weight, [timed_out_ratio]))
             continue
         alignment_values = []
         for state in states:
@@ -1004,4 +1017,55 @@ def voidsat(pt, tree, dv, log, cache=None):
     '''
     alignments_by_variant = {k: [s.path for s in v] for k, v in dv.skip_dict_backup.items()}
     return voidat(pt, tree, dv.skip_probs[pt], log, alignments_by_variant, cache)
+
+
+'''
+=====================================================================================
+Minimum Activity Count
+
+The paper's aligncost(empty, node): the minimum number of labelled
+activities (Tau excluded) any traversal of node's subtree performs -
+Sequence/And sum every child (all run), Xor takes the cheapest
+(smallest-count) child, Loop counts only its do-child (the redo-child
+can always iterate zero times). A purely structural count, independent
+of any alignment cost configuration (MM_COST/skip_cost) - NOT the same
+as summing leaf.skip_cost, which is scaled by whatever per-leaf model-
+move cost the tree was built with (see voidmass_pn's ceiling fix, which
+needs a real activity count, not a cost-configuration-dependent number).
+
+Used as a conservative ceiling for a variant whose alignment search
+timed out to zero alignments: the model's own minimum executable length
+for a node is computable without any alignment succeeding, and gives an
+upper bound on how much deficit that variant could possibly contribute
+there (see voidmass_pn.voidmass_table_pn).
+'''
+
+
+def min_activity_count(node:ProcessTree):
+    if isinstance(node, Tau):
+        return 0
+    if isinstance(node, Activity):
+        return 1
+    if isinstance(node, Xor):
+        return min(min_activity_count(child) for child in node.children)
+    if isinstance(node, Loop):
+        return min_activity_count(node.children[0])
+    if isinstance(node, (Sequence, And)):
+        return sum(min_activity_count(child) for child in node.children)
+    raise ValueError('Unrecognised process tree node', node)
+
+
+def min_activity_count_by_node(tree:ProcessTree):
+    '''{node: min_activity_count(node)} for every node in tree, computed
+    bottom-up in one pass - used where every node needs its own count,
+    not just the root (voidmass_table_pn's per-node ceiling).'''
+    counts = {}
+
+    def _walk(node):
+        for child in node.children:
+            _walk(child)
+        counts[node] = min_activity_count(node)
+
+    _walk(tree)
+    return counts
 

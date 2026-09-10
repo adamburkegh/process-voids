@@ -85,7 +85,8 @@ class ZeroLevelDedupTest(unittest.TestCase):
                 self.assertEqual(row['status'], 'ok')
                 self.assertEqual(row['weight_coverage'], FAKE_METRICS['weight_coverage'])
                 self.assertEqual(row['salign_coverage'], FAKE_METRICS['salign_coverage'])
-                self.assertEqual(row['voidmass_deficit'], FAKE_CLASSICAL_METRICS['voidmass_deficit'])
+                self.assertEqual(row['voidmass_deficit_lower'],
+                                  FAKE_CLASSICAL_METRICS['voidmass_deficit_lower'])
 
     def test_nonzero_levels_still_computed_per_dim_per_level(self):
         with patch('lab.exp_disco_degrade.compute_metrics',
@@ -134,7 +135,7 @@ class NotImplementedComboTest(unittest.TestCase):
             mock_cm.assert_not_called()
             self.assertTrue((df['status'] == 'not_implemented').all())
             self.assertTrue(df['weight_coverage'].isna().all())
-            self.assertTrue(df['voidmass_deficit'].isna().all())
+            self.assertTrue(df['voidmass_deficit_lower'].isna().all())
 
 
 class ComputeMetricsErrorTest(unittest.TestCase):
@@ -163,7 +164,7 @@ class ComputeMetricsErrorTest(unittest.TestCase):
             self.assertEqual(len(df), 1)
             self.assertIn('RuntimeError: boom', df.iloc[0]['status'])
             self.assertIsNone(df.iloc[0]['weight_coverage'])
-            self.assertIsNone(df.iloc[0]['voidmass_deficit'])
+            self.assertIsNone(df.iloc[0]['voidmass_deficit_lower'])
 
             # Every cell errored, so node_rows never got populated - the
             # written _nodes CSV must still carry a real header (see
@@ -237,8 +238,9 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(unittest.TestCase):
         # swap between calls is directly visible in the number.
         self.dv = FakeDv({self.tree: 0.0, self.a: 0.0, self.b: 1.0})
 
-        fake_vm_row = {'deficit': 0.0, 'movecount': 0.0,
-                       'voidmass_subprocess': 0.0, 'voidmass_process': 0.0}
+        fake_vm_row = {'deficit_lower': 0.0, 'deficit_upper': 0.0, 'movecount': 0.0,
+                       'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 0.0,
+                       'voidmass_process_lower': 0.0, 'voidmass_process_upper': 0.0}
         self.vm_table = {self.tree: dict(fake_vm_row), self.a: dict(fake_vm_row),
                           self.b: dict(fake_vm_row)}
 
@@ -374,12 +376,15 @@ class NodeRowsTest(unittest.TestCase):
 
         self.dv = FakeDv({self.choice: 0.1, self.a: 0.2, self.tau: 0.0})
         self.vm_table = {
-            self.choice: {'deficit': 1.0, 'movecount': 2.0,
-                           'voidmass_subprocess': 0.5, 'voidmass_process': 0.5},
-            self.a: {'deficit': 0.5, 'movecount': 1.0,
-                     'voidmass_subprocess': 0.5, 'voidmass_process': 0.5},
-            self.tau: {'deficit': 0.0, 'movecount': 0.0,
-                       'voidmass_subprocess': 0.0, 'voidmass_process': 1.0},
+            self.choice: {'deficit_lower': 1.0, 'deficit_upper': 1.0, 'movecount': 2.0,
+                           'voidmass_subprocess_lower': 0.5, 'voidmass_subprocess_upper': 0.5,
+                           'voidmass_process_lower': 0.5, 'voidmass_process_upper': 0.5},
+            self.a: {'deficit_lower': 0.5, 'deficit_upper': 0.5, 'movecount': 1.0,
+                     'voidmass_subprocess_lower': 0.5, 'voidmass_subprocess_upper': 0.5,
+                     'voidmass_process_lower': 0.5, 'voidmass_process_upper': 0.5},
+            self.tau: {'deficit_lower': 0.0, 'deficit_upper': 0.0, 'movecount': 0.0,
+                       'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 0.0,
+                       'voidmass_process_lower': 1.0, 'voidmass_process_upper': 1.0},
         }
         # coverage_by_alignment_pn/voidsat are mocked in every test
         # below, so these just need to exist to satisfy _node_rows'
@@ -423,10 +428,12 @@ class NodeRowsTest(unittest.TestCase):
             self.assertIn(key, row)
 
         self.assertEqual(row['skipprob'], 0.2)
-        self.assertEqual(row['voidmass_deficit'], 0.5)
+        self.assertEqual(row['voidmass_deficit_lower'], 0.5)
+        self.assertEqual(row['voidmass_deficit_upper'], 0.5)
         self.assertEqual(row['voidmass_movecount'], 1.0)
         self.assertEqual(row['salign_coverage'], 0.77)
-        self.assertEqual(row['alignment_coverage_pn'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn_lower'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn_upper'], 0.88)
         self.assertEqual(row['voidsat'], 0.33)
         # a's own subtree is just itself, no silent alternative from its
         # own perspective (mandatory_node_count/total_node_count are

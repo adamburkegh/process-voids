@@ -410,3 +410,70 @@ class HeldOutTwoLevelMandatoryChainTest(unittest.TestCase):
                     alignment_mass(node, self.skip_dict, self.variant_probs,
                                     'renormalised'),
                     expected_renorm, places=6)
+
+
+class TimedOutVariantRatioTest(unittest.TestCase):
+    """
+    M: model seq(a,b), two trace variants each weight 0.5: <a,b> aligns
+    normally (perfect fit, ratio 1.0), <a> is a STAND-IN for a variant
+    whose alignment search timed out to zero alignments - skip_dict maps
+    it to an empty list explicitly (not simply absent from skip_dict;
+    voidmass_pn.voidmass_table_pn always inserts a key for every variant
+    it iterates, empty or not - see that module).
+
+    timed_out_ratio, when given, treats such a variant as contributing a
+    SYNTHETIC per-variant ratio (not real matchcount/movecount data) to
+    the SAME weighted-average machinery every other variant uses -
+    1.0 = as if it matched perfectly (deficit=0, the "lower voidage /
+    upper coverage" bound), 0.0 = as if it matched nothing (the "upper
+    voidage / lower coverage" bound). Default (timed_out_ratio=None)
+    preserves today's behaviour: such a variant is excluded from the
+    weighted sum entirely, the same as a variant genuinely absent from
+    skip_dict.
+    """
+
+    def setUp(self):
+        self.a = leaf(Activity, 'a', '1')
+        self.b = leaf(Activity, 'b', '2')
+        self.tree = Sequence(None, [self.a, self.b])
+        self.tree.id = '3'
+        self.a.set_parent(self.tree)
+        self.b.set_parent(self.tree)
+
+        fit_states = align(self.tree, ('a', 'b'))
+        self.skip_dict = {
+            variant_key(('a', 'b')): fit_states,
+            variant_key(('a',)): [],  # timed out - zero alignments, not absent
+        }
+        self.variant_probs = {('a', 'b'): 0.5, ('a',): 0.5}
+
+    def test_default_excludes_the_timed_out_variant_entirely(self):
+        # Only the fitting variant's weight (0.5) counts at all, and its
+        # own ratio is 1.0 - matches today's pre-existing behaviour.
+        self.assertAlmostEqual(
+            alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'zero'),
+            0.5, places=6)
+
+    def test_ratio_one_gives_the_upper_bound(self):
+        # Both variants now contribute their full weight at ratio 1.0.
+        self.assertAlmostEqual(
+            alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'zero',
+                            timed_out_ratio=1.0),
+            1.0, places=6)
+
+    def test_ratio_zero_gives_the_lower_bound(self):
+        # The timed-out variant now contributes its weight at ratio 0.0.
+        self.assertAlmostEqual(
+            alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'zero',
+                            timed_out_ratio=0.0),
+            0.5, places=6)
+
+    def test_renormalised_convention_also_honours_timed_out_ratio(self):
+        self.assertAlmostEqual(
+            alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'renormalised',
+                            timed_out_ratio=0.0),
+            0.5, places=6)
+        self.assertAlmostEqual(
+            alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'renormalised',
+                            timed_out_ratio=1.0),
+            1.0, places=6)

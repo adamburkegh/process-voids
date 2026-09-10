@@ -56,7 +56,7 @@ from skipalignments import Skip, TauPath
 from skipalignments.probabilities import EbiOccurance
 from skipalignments.alignall import align_pn_all
 
-from process_voids.coveragemass import alignment_mass, _variant_key
+from process_voids.coveragemass import alignment_mass, _variant_key, min_activity_count_by_node
 
 logger = logging.getLogger(__name__)
 
@@ -304,20 +304,43 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
     '''
     (table, skip_dict) - table is the classical-alignment analogue of
     coveragemass.voidmass_table: one pass over the tree, {node: {
-    'deficit', 'movecount', 'voidmass_subprocess', 'voidmass_process'}},
-    aggregated (SUMMED, not averaged - see voidmass-brief.md) over every
-    variant and every distinct causal story among that variant's tied
-    optimal alignments (see dedupe_alignments/sum_safe_signature - raw
-    alignment count is NOT used, since align_pn_all's all-optimal search
-    can return the same causal story multiple times under different
-    commuting-move orders).
+    'deficit_lower', 'deficit_upper', 'movecount', 'voidmass_subprocess_
+    lower', 'voidmass_subprocess_upper', 'voidmass_process_lower',
+    'voidmass_process_upper'}}, aggregated (SUMMED, not averaged - see
+    voidmass-brief.md) over every variant and every distinct causal
+    story among that variant's tied optimal alignments (see dedupe_
+    alignments/sum_safe_signature - raw alignment count is NOT used,
+    since align_pn_all's all-optimal search can return the same causal
+    story multiple times under different commuting-move orders).
+
+    lower/upper: align_variant_all can legitimately return ZERO
+    alignments for a variant (a per-variant timeout, not a hang - see
+    the near_timeout logging below) - a real, observed failure mode
+    (labnotes.md finding C), not a hypothetical one. There is no
+    principled single point estimate for such a variant's deficit, so
+    two conservative bounds are reported instead of guessing: LOWER
+    treats it as a perfect fit (deficit 0), UPPER treats it as the
+    worst possible fit (deficit = movecount, every expected move a
+    model move - the metric can only be overstated, never understated).
+    Both bounds use the SAME movecount contribution either way - the
+    model's own minimum executable length for that node (coveragemass.
+    min_activity_count), computable without any alignment succeeding -
+    so only deficit, not movecount, needs two accumulators; the
+    denominator's own meaning doesn't change between bounds, only how
+    void the timed-out variant is assumed to be. A variant that never
+    times out contributes identically to both bounds, so this is the
+    same cost as a single accumulator except for the (hopefully rare)
+    timed-out variants themselves, which need no alignment search at
+    all for their synthetic contribution.
 
     skip_dict is the SAME deduped alignments, translated (via
     _to_alignment_mass_path) into coveragemass.alignment_mass's expected
     input shape - built in the same pass so the expensive
     align_variant_all call is only ever made once per variant, not once
     for the pooled sums here and again for coverage_by_alignment_pn's
-    (correctly non-pooled - see defn:move-coverage) mass term.
+    (correctly non-pooled - see defn:move-coverage) mass term. A timed-
+    out variant still gets an entry (an empty list, not simply absent)
+    so alignment_mass's own timed_out_ratio handling can recognise it.
 
     Weighting choice, named explicitly rather than left implicit:
     UNIFORM OVER DISTINCT CAUSAL SIGNATURES - a variant's probability is
@@ -331,19 +354,23 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
     more than uniform-over-signatures does). Revisit if that gap turns
     out to matter empirically.
     '''
-    deficit_sum = {}
+    deficit_sum_lower = {}
+    deficit_sum_upper = {}
     movecount_sum = {}
     skip_dict = {}
 
-    def _add(node, d, m, share):
-        deficit_sum[node] = deficit_sum.get(node, 0.0) + share * d
+    def _add(node, d_lower, d_upper, m, share):
+        deficit_sum_lower[node] = deficit_sum_lower.get(node, 0.0) + share * d_lower
+        deficit_sum_upper[node] = deficit_sum_upper.get(node, 0.0) + share * d_upper
         movecount_sum[node] = movecount_sum.get(node, 0.0) + share * m
 
     id_to_activity = {v: k for k, v in activity_to_id.items()}
     nodes_by_name = _leaf_nodes_by_name(tree)
+    activity_counts = min_activity_count_by_node(tree)
     n_variants = len(variant_probs)
     total_started = time.monotonic()
     n_near_timeout = 0
+    n_timed_out = 0
     for i, (variant, weight) in enumerate(variant_probs.items(), start=1):
         started = time.monotonic()
         raw_alignments = align_variant_all(list(variant), net, im, fm, activity_to_id,
@@ -363,41 +390,55 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
             'alignments%s', i, n_variants, len(variant), weight, elapsed,
             len(raw_alignments), len(alignments),
             ' [near timeout - possible id_loop_list gap]' if near_timeout else '')
-        share = weight / len(alignments)
-        for alignment in alignments:
-            for node, (d, m) in terms_by_node(alignment, tree, activity_to_id, tau_id_set).items():
-                _add(node, d, m, share)
+        if not alignments:
+            n_timed_out += 1
+            logger.warning('variant %d/%d: 0 alignments (timed out) - contributing the '
+                            'conservative lower/upper deficit bound instead of crashing',
+                            i, n_variants)
+            for node, count in activity_counts.items():
+                _add(node, 0.0, count, count, weight)
+        else:
+            share = weight / len(alignments)
+            for alignment in alignments:
+                for node, (d, m) in terms_by_node(alignment, tree, activity_to_id, tau_id_set).items():
+                    _add(node, d, d, m, share)
         skip_dict[_variant_key(variant)] = [
             SimpleNamespace(path=_to_alignment_mass_path(alignment, id_to_activity,
                                                            nodes_by_name, tau_id_set))
             for alignment in alignments
         ]
 
-    logger.info('voidmass_table_pn: %d variants in %.1fs (%d near-timeout)',
-                n_variants, time.monotonic() - total_started, n_near_timeout)
+    logger.info('voidmass_table_pn: %d variants in %.1fs (%d near-timeout, %d timed out)',
+                n_variants, time.monotonic() - total_started, n_near_timeout, n_timed_out)
 
     root_movecount = movecount_sum.get(tree, 0.0)
     table = {}
 
     def _walk(node):
-        d = deficit_sum.get(node, 0.0)
+        d_lower = deficit_sum_lower.get(node, 0.0)
+        d_upper = deficit_sum_upper.get(node, 0.0)
         m = movecount_sum.get(node, 0.0)
-        v1 = d / m if m else 0.0
+        v1_lower = d_lower / m if m else 0.0
+        v1_upper = d_upper / m if m else 0.0
         table[node] = {
-            'deficit': d,
+            'deficit_lower': d_lower,
+            'deficit_upper': d_upper,
             'movecount': m,
-            'voidmass_subprocess': v1,
-            'voidmass_process': d / root_movecount if root_movecount else 0.0,
+            'voidmass_subprocess_lower': v1_lower,
+            'voidmass_subprocess_upper': v1_upper,
+            'voidmass_process_lower': d_lower / root_movecount if root_movecount else 0.0,
+            'voidmass_process_upper': d_upper / root_movecount if root_movecount else 0.0,
             # pooled match ratio (matchcount/movecount summed across every
             # variant/execution, not averaged per-execution the way
             # coveragemass.alignment_mass does) - matchcount = movecount -
-            # deficit, so this is exactly 1 - voidmass_subprocess. Attribution
-            # of moves to this node is still via terms_by_node's leaf-label
-            # membership (classical alignments have no lumping to
-            # disambiguate, unlike skip-alignments' executions(), so plain
-            # leaf-set membership is sufficient - no _mandatorily_implies-
-            # style inference needed here).
-            'alignment_mass_pooled': 1 - v1,
+            # deficit, so this is exactly 1 - voidmass_subprocess_*.
+            # Attribution of moves to this node is still via terms_by_
+            # node's leaf-label membership (classical alignments have no
+            # lumping to disambiguate, unlike skip-alignments'
+            # executions(), so plain leaf-set membership is sufficient -
+            # no _mandatorily_implies-style inference needed here).
+            'alignment_mass_pooled_lower': 1 - v1_lower,
+            'alignment_mass_pooled_upper': 1 - v1_upper,
         }
         for child in node.children:
             _walk(child)
@@ -407,7 +448,7 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
 
 
 def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, convention='zero',
-                              executions_cache=None):
+                              executions_cache=None, timed_out_ratio=None):
     '''
     \\covermove (defn:move-coverage), computed on classical (non-lumped)
     alignments: (1 - skip_prob) * alignment_mass(node, skip_dict,
@@ -442,6 +483,17 @@ def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, conventi
     every node's call in a per-node report row (see
     lab.exp_disco_degrade._node_rows) to avoid re-walking each
     alignment's path once per node.
+
+    timed_out_ratio: passed straight through to alignment_mass - a
+    variant whose align_variant_all search timed out to zero
+    alignments (present in skip_dict as an empty list, not absent -
+    see voidmass_table_pn) is excluded entirely by default (None), or
+    treated as contributing this synthetic per-variant ratio instead.
+    See lab.exp_disco_degrade's _lower/_upper wiring for why this
+    exists: align_variant_all returning nothing is a real, latent
+    failure mode on any log with one slow-enough variant, previously an
+    unhandled ZeroDivisionError in voidmass_table_pn's own pooled sums
+    (labnotes.md finding C) rather than a defined result here.
     '''
     return (1 - skip_prob) * alignment_mass(node, skip_dict, variant_probs, convention,
-                                             executions_cache)
+                                             executions_cache, timed_out_ratio)

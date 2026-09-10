@@ -120,9 +120,23 @@ def _variant_probs(log):
     return {v: c / n_cases for v, c in variants.items()}
 
 
-CLASSICAL_METRIC_KEYS = ('voidmass_deficit', 'voidmass_movecount',
-                          'voidmass_subprocess', 'voidmass_process',
-                          'alignment_coverage_pn')
+# _lower/_upper: align_variant_all can legitimately return zero
+# alignments for a variant (a per-variant timeout - labnotes.md finding
+# C, previously an unhandled ZeroDivisionError in voidmass_table_pn).
+# There's no principled single point estimate for such a variant's
+# contribution, so two conservative bounds are reported instead of
+# guessing - LOWER assumes it fit perfectly, UPPER assumes it fit as
+# badly as possible (see voidmass_table_pn/coveragemass.alignment_mass's
+# own docstrings for the reasoning). voidmass_movecount is NOT split -
+# both bounds use the model's own minimum executable length for a
+# timed-out variant's movecount contribution either way (only how void
+# it's assumed to be differs, not how big); it's well-defined and
+# crash-free on its own now.
+CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
+                          'voidmass_movecount',
+                          'voidmass_subprocess_lower', 'voidmass_subprocess_upper',
+                          'voidmass_process_lower', 'voidmass_process_upper',
+                          'alignment_coverage_pn_lower', 'alignment_coverage_pn_upper')
 
 # weight_coverage/weight_voidage/skipprob/salign_coverage are the SAME
 # quantities (same functions/lookups, same registry entries) as
@@ -181,11 +195,17 @@ def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_
                                              tau_ids, id_loop_list=id_loop_list, timeout=timeout)
     root_row = vm_table[tree]
     values = (
-        root_row['deficit'],
+        root_row['deficit_lower'],
+        root_row['deficit_upper'],
         root_row['movecount'],
-        root_row['voidmass_subprocess'],
-        root_row['voidmass_process'],
-        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs),
+        root_row['voidmass_subprocess_lower'],
+        root_row['voidmass_subprocess_upper'],
+        root_row['voidmass_process_lower'],
+        root_row['voidmass_process_upper'],
+        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs,
+                                  timed_out_ratio=0.0),
+        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs,
+                                  timed_out_ratio=1.0),
     )
     return dict(zip(CLASSICAL_METRIC_KEYS, values)), vm_table, variant_probs, skip_dict
 
@@ -218,12 +238,17 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, sk
             coverage_by_alignment(node, dv, executions_cache=executions_cache),
         )
         classical_values = (
-            classical_row['deficit'],
+            classical_row['deficit_lower'],
+            classical_row['deficit_upper'],
             classical_row['movecount'],
-            classical_row['voidmass_subprocess'],
-            classical_row['voidmass_process'],
+            classical_row['voidmass_subprocess_lower'],
+            classical_row['voidmass_subprocess_upper'],
+            classical_row['voidmass_process_lower'],
+            classical_row['voidmass_process_upper'],
             coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
-                                      executions_cache=executions_cache),
+                                      executions_cache=executions_cache, timed_out_ratio=0.0),
+            coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
+                                      executions_cache=executions_cache, timed_out_ratio=1.0),
         )
         aligned_duration_values = (
             voidsat(node, tree, dv, log, cache=aligned_duration_cache),
