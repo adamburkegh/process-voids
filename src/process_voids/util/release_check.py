@@ -158,9 +158,9 @@ def _next_steps() -> str:
         "All checks passed. Remaining steps are yours to run:",
         "",
         "  git add -A",
-        "  git commit -m \"Release v" + version + "\"",
-        f"  git tag v{version}",
-        "  git push && git push --tags",
+        f'  git commit -m "Release v{version}"',
+        "  git push",
+        f"  then create release v{version} on GitHub (tag v{version}, target main)",
     ])
 
 
