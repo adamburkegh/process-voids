@@ -10,14 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pm4py>=2.7,<=2.8",
     "rustxes>=0.2.10",
-    # Pinned to skip-alignments' first PyPI release to include the
-    # tau_ids/id_loop_list API and the O(depth^2)->O(depth) __search /
-    # State.unfold() fixes this project's own metrics depend on for
-    # correctness and performance (see session notes) - confirmed
-    # present in the v0.2.2 tag before pinning. Bump deliberately, not
-    # by tracking skip-alignments' dev HEAD via an editable local path -
-    # that was only ever a bridge while skip-alignments had no release
-    # containing what process-voids needed.
+    # Pinned to specific skip-alignments release due to strong dependency
     "skipalignments==0.2.2",
     "pm4py_config>=0.1.0,<=0.9",
     "matplotlib",
