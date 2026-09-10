@@ -161,11 +161,18 @@ METRICS = {
     ),
     'alignment_coverage_pn': Metric(
         id='alignment_coverage_pn',
-        description='(1 - skip_prob) * voidmass_process at the scored node - '
-                    'the classical-alignment analogue of salign_coverage '
-                    "(paper's \\covermove), reusing skip-alignments' own "
-                    'skip_probs unchanged rather than deriving a separate '
-                    'estimate.',
+        description="\\covermove (defn:move-coverage), the classical-alignment "
+                    "analogue of salign_coverage: (1 - skip_prob) * a per-"
+                    "execution match/movecount ratio, averaged uniformly across "
+                    "executions within an alignment and across an alignment's "
+                    "tied alternatives, then across a variant's own weight - "
+                    "verified term-by-term against the formal definition, not "
+                    "pooled (see voidmass_process/voidmass_subprocess for the "
+                    "pooled quantities, which this id used to be computed from "
+                    "by mistake - convenient since that table was already "
+                    "built, but not what the definition specifies). Reuses "
+                    "skip-alignments' own skip_probs unchanged rather than "
+                    "deriving a separate estimate.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
     ),

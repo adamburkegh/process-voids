@@ -50,7 +50,7 @@ class ZeroLevelDedupTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             run_disco_degrade(['fake_log.xes'], combos=self.combos,
@@ -65,7 +65,7 @@ class ZeroLevelDedupTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df, node_df = run_disco_degrade(['fake_log.xes'], combos=self.combos,
@@ -85,7 +85,7 @@ class ZeroLevelDedupTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df, node_df = run_disco_degrade(['fake_log.xes'], combos=self.combos,
@@ -113,7 +113,7 @@ class NotImplementedComboTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df, node_df = run_disco_degrade(['fake_log.xes'], combos=combos,
@@ -140,7 +140,7 @@ class ComputeMetricsErrorTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df, node_df = run_disco_degrade(['fake_log.xes'], combos=combos,
@@ -165,7 +165,7 @@ class ComputeMetricsErrorTest(unittest.TestCase):
              patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
              patch('lab.exp_disco_degrade._classical_metrics',
-                   return_value=(dict(FAKE_CLASSICAL_METRICS), {})), \
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
              patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
              patch('lab.exp_disco_degrade.total_node_count', return_value=1):
             df, node_df = run_disco_degrade(['fake_log.xes'], combos=combos,
@@ -220,17 +220,24 @@ class NodeRowsTest(unittest.TestCase):
             self.tau: {'deficit': 0.0, 'movecount': 0.0,
                        'voidmass_subprocess': 0.0, 'voidmass_process': 1.0},
         }
+        # coverage_by_alignment_pn is mocked in every test below, so
+        # these two just need to exist to satisfy _node_rows' signature -
+        # their actual contents are never read.
+        self.variant_probs = {}
+        self.skip_dict = {}
 
     def test_one_row_per_vm_table_node(self):
         with patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.77), \
              patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.88):
-            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table)
+            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table,
+                               self.variant_probs, self.skip_dict)
         self.assertEqual({r['node_id'] for r in rows}, {'1', '2', '3'})
 
     def test_row_carries_cell_identity_and_node_identity(self):
         with patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.77), \
              patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.88):
-            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table)
+            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table,
+                               self.variant_probs, self.skip_dict)
         row = next(r for r in rows if r['node_id'] == '1')
         self.assertEqual(row['log'], 'mylog')
         self.assertEqual(row['combo'], 'mycombo')
@@ -242,7 +249,8 @@ class NodeRowsTest(unittest.TestCase):
     def test_row_has_every_metric_column_with_correct_values(self):
         with patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.77), \
              patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.88):
-            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table)
+            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table,
+                               self.variant_probs, self.skip_dict)
         row = next(r for r in rows if r['node_id'] == '1')
 
         for key in PER_NODE_METRIC_KEYS + CLASSICAL_METRIC_KEYS + TREE_METRIC_KEYS:
@@ -261,7 +269,8 @@ class NodeRowsTest(unittest.TestCase):
     def test_tau_node_gets_a_row_too(self):
         with patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.0), \
              patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.0):
-            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table)
+            rows = _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table,
+                               self.variant_probs, self.skip_dict)
         tau_row = next(r for r in rows if r['node_id'] == '2')
         self.assertEqual(tau_row['node_type'], 'Tau')
         # Tau is excluded from mandatory/total counts by definition.

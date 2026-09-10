@@ -14,7 +14,7 @@ file is not meant to survive as-is.
 
 import unittest
 
-from skipalignments.processtree import Sequence, Activity, Xor, Tau
+from skipalignments.processtree import Sequence, Activity, Xor, Tau, Loop
 
 from lab.fixtures import build_running_example_tree
 from process_voids.voidmass_pn import (
@@ -192,8 +192,8 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
             ('o', 'a', 'p'): 1 / 6,
         }
         self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = build_id_net(self.tree)
-        self.table = voidmass_table_pn(self.tree, self.variant_probs, self.net, self.im,
-                                        self.fm, self.activity_to_id, self.tau_ids, timeout=30)
+        self.table, self.skip_dict = voidmass_table_pn(self.tree, self.variant_probs, self.net, self.im,
+                                                         self.fm, self.activity_to_id, self.tau_ids, timeout=30)
 
     def test_matches_skip_alignments_reference_table(self):
         cases = [
@@ -252,8 +252,8 @@ class TiedAlignmentDoubleCountingTest(unittest.TestCase):
 
     def test_deficit_is_symmetric_between_a_and_b_after_dedup(self):
         variant_probs = {('b', 'a'): 1.0}
-        table = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
-                                   self.activity_to_id, self.tau_ids, timeout=30)
+        table, _skip_dict = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids, timeout=30)
         # Three equally-valid causal stories (skip / blame-a / blame-b) -
         # uniform-over-signatures weighting gives 'a' and 'b' the same
         # deficit share (1/3 each), not whatever ratio the raw,
@@ -264,13 +264,15 @@ class TiedAlignmentDoubleCountingTest(unittest.TestCase):
 
 class PooledAlignmentMassTest(unittest.TestCase):
     '''
-    alignment_mass_pooled/coverage_by_alignment_pn: the classical-
-    alignment replacement for coveragemass.alignment_mass/
-    coverage_by_alignment, using POOLED matchcount/movecount (summed
-    across every variant, not averaged per-execution) and reusing
-    skip-alignments' own skip_prob unchanged for the outer factor - see
-    session notes on why per-execution averaging and a new skip_prob
-    definition both turned out to be unnecessary.
+    alignment_mass_pooled/voidmass_process: POOLED matchcount/movecount
+    (summed across every variant/execution, not averaged per-execution)
+    - the divisor voidmass_process/voidmass_subprocess need, and still a
+    legitimate quantity in its own right. NOT what coverage_by_alignment_pn
+    uses any more - see NonPooledAlignmentCoverageTest below and
+    coverage_by_alignment_pn's own docstring for why an earlier version
+    of that function used this pooled quantity and that was wrong:
+    \\covermove's formal definition (defn:move-coverage) averages
+    per-execution, it doesn't pool.
     '''
 
     def setUp(self):
@@ -295,16 +297,16 @@ class PooledAlignmentMassTest(unittest.TestCase):
 
     def test_full_conformance_gives_pooled_mass_one(self):
         variant_probs = {('s1', 's2', 'l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'w'): 1.0}
-        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                   self.activity_to_id, self.tau_ids)
+        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids)
         for node in (self.root, self.small_tree, self.large_tree):
             with self.subTest(node=node):
                 self.assertAlmostEqual(table[node]['alignment_mass_pooled'], 1.0, places=6)
 
     def test_total_ablation_gives_pooled_mass_zero(self):
         variant_probs = {('w',): 1.0}
-        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                   self.activity_to_id, self.tau_ids)
+        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids)
         for node in (self.small_tree, self.large_tree):
             with self.subTest(node=node):
                 self.assertAlmostEqual(table[node]['alignment_mass_pooled'], 0.0, places=6)
@@ -312,8 +314,8 @@ class PooledAlignmentMassTest(unittest.TestCase):
     def test_partial_ablation_matches_expected_ratio(self):
         # 1 of 2 small activities observed, 4 of 8 large - 50% either way
         variant_probs = {('s1', 'l0', 'l1', 'l2', 'l3', 'w'): 1.0}
-        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                   self.activity_to_id, self.tau_ids)
+        table, _skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids)
         # not asserting an exact value here (that's SizeSensitivityTest's
         # job on the skip-alignments path) - just that pooling behaves
         # sanely: strictly between 0 and 1, matching neither extreme.
@@ -323,19 +325,105 @@ class PooledAlignmentMassTest(unittest.TestCase):
                 self.assertGreater(mass, 0.0)
                 self.assertLess(mass, 1.0)
 
-    def test_coverage_by_alignment_pn_combines_skip_prob_and_pooled_mass(self):
+
+class NonPooledAlignmentCoverageTest(unittest.TestCase):
+    '''
+    coverage_by_alignment_pn (\\covermove, defn:move-coverage): per-
+    execution match/movecount ratios averaged - NOT pooled - verified
+    term-by-term against the formal definition (session notes). Uses
+    coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs)
+    - skip_dict is voidmass_table_pn's second return value.
+    '''
+
+    def setUp(self):
+        small_labels = ['s1', 's2']
+        large_labels = [f'l{i}' for i in range(8)]
+        witness = Activity(None, 'w', 100000)
+        witness.id = 'leaf_w'
+
+        small_tree, _ = _sequence_of(small_labels)
+        large_tree, _ = _sequence_of(large_labels)
+
+        root = Sequence(None, [small_tree, large_tree, witness])
+        root.id = 'root'
+        small_tree.set_parent(root)
+        large_tree.set_parent(root)
+        witness.set_parent(root)
+
+        self.root = root
+        self.small_tree = small_tree
+        self.large_tree = large_tree
+        self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = build_id_net(root)
+
+    def test_total_ablation_gives_zero_coverage_regardless_of_skip_prob(self):
         variant_probs = {('w',): 1.0}
-        table = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
-                                   self.activity_to_id, self.tau_ids)
-        # small_tree is totally missing (pooled mass 0) - coverage must
-        # be 0 regardless of skip_prob, since 0 * anything = 0
+        _table, skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids)
         self.assertAlmostEqual(
-            coverage_by_alignment_pn(self.small_tree, skip_prob=0.3, table=table), 0.0)
-        # witness 'w' fully conforms (pooled mass 1) - coverage reduces
-        # to exactly (1 - skip_prob)
+            coverage_by_alignment_pn(self.small_tree, 0.3, skip_dict, variant_probs), 0.0)
+
+    def test_full_conformance_reduces_to_one_minus_skip_prob(self):
+        variant_probs = {('s1', 's2', 'l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'w'): 1.0}
+        _table, skip_dict = voidmass_table_pn(self.root, variant_probs, self.net, self.im, self.fm,
+                                               self.activity_to_id, self.tau_ids)
         self.assertAlmostEqual(
-            coverage_by_alignment_pn(self.root, skip_prob=0.0, table=table),
-            table[self.root]['alignment_mass_pooled'])
+            coverage_by_alignment_pn(self.root, 0.0, skip_dict, variant_probs), 1.0)
+
+
+class PooledVsNonPooledDivergenceTest(unittest.TestCase):
+    '''
+    Proves the fix has a real effect, not just a refactor: a case with
+    two executions of DIFFERENT size (one loop iteration vs three) and a
+    deficit only in the smaller one, where pooling (sum counts, divide
+    once) and per-execution averaging (average ratios, equal weight per
+    execution) give different, hand-derived numbers.
+
+    Tree: Sequence(a, Loop(x, y)) - do=x, redo=y.
+      Variant A (weight 0.5): 'x' only - a MISSING (deficit 1), one loop
+        iteration, x matched. movecount=2 (a,x), matchcount=1 (x),
+        ratio=0.5.
+      Variant B (weight 0.5): 'a','x','y','x' - fully conforming, two
+        loop iterations. movecount=4, matchcount=4, ratio=1.0.
+
+    Per-execution average (what coverage_by_alignment_pn now computes):
+      0.5*0.5 + 0.5*1.0 = 0.75
+    Pooled (what it used to compute, still alignment_mass_pooled):
+      deficit_sum = 0.5*1 + 0.5*0 = 0.5
+      movecount_sum = 0.5*2 + 0.5*4 = 3.0
+      1 - 0.5/3.0 = 5/6 (~0.8333)
+    0.75 != 5/6 - the two are genuinely different quantities.
+    '''
+
+    def setUp(self):
+        a = Activity(None, 'a', 100000)
+        a.id = 'a'
+        x = Activity(None, 'x', 100000)
+        x.id = 'x'
+        y = Activity(None, 'y', 100000)
+        y.id = 'y'
+        loop = Loop(None, [x, y])
+        loop.id = 'loop'
+        x.set_parent(loop)
+        y.set_parent(loop)
+        self.tree = Sequence(None, [a, loop])
+        self.tree.id = 'root'
+        a.set_parent(self.tree)
+        loop.set_parent(self.tree)
+
+        self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = \
+            build_id_net(self.tree)
+
+    def test_pooled_and_non_pooled_diverge_as_hand_derived(self):
+        variant_probs = {('x',): 0.5, ('a', 'x', 'y', 'x'): 0.5}
+        table, skip_dict = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
+                                              self.activity_to_id, self.tau_ids, timeout=30)
+
+        pooled = table[self.tree]['alignment_mass_pooled']
+        non_pooled = coverage_by_alignment_pn(self.tree, 0.0, skip_dict, variant_probs)
+
+        self.assertAlmostEqual(pooled, 5 / 6, places=6)
+        self.assertAlmostEqual(non_pooled, 0.75, places=6)
+        self.assertNotAlmostEqual(pooled, non_pooled, places=3)
 
 
 if __name__ == '__main__':

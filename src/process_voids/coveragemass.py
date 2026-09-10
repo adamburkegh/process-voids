@@ -351,30 +351,71 @@ def _mandatorily_implies(ancestor_node:ProcessTree, pt:ProcessTree):
     return True
 
 
-def executions(path, pt:ProcessTree):
-    '''
-    Partitions a skip-alignment path (a list of (log_elem, model_elem)
-    pairs) into the executions of submodel pt, per Definition
-    [Executions]. Each execution is itself a list of (log_elem,
-    model_elem) pairs, restricted to pt's subtree.
+def _root_of(pt:ProcessTree):
+    node = pt
+    while node.parent is not None:
+        node = node.parent
+    return node
 
-    A skip-alignment normal form lumps an entirely-unwitnessed subtree
-    into one Skip/TauPath on its coarsest ancestor, rather than naming
-    every descendant leaf. Where pt sits only on mandatory positions
-    beneath such a lump (see _mandatorily_implies), that lump is also
-    pt's own execution - pt inherits the ancestor's fate rather than
-    being reported as vacuous/never-reached.
+
+def _ancestor_chains(tree:ProcessTree):
     '''
-    relevant = []
-    for i, (log_elem, model_elem) in enumerate(path):
-        node, kind = _classify_move(model_elem)
-        if node is None:
-            continue
-        if pt.contains_tree(node):
-            relevant.append((i, log_elem, model_elem))
-        elif (kind in ('skip', 'tau') and node.contains_tree(pt)
-                and _mandatorily_implies(node, pt)):
-            relevant.append((i, log_elem, model_elem))
+    {node: [ancestor-or-self, ...]} for every node in tree - the set a
+    move classified at `node` is relevant to under executions()'s first
+    (pt.contains_tree(node)) branch, for every pt at once. Built
+    top-down in one pass (each node's chain = its parent's chain plus
+    itself), so this is O(n) total rather than one upward walk per
+    node.
+    '''
+    chains = {}
+
+    def _walk(node, parent_chain):
+        chain = parent_chain + [node]
+        chains[node] = chain
+        for child in node.children:
+            _walk(child, chain)
+
+    _walk(tree, [])
+    return chains
+
+
+def _implied_descendant_sets(tree:ProcessTree):
+    '''
+    {node: {node itself, plus every descendant it mandatorily implies}}
+    for every node in tree - the forward/downward direction of
+    _mandatorily_implies, precomputed once per tree rather than
+    re-walked (upward, from pt to a candidate ancestor) per move per
+    queried node. Purely structural - does not depend on any alignment
+    - so this only needs recomputing when the tree itself changes.
+    '''
+    implied = {}
+
+    def _walk(node):
+        result = {node}
+        if isinstance(node, Xor):
+            for child in node.children:
+                _walk(child)
+        else:
+            for idx, child in enumerate(node.children):
+                if isinstance(node, Loop) and idx == 1:
+                    _walk(child)
+                    continue
+                result |= _walk(child)
+        implied[node] = result
+        return result
+
+    _walk(tree)
+    return implied
+
+
+def _group_executions(relevant, pt:ProcessTree):
+    '''
+    Groups an already-filtered, path-order list of (i, log_elem,
+    model_elem) triples into pt's executions, per Definition
+    [Executions]: one execution for the whole list if pt is a Loop
+    (all iterations count as one execution), otherwise one execution
+    per maximal run of consecutive original path positions.
+    '''
     if not relevant:
         return []
     if isinstance(pt, Loop):
@@ -392,6 +433,73 @@ def executions(path, pt:ProcessTree):
             for group in groups]
 
 
+def executions_by_node(path, tree:ProcessTree, ancestor_chains=None, implied_sets=None):
+    '''
+    {node: executions(path, node)} for EVERY node in tree, from one
+    pass over `path` - batches what calling executions(path, node) once
+    per node would otherwise redo (re-walking the same path from
+    scratch each time). Pass precomputed ancestor_chains/implied_sets
+    (this function's own _ancestor_chains/_implied_descendant_sets
+    outputs) when calling repeatedly against the same tree, to also
+    skip re-deriving those structural, alignment-independent maps - see
+    make_executions_cache/alignment_mass.
+
+    executions() (below) is a thin facade over this for the single-node
+    case the existing test suite and simpler callers use; this is the
+    real implementation both share, not a second maintained copy of the
+    partitioning logic.
+    '''
+    if ancestor_chains is None:
+        ancestor_chains = _ancestor_chains(tree)
+    if implied_sets is None:
+        implied_sets = _implied_descendant_sets(tree)
+
+    relevant_by_node = {}
+    for i, (log_elem, model_elem) in enumerate(path):
+        node, kind = _classify_move(model_elem)
+        if node is None:
+            continue
+        for pt in ancestor_chains[node]:
+            relevant_by_node.setdefault(pt, []).append((i, log_elem, model_elem))
+        if kind in ('skip', 'tau'):
+            for pt in implied_sets[node]:
+                if pt is node:
+                    continue
+                relevant_by_node.setdefault(pt, []).append((i, log_elem, model_elem))
+
+    result = {pt: _group_executions(relevant, pt)
+              for pt, relevant in relevant_by_node.items()}
+    for pt in ancestor_chains:
+        result.setdefault(pt, [])
+    return result
+
+
+def executions(path, pt:ProcessTree):
+    '''
+    Partitions a skip-alignment path (a list of (log_elem, model_elem)
+    pairs) into the executions of submodel pt, per Definition
+    [Executions]. Each execution is itself a list of (log_elem,
+    model_elem) pairs, restricted to pt's subtree.
+
+    A skip-alignment normal form lumps an entirely-unwitnessed subtree
+    into one Skip/TauPath on its coarsest ancestor, rather than naming
+    every descendant leaf. Where pt sits only on mandatory positions
+    beneath such a lump (see _mandatorily_implies), that lump is also
+    pt's own execution - pt inherits the ancestor's fate rather than
+    being reported as vacuous/never-reached.
+
+    A facade over executions_by_node - computes every node's executions
+    from one pass over `path` and returns just pt's, rather than
+    walking `path` again for a single node. Fine for this function's
+    own callers (tests, one-off lookups); a caller that needs many
+    nodes' executions over the same path (alignment_mass, once per tree
+    node in a report row) should call executions_by_node directly with
+    a shared cache instead - see make_executions_cache.
+    '''
+    tree = _root_of(pt)
+    return executions_by_node(path, tree).get(pt, [])
+
+
 def matchcount(execution):
     return sum(1 for log_elem, model_elem in execution
                if _classify_move(model_elem)[1] == 'sync' and log_elem != '>>')
@@ -406,8 +514,40 @@ def _variant_key(variant):
     return ', '.join(variant)
 
 
+def make_executions_cache(tree:ProcessTree):
+    '''
+    Structural maps for `tree` (ancestor_chains, implied_sets) plus a
+    per-path memo, shared across many alignment_mass calls against
+    different nodes of the SAME tree/skip_dict (see
+    lab.exp_disco_degrade._node_rows, which calls alignment_mass once
+    per node via coverage_by_alignment/coverage_by_alignment_pn) - pass
+    the SAME cache object to every one of those calls so both the
+    structural maps and each alignment's batched executions_by_node
+    result are computed once per report row, not once per node. Safe to
+    share between coverage_by_alignment's skip-alignment paths and
+    coverage_by_alignment_pn's classical-alignment paths at once (both
+    score the same tree) - the per-path memo is keyed by path object
+    identity, so entries from either source just coexist.
+    '''
+    return {
+        'tree': tree,
+        'ancestor_chains': _ancestor_chains(tree),
+        'implied_sets': _implied_descendant_sets(tree),
+        'by_path': {},
+    }
+
+
+def _executions_for(path, pt, cache):
+    by_node = cache['by_path'].get(id(path))
+    if by_node is None:
+        by_node = executions_by_node(path, cache['tree'], cache['ancestor_chains'],
+                                      cache['implied_sets'])
+        cache['by_path'][id(path)] = by_node
+    return by_node.get(pt, [])
+
+
 def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
-                    convention='zero'):
+                    convention='zero', executions_cache=None):
     '''
     The mass term of Coverage by Alignment Correspondence: the (1-P_skip)
     factor is not applied here (see coverage_by_alignment), so this can
@@ -417,6 +557,14 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     compute_skip_alignments), variant_probs is a variant tuple -> weight.
 
     convention: 'zero' or 'renormalised', see module docstring above.
+
+    executions_cache: optional, from make_executions_cache(tree) where
+    tree is pt's tree - when a caller is going to call alignment_mass
+    for many nodes of the same tree over the same skip_dict (the usual
+    per-node report-row case), passing a shared cache avoids re-walking
+    each alignment's path once per node. Omit for a one-off single-node
+    call (falls back to executions(), itself a facade doing the
+    equivalent single-tree-walk work with no cache to share).
     '''
     if convention not in ('zero', 'renormalised'):
         raise ValueError("convention must be 'zero' or 'renormalised'")
@@ -428,7 +576,10 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
             continue
         alignment_values = []
         for state in states:
-            execs = [e for e in executions(state.path, pt) if movecount(e) > 0]
+            execs_all = (_executions_for(state.path, pt, executions_cache)
+                         if executions_cache is not None
+                         else executions(state.path, pt))
+            execs = [e for e in execs_all if movecount(e) > 0]
             if not execs:
                 alignment_values.append(None)
                 continue
@@ -459,15 +610,15 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     return weighted_sum / weight_total
 
 
-def coverage_by_alignment(pt:ProcessTree, dv, convention='zero'):
+def coverage_by_alignment(pt:ProcessTree, dv, convention='zero', executions_cache=None):
     '''
     Coverage by Alignment Correspondence: (1 - P_skip(pt)) * alignment_mass(...).
     dv is a computed DerivationPipeline (dv.pl for variant weights,
     dv.skip_dict_backup for the per-variant skip-alignments, dv.skip_probs
     for P_skip) - the full, ebi-backed pipeline. See alignment_mass for
-    the ebi-free mass computation this wraps.
+    the ebi-free mass computation this wraps, and for executions_cache.
     '''
-    mass = alignment_mass(pt, dv.skip_dict_backup, dv.pl, convention)
+    mass = alignment_mass(pt, dv.skip_dict_backup, dv.pl, convention, executions_cache)
     return (1 - dv.skip_probs[pt]) * mass
 
 

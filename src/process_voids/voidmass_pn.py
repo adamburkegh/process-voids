@@ -13,24 +13,23 @@ alignments have no Skip(subtree) construct at all: every missing leaf
 is necessarily its own model-move, so no lumping can occur.
 
 This module is a prototype (see tests/process_voids/test_voidmass_pn_prototype.py).
-It has NOT been through the same design scrutiny as coveragemass.py -
-in particular it does not implement the Definition [Executions] grouping
-(loop iterations collapsing into one traversal). That omission is narrower
-than it looks: Bär et al.'s conditions (2)/(3) exist to keep one
+voidmass_deficit/subprocess/process (terms_by_node, below) don't need
+the Definition [Executions] grouping (loop iterations collapsing into
+one traversal) - Bär et al.'s conditions (2)/(3) exist to keep one
 traversal's moves separate from another's, which only matters when you
-AVERAGE per traversal - which alignment_mass does and voidmass doesn't.
-Summing over the whole alignment gives the same total regardless of how
-moves are partitioned into traversals, since it's the same set of moves
-either way - so traversal-separation is genuinely unnecessary for a pure
-sum. It is NOT a licence to drop move-to-subprocess attribution, though:
-voidmass_process's own divisor (root movecount) and voidmass_subprocess's
-divisor (the node's own movecount) both still need to know which moves
-belong to which subprocess - terms_by_node below provides that via leaf-
-label membership (a purely structural check, no traversal concept
-needed), which is sufficient for that narrower job. A future coverage_by_
-alignment-style, duration-weighted metric on this classical-alignment
-path WOULD need the full executions() machinery back, since \\covat
-weights by duration per traversal, not just a flat sum.
+AVERAGE per traversal, and summing over the whole alignment gives the
+same total regardless of how moves are partitioned into traversals,
+since it's the same set of moves either way. coverage_by_alignment_pn
+(\\covermove, defn:move-coverage) DOES average per traversal, so it
+DOES need that grouping - see _to_alignment_mass_path, which translates
+a classical alignment into coveragemass.alignment_mass's own path
+shape and reuses that machinery (executions()/matchcount/movecount/the
+averaging structure itself) entirely unmodified, verified term-by-term
+against the formal definition. An earlier version of this function
+reused voidmass_table_pn's pooled sums instead of building this
+translation - convenient, but not what the definition specifies; see
+that function's own docstring for where the pooled quantity still
+lives, honestly labelled.
 
 If this approach is adopted, this needs folding into coveragemass.py;
 if not, delete both files.
@@ -51,9 +50,13 @@ not just theoretically close the gap.
 
 import logging
 import time
+from types import SimpleNamespace
 
+from skipalignments import Skip, TauPath
 from skipalignments.probabilities import EbiOccurance
 from skipalignments.alignall import align_pn_all
+
+from process_voids.coveragemass import alignment_mass, _variant_key
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +162,78 @@ def terms_by_node(alignment, tree, activity_to_id, tau_id_set):
     return table
 
 
+def _leaf_nodes_by_name(tree):
+    '''{leaf.name: leaf} for every Activity/Tau leaf in tree - the
+    name->node resolution _to_alignment_mass_path needs to wrap a
+    classical alignment move's activity name back into the real tree
+    node coveragemass.py's Skip/TauPath wrappers expect. Same
+    duplicate-label caveat as terms_by_node's leaf-label-set membership
+    check elsewhere in this module: not solved, just not any worse here
+    than it already is throughout this codebase.'''
+    nodes = {}
+
+    def _walk(node):
+        if not node.children:
+            nodes[node.name] = node
+        for child in node.children:
+            _walk(child)
+
+    _walk(tree)
+    return nodes
+
+
+def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set):
+    '''
+    Translates one classical alignment (list of pm4py Transitions,
+    .label = (trace_side, model_side)) into the (log_elem, model_elem)
+    path shape coveragemass.executions()/alignment_mass already expect -
+    reusing that machinery entirely unchanged for classical alignments,
+    rather than reimplementing execution-grouping/averaging for a
+    second move representation. See defn:move-coverage - this module's
+    docstring on why classical (non-lumped) alignments matter for the
+    formal definition, and coveragemass.alignment_mass's own docstring
+    for the wrapper convention being reproduced here:
+      - a bare leaf node: a synchronous move (log event matched a real
+        leaf), same as skip-alignments' own bare-leaf convention
+      - Skip(leaf, leaf.skip_cost): a required activity present in the
+        model but missing from the log (movecount-counted, non-silent)
+      - TauPath(leaf): a silent move through a genuine Tau leaf
+        (movecount-excluded) - resolved via tau_id_set + activity_to_id,
+        which already maps genuine Tau leaves by name (confirmed against
+        build_id_net's real output, not just its docstring)
+      - '>>' : a pure log move, OR a structural/helper silent transition
+        with no tree correspondence at all (build_petri_net inserts
+        these for net routing - label=None, never in tau_id_set). Both
+        cases are unattributable to any subprocess, so both become a gap
+        in executions()' consecutive-run grouping - the same treatment
+        an unrelated move already gets there, not a special case.
+
+    id_to_activity/nodes_by_name are precomputed ONCE by the caller
+    (voidmass_table_pn) and passed in, not rebuilt per call - this is
+    called once per deduped alignment, and rebuilding a full tree walk
+    (_leaf_nodes_by_name) every time measurably slowed a real sweep
+    (rtfm: voidmass_table_pn 105s -> 307s) before this was hoisted out.
+    '''
+    path = []
+    for t in alignment:
+        trace_side, model_side = t.label
+        if model_side == '>>':
+            path.append((trace_side, '>>'))
+            continue
+        name = id_to_activity.get(model_side)
+        node = nodes_by_name.get(name) if name is not None else None
+        if node is None:
+            path.append((trace_side, '>>'))
+            continue
+        if model_side in tau_id_set:
+            path.append((trace_side, TauPath(node)))
+        elif trace_side == '>>':
+            path.append((trace_side, Skip(node, node.skip_cost)))
+        else:
+            path.append((trace_side, node))
+    return path
+
+
 def sum_safe_signature(alignment, id_to_activity, tau_id_set):
     '''
     Canonical key for "these two tied optimal alignments tell the same
@@ -227,14 +302,22 @@ def dedupe_alignments(alignments, id_to_activity, tau_id_set, signature_fn=sum_s
 def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_set,
                        id_loop_list=None, timeout=100):
     '''
-    Classical-alignment analogue of coveragemass.voidmass_table: one
-    pass over the tree, {node: {'deficit', 'movecount', 'voidmass_subprocess',
-    'voidmass_process'}}, aggregated (SUMMED, not averaged - see
-    voidmass-brief.md) over every variant and every distinct causal
-    story among that variant's tied optimal alignments (see
-    dedupe_alignments/sum_safe_signature - raw alignment count is NOT
-    used, since align_pn_all's all-optimal search can return the same
-    causal story multiple times under different commuting-move orders).
+    (table, skip_dict) - table is the classical-alignment analogue of
+    coveragemass.voidmass_table: one pass over the tree, {node: {
+    'deficit', 'movecount', 'voidmass_subprocess', 'voidmass_process'}},
+    aggregated (SUMMED, not averaged - see voidmass-brief.md) over every
+    variant and every distinct causal story among that variant's tied
+    optimal alignments (see dedupe_alignments/sum_safe_signature - raw
+    alignment count is NOT used, since align_pn_all's all-optimal search
+    can return the same causal story multiple times under different
+    commuting-move orders).
+
+    skip_dict is the SAME deduped alignments, translated (via
+    _to_alignment_mass_path) into coveragemass.alignment_mass's expected
+    input shape - built in the same pass so the expensive
+    align_variant_all call is only ever made once per variant, not once
+    for the pooled sums here and again for coverage_by_alignment_pn's
+    (correctly non-pooled - see defn:move-coverage) mass term.
 
     Weighting choice, named explicitly rather than left implicit:
     UNIFORM OVER DISTINCT CAUSAL SIGNATURES - a variant's probability is
@@ -250,12 +333,14 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
     '''
     deficit_sum = {}
     movecount_sum = {}
+    skip_dict = {}
 
     def _add(node, d, m, share):
         deficit_sum[node] = deficit_sum.get(node, 0.0) + share * d
         movecount_sum[node] = movecount_sum.get(node, 0.0) + share * m
 
     id_to_activity = {v: k for k, v in activity_to_id.items()}
+    nodes_by_name = _leaf_nodes_by_name(tree)
     n_variants = len(variant_probs)
     total_started = time.monotonic()
     n_near_timeout = 0
@@ -282,6 +367,11 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
         for alignment in alignments:
             for node, (d, m) in terms_by_node(alignment, tree, activity_to_id, tau_id_set).items():
                 _add(node, d, m, share)
+        skip_dict[_variant_key(variant)] = [
+            SimpleNamespace(path=_to_alignment_mass_path(alignment, id_to_activity,
+                                                           nodes_by_name, tau_id_set))
+            for alignment in alignments
+        ]
 
     logger.info('voidmass_table_pn: %d variants in %.1fs (%d near-timeout)',
                 n_variants, time.monotonic() - total_started, n_near_timeout)
@@ -313,19 +403,45 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
             _walk(child)
 
     _walk(tree)
-    return table
+    return table, skip_dict
 
 
-def coverage_by_alignment_pn(node, skip_prob, table):
+def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, convention='zero',
+                              executions_cache=None):
     '''
-    Classical-alignment analogue of coveragemass.coverage_by_alignment:
-    (1 - skip_prob) * alignment_mass_pooled. Deliberately reuses skip-
-    alignments' own skip_prob unchanged (dv.skip_probs[node]) rather
-    than inventing a classical-alignment replacement for it - skip_prob
-    answers a per-variant "was this node skipped at all" question via
-    node_reached, not a move-count, so it was never subject to the
-    lumping bug voidmass's deficit had to move off of. Only the
-    alignment_mass side (a move-count ratio) needed replacing - see
-    session notes.
+    \\covermove (defn:move-coverage), computed on classical (non-lumped)
+    alignments: (1 - skip_prob) * alignment_mass(node, skip_dict,
+    variant_probs, convention). skip_dict is voidmass_table_pn's second
+    return value (already translated into coveragemass.alignment_mass's
+    expected path shape - see _to_alignment_mass_path) - reuses
+    coveragemass.alignment_mass entirely unmodified, verified term-by-
+    term against the formal definition (see session notes): no pooling,
+    per-execution match/movecount ratios averaged uniformly within an
+    alignment, alignments averaged uniformly within a variant, both
+    zero-denominator conventions matching the definition's own "treated
+    as zero" clause exactly.
+
+    Deliberately reuses skip-alignments' own skip_prob unchanged
+    (dv.skip_probs[node]) rather than inventing a classical-alignment
+    replacement for it - skip_prob answers a per-variant "was this node
+    skipped at all" question via node_reached, not a move-count, so it
+    was never subject to the lumping bug voidmass's deficit (or this
+    metric's own prior pooled implementation) had to move off of.
+
+    Prior implementations of this id used voidmass_table_pn's POOLED
+    alignment_mass_pooled (matchcount/movecount summed across every
+    execution before dividing once) - convenient since that table was
+    already being computed, but not what \\covermove's own definition
+    specifies. That pooled quantity is still available, honestly
+    labelled, as 1 - voidmass_process (equivalently
+    table[node]['alignment_mass_pooled']) - nothing was lost, this id
+    just no longer claims to be that.
+
+    executions_cache: optional, see coveragemass.alignment_mass /
+    coveragemass.make_executions_cache - pass one shared cache across
+    every node's call in a per-node report row (see
+    lab.exp_disco_degrade._node_rows) to avoid re-walking each
+    alignment's path once per node.
     '''
-    return (1 - skip_prob) * table[node]['alignment_mass_pooled']
+    return (1 - skip_prob) * alignment_mass(node, skip_dict, variant_probs, convention,
+                                             executions_cache)

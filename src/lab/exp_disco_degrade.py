@@ -75,6 +75,7 @@ from lab.timing import Timer
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
     mass_by_weight, voidage_by_weight, coverage_by_alignment,
+    make_executions_cache,
 )
 from process_voids.voidmass_pn import build_id_net, voidmass_table_pn, coverage_by_alignment_pn
 
@@ -137,28 +138,31 @@ PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign
 def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv,
                         timeout=CLASSICAL_ALIGNMENT_TIMEOUT):
     """
-    (root-level classical-alignment metrics dict, full per-node vm_table)
-    - process_voids.voidmass_pn, reusing dv.skip_probs (already computed
-    by compute_metrics) rather than deriving a separate skip-probability
-    estimate. vm_table is returned alongside the root-only dict (not
-    just discarded) so callers can also build a full per-node breakdown
-    - see _node_rows - without paying for a second, redundant
-    voidmass_table_pn call."""
+    (root-level classical-alignment metrics dict, full per-node vm_table,
+    variant_probs, skip_dict) - process_voids.voidmass_pn, reusing
+    dv.skip_probs (already computed by compute_metrics) rather than
+    deriving a separate skip-probability estimate. vm_table/variant_probs/
+    skip_dict are returned alongside the root-only dict (not just
+    discarded) so callers can also build a full per-node breakdown - see
+    _node_rows - without paying for a second, redundant voidmass_table_pn
+    call (skip_dict in particular is the expensive part - the same
+    deduped alignments coverage_by_alignment_pn needs, already translated
+    into coveragemass.alignment_mass's input shape)."""
     variant_probs = _variant_probs(log)
-    vm_table = voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id,
-                                  tau_ids, id_loop_list=id_loop_list, timeout=timeout)
+    vm_table, skip_dict = voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id,
+                                             tau_ids, id_loop_list=id_loop_list, timeout=timeout)
     root_row = vm_table[tree]
     values = (
         root_row['deficit'],
         root_row['movecount'],
         root_row['voidmass_subprocess'],
         root_row['voidmass_process'],
-        coverage_by_alignment_pn(tree, dv.skip_probs[tree], vm_table),
+        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs),
     )
-    return dict(zip(CLASSICAL_METRIC_KEYS, values)), vm_table
+    return dict(zip(CLASSICAL_METRIC_KEYS, values)), vm_table, variant_probs, skip_dict
 
 
-def _node_rows(log_name, combo_name, dim, level, dv, vm_table):
+def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, skip_dict):
     """
     One row per node in vm_table (every node in the tree - Activity,
     Tau, and composite Sequence/Xor/And/Loop nodes alike), the full
@@ -167,19 +171,25 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table):
     just evaluated at that specific node - see PER_NODE_METRIC_KEYS.
     """
     node_rows = []
+    # voidmass_table_pn's own _walk inserts the root first - see that
+    # function - so vm_table's first key is the tree root, no separate
+    # root parameter needed here. vm_table can be empty in tests that
+    # stub out _classical_metrics - nothing to cache/iterate then.
+    executions_cache = make_executions_cache(next(iter(vm_table))) if vm_table else None
     for node, classical_row in vm_table.items():
         per_node_values = (
             mass_by_weight(node, dv.skip_probs),
             voidage_by_weight(node, dv.skip_probs),
             dv.skip_probs[node],
-            coverage_by_alignment(node, dv),
+            coverage_by_alignment(node, dv, executions_cache=executions_cache),
         )
         classical_values = (
             classical_row['deficit'],
             classical_row['movecount'],
             classical_row['voidmass_subprocess'],
             classical_row['voidmass_process'],
-            coverage_by_alignment_pn(node, dv.skip_probs[node], vm_table),
+            coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
+                                      executions_cache=executions_cache),
         )
         tree_values = (mandatory_node_count(node), total_node_count(node))
         node_rows.append({
@@ -253,6 +263,8 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
             zero_level_elapsed_s = None
             zero_level_dv = None
             zero_level_vm_table = None
+            zero_level_variant_probs = None
+            zero_level_skip_dict = None
             if tree is not None and 0.0 in levels:
                 cell = f'{log_name} / {combo_name} / (all dims) / 0.0'
                 logger.debug('%s - starting', cell)
@@ -262,10 +274,11 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         zero_level_metrics, dv = compute_metrics(
                             base_log, tree, slpn_path, ppt_weights=ppt_weights, return_dv=True)
                         net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                        classical_metrics, vm_table = _classical_metrics(
+                        classical_metrics, vm_table, variant_probs, skip_dict = _classical_metrics(
                             tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv)
                         zero_level_metrics.update(classical_metrics)
                         zero_level_dv, zero_level_vm_table = dv, vm_table
+                        zero_level_variant_probs, zero_level_skip_dict = variant_probs, skip_dict
                         zero_level_status = 'ok'
                     except Exception as e:
                         logger.exception('%s - exception', cell)
@@ -307,7 +320,9 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         if zero_level_status == 'ok':
                             row.update(zero_level_metrics)
                             node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         zero_level_dv, zero_level_vm_table))
+                                                         zero_level_dv, zero_level_vm_table,
+                                                         zero_level_variant_probs,
+                                                         zero_level_skip_dict))
                         else:
                             row.update(weight_coverage=None, weight_voidage=None,
                                        skipprob=None, salign_coverage=None,
@@ -337,14 +352,14 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                                 degraded_log, tree, slpn_path,
                                 ppt_weights=ppt_weights, return_dv=True)
                             net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                            classical_metrics, vm_table = _classical_metrics(
+                            classical_metrics, vm_table, variant_probs, skip_dict = _classical_metrics(
                                 tree, degraded_log, net, im, fm, activity_to_id, tau_ids,
                                 id_loop_list, dv)
                             metrics.update(classical_metrics)
                             row['status'] = 'ok'
                             row.update(metrics)
                             node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         dv, vm_table))
+                                                         dv, vm_table, variant_probs, skip_dict))
                         except Exception as e:
                             logger.exception('%s - exception', cell)
                             row.update(status=f'error: {type(e).__name__}: {e}',
