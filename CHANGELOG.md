@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [0.4.2] - 2026-09-11
 
 ### Added
 
@@ -16,6 +16,18 @@ All notable changes to this project will be documented in this file.
   weighting definition, and a zero-guard that keyed off the wrong
   index, under-zeroing a leading run of model-only moves before the
   first-ever observed event.
+
+### Changed
+
+* Default discovery roster: vanilla `inductive` and `indulpet` are off.
+  Vanilla inductive is discovered at exact fit from the log it is then
+  checked against, so it absorbs dropped activities at no cost, and at
+  ~142s per cell it was most of a sweep's cost; `indulpet` only ever
+  produced `not_implemented` rows. Both discovery functions stay
+  importable, and the smoke run now uses `inductive_noise20`.
+* `voidmass_table_pn` returns a `VoidmassPnResult` (`table`,
+  `skip_dict`, `timed_out_count`, `timed_out_weight`) instead of a
+  `(table, skip_dict)` tuple.
 
 ### Fixed
 
@@ -44,6 +56,13 @@ All notable changes to this project will be documented in this file.
 * An empty `_nodes` CSV (every cell in a run errored) had no column
   header, raising `EmptyDataError` in any downstream reader expecting
   an empty-but-columned frame.
+
+### Known issues
+
+* `voidsat` is very slow on high case-count logs: `admass` rebuilds the
+  log's trace list (a full group-by, sort and conversion) once per tree
+  node instead of once per cell - about 4,270s extra per cell on rtfm.
+  To be fixed in the planned single experiment runner.
 
 ## [0.4.1] - 2026-09-10
 
