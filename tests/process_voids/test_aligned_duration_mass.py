@@ -1,11 +1,12 @@
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from skipalignments import Activity, Sequence, Xor, Tau, Loop, Aligner
 
 from process_voids.coveragemass import (
     _variant_key, consumes, nxt, block, mdur, adur, admass, covat, voidat, voidsat,
-    make_aligned_duration_cache,
+    make_aligned_duration_cache, log_to_traces,
 )
 
 ACT_COST = 100000
@@ -304,6 +305,44 @@ class VoidsatUsesRealSkipProbsTest(unittest.TestCase):
 
     def test_voidsat_is_zero_when_skip_prob_is_zero(self):
         self.assertAlmostEqual(voidsat(self.a, self.tree, self.dv, self.log), 0.0, places=6)
+
+
+class CachedTracesTest(unittest.TestCase):
+    """
+    make_aligned_duration_cache(tree, log) builds log_to_traces(log) - a
+    group-by, sort and conversion over the whole log - once, and admass
+    reuses it for every node. Only for that same log: a trace list cached
+    for a different log would silently give the wrong answer.
+
+    M: model seq(a,b,c). Two logs with the same variant but different
+    timing: b's share of the trace is 10/30 in one and 20/30 in the other.
+    """
+
+    def setUp(self):
+        self.a = leaf('a', '1')
+        self.b = leaf('b', '2')
+        self.c = leaf('c', '3')
+        self.tree = Sequence(None, [self.a, self.b, self.c])
+        self.tree.id = '4'
+        for node in (self.a, self.b, self.c):
+            node.set_parent(self.tree)
+        self.log_early = [trace(('a', 0), ('b', 10), ('c', 30))]
+        self.log_late = [trace(('a', 0), ('b', 20), ('c', 30))]
+        self.alignments = alignments_by_variant(self.tree, {('a', 'b', 'c'): 1.0})
+
+    def test_trace_list_built_once_across_every_node(self):
+        with patch('process_voids.coveragemass.log_to_traces', wraps=log_to_traces) as counted:
+            cache = make_aligned_duration_cache(self.tree, self.log_early)
+            for node in (self.tree, self.a, self.b, self.c):
+                admass(node, self.tree, self.log_early, self.alignments, cache)
+        self.assertEqual(counted.call_count, 1)
+
+    def test_cache_built_for_another_log_is_not_used(self):
+        cache = make_aligned_duration_cache(self.tree, self.log_early)
+        self.assertAlmostEqual(
+            admass(self.b, self.tree, self.log_late, self.alignments, cache), 2 / 3, places=6)
+        self.assertAlmostEqual(
+            admass(self.b, self.tree, self.log_early, self.alignments, cache), 1 / 3, places=6)
 
 
 if __name__ == '__main__':

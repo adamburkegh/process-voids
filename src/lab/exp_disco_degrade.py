@@ -234,7 +234,7 @@ def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, sk
     # stub out _classical_metrics - nothing to cache/iterate then.
     tree = next(iter(vm_table)) if vm_table else None
     executions_cache = make_executions_cache(tree) if tree is not None else None
-    aligned_duration_cache = make_aligned_duration_cache(tree) if tree is not None else None
+    aligned_duration_cache = make_aligned_duration_cache(tree, log) if tree is not None else None
     for node, classical_row in vm_table.items():
         per_node_values = (
             mass_by_weight(node, dv.skip_probs),

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+* `voidsat` was very slow on high case-count logs: `admass` rebuilt the
+  log's trace list (a full group-by, sort and conversion over the log)
+  once per tree node instead of once per report row - about 4,270s
+  extra per cell on rtfm. The trace list is now built once, with the
+  per-row cache, and reused for every node.
+
 ## [0.4.2] - 2026-09-11
 
 ### Added

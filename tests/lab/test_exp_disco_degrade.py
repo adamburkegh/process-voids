@@ -2,6 +2,7 @@ import io
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from lab.exp_disco_degrade import (
     run_disco_degrade, main, _node_rows, _classical_metrics, CLASSICAL_METRIC_KEYS,
     PER_NODE_METRIC_KEYS, ALIGNED_DURATION_METRIC_KEYS, NODE_ROW_COLUMNS,
 )
-from process_voids.coveragemass import TREE_METRIC_KEYS
+from process_voids.coveragemass import TREE_METRIC_KEYS, log_to_traces
 from process_voids.voidmass_pn import VoidmassPnResult
 
 FAKE_METRICS = {'weight_coverage': 0.5, 'weight_voidage': 0.5, 'skipprob': 0.1,
@@ -497,6 +498,50 @@ class NodeRowsTest(unittest.TestCase):
         # Tau is excluded from mandatory/total counts by definition.
         self.assertEqual(tau_row['mandatory_node_count'], 0)
         self.assertEqual(tau_row['total_node_count'], 0)
+
+
+class NodeRowsBuildsTracesOnceTest(unittest.TestCase):
+    """
+    voidsat's trace list (log_to_traces: a group-by, sort and conversion
+    over the whole log) depends only on the log, never on the node being
+    scored, so one _node_rows call must build it exactly once - not once
+    per node. voidsat runs for real here; only the alignment-based
+    metrics are mocked.
+    """
+
+    def setUp(self):
+        self.a = Activity(None, 'a', 100000)
+        self.a.id = '1'
+        self.tau = Tau(None, 'tau', 0)
+        self.tau.id = '2'
+        self.choice = Xor(None, [self.tau, self.a])
+        self.choice.id = '3'
+        self.a.set_parent(self.choice)
+        self.tau.set_parent(self.choice)
+        self.a.weight = 1
+        self.tau.weight = 0
+        self.choice.weight = 1
+
+        class FakeDv:
+            def __init__(self, skip_probs):
+                self.skip_probs = skip_probs
+                self.skip_dict_backup = {}
+
+        self.dv = FakeDv({self.choice: 0.1, self.a: 0.2, self.tau: 0.0})
+        row = {'deficit_lower': 0.0, 'deficit_upper': 0.0,
+               'movecount': 0.0, 'movecount_bound': 0.0,
+               'voidmass_subprocess_lower': 0.0, 'voidmass_subprocess_upper': 0.0,
+               'voidmass_process_lower': 0.0, 'voidmass_process_upper': 0.0}
+        self.vm_table = {node: dict(row) for node in (self.choice, self.a, self.tau)}
+        self.log = [[{'concept:name': 'a', 'time:timestamp': datetime(2026, 1, 1)}]]
+
+    def test_log_to_traces_runs_once_per_node_rows_call(self):
+        with patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.0), \
+             patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.0), \
+             patch('process_voids.coveragemass.log_to_traces', wraps=log_to_traces) as counted:
+            _node_rows('mylog', 'mycombo', 'trace', 0.5, self.dv, self.vm_table, {}, {},
+                       self.log)
+        self.assertEqual(counted.call_count, 1)
 
 
 class DryRunTest(unittest.TestCase):

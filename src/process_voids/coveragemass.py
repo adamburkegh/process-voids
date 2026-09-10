@@ -889,7 +889,7 @@ def _relevant_positions_by_node(path, tree, ancestor_chains=None, implied_sets=N
     return positions_by_node
 
 
-def make_aligned_duration_cache(tree):
+def make_aligned_duration_cache(tree, log=None):
     '''
     Structural maps for `tree` (ancestor_chains, implied_sets) plus a
     per-path memo of _relevant_positions_by_node's own output - shared
@@ -902,12 +902,20 @@ def make_aligned_duration_cache(tree):
     positions computation (_relevant_positions_by_node already computes
     every node's positions from one pass over a path) are done once per
     report row, not once per node.
+
+    log (optional): the event log admass will be scored against. Its
+    trace list (log_to_traces, a pass over the whole log) is built here
+    once and reused by admass for every node - but only when admass is
+    called with this same log object; any other log gets its own trace
+    list.
     '''
     return {
         'tree': tree,
         'ancestor_chains': _ancestor_chains(tree),
         'implied_sets': _implied_descendant_sets(tree),
         'by_path': {},
+        'traces_log': log,
+        'traces': log_to_traces(log) if log is not None else None,
     }
 
 
@@ -976,11 +984,17 @@ def admass(pt, tree, log, alignments_by_variant, cache=None):
 
     cache: optional, see adur - shared across the traces here too, so
     the SAME alignment reused by several traces of one variant only has
-    its relevant positions computed once.
+    its relevant positions computed once. A cache built with this same
+    log (make_aligned_duration_cache(tree, log)) also supplies the trace
+    list; otherwise it is built from `log` here.
     '''
+    if cache is not None and cache.get('traces_log') is log and cache.get('traces') is not None:
+        traces = cache['traces']
+    else:
+        traces = log_to_traces(log)
     total = 0.0
     n = 0
-    for trace in log_to_traces(log):
+    for trace in traces:
         activities = tuple(e['concept:name'] for e in trace)
         alignments = alignments_by_variant.get(_variant_key(activities), [])
         d = adur(pt, tree, alignments, trace, cache)
