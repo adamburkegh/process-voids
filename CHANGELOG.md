@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+* `\voidsat` (Coverage by Aligned Duration, computed over skip
+  alignments): a real-elapsed-time mass estimate, attributing each
+  alignment move its share of the time between observed events and
+  averaging over every actual trace instance rather than deduplicated
+  variants (duration is a per-instance quantity, unlike every other
+  metric here). Corrects two errors found in the paper's own draft
+  definition along the way: a dangling reference to an unused move-
+  weighting definition, and a zero-guard that keyed off the wrong
+  index, under-zeroing a leading run of model-only moves before the
+  first-ever observed event.
+
+### Fixed
+
+* `weight_coverage`/`weight_voidage` in the per-node CSV could pick up
+  stale weight estimates left behind by an unrelated, already-run cell,
+  for a second degradation dimension reusing the shared level-0.0
+  result - `mass_by_weight`/`voidage_by_weight` read weights directly
+  off the shared, mutable discovered tree, which every cell's own
+  weight-estimation step overwrites in place.
+* `voidmass_table_pn` crashed with `ZeroDivisionError` when a variant's
+  alignment search timed out to zero alignments - a real, observed
+  failure mode on any log with one slow-enough variant. Such a
+  variant's contribution is unknown, so each cell now reports provable
+  bounds instead of a guess or a crash: `voidmass_deficit`/
+  `voidmass_subprocess`/`voidmass_process` split into `_lower`/`_upper`
+  columns, substituting zero or full deficit against a movecount
+  bounded by `2|σ|` plus the model's cheapest path length. The bound is
+  derived from the aligner's cost model, since loops make any bound
+  from the tree's shape alone unsound. `alignment_coverage_pn` gets the
+  same `_lower`/`_upper` split. `voidmass_movecount` stays the observed
+  total from completed variants; the bounds' shared denominator is the
+  new `voidmass_movecount_bound`. New `timed_out_count`/
+  `timed_out_weight` columns report how many variants timed out and
+  their summed probability. Where nothing times out, `_lower == _upper`
+  everywhere.
+* An empty `_nodes` CSV (every cell in a run errored) had no column
+  header, raising `EmptyDataError` in any downstream reader expecting
+  an empty-but-columned frame.
+
 ## [0.4.1] - 2026-09-10
 
 ### Added
