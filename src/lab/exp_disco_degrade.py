@@ -150,6 +150,19 @@ def _aligned_duration_metrics(tree, log, dv):
     return dict(zip(ALIGNED_DURATION_METRIC_KEYS, (voidsat(tree, tree, dv, log),)))
 
 
+# Every key _node_rows' row dict actually builds from, in the same order -
+# used to give the per-node CSV a real header even when node_rows is empty
+# (every cell in a run errored) rather than pandas' default empty-columns
+# DataFrame, which writes a headerless file that raises EmptyDataError in
+# any downstream reader expecting an empty-but-columned frame instead.
+NODE_ROW_COLUMNS = (
+    ['log', 'combo', 'degradation_dim', 'degradation_level',
+     'node_id', 'node_type', 'alphabet']
+    + list(PER_NODE_METRIC_KEYS) + list(CLASSICAL_METRIC_KEYS)
+    + list(ALIGNED_DURATION_METRIC_KEYS) + list(TREE_METRIC_KEYS)
+)
+
+
 def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv,
                         timeout=CLASSICAL_ALIGNMENT_TIMEOUT):
     """
@@ -286,10 +299,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
             zero_level_status = None
             zero_level_metrics = None
             zero_level_elapsed_s = None
-            zero_level_dv = None
-            zero_level_vm_table = None
-            zero_level_variant_probs = None
-            zero_level_skip_dict = None
+            zero_level_node_rows = None
             if tree is not None and 0.0 in levels:
                 cell = f'{log_name} / {combo_name} / (all dims) / 0.0'
                 logger.debug('%s - starting', cell)
@@ -303,8 +313,26 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv)
                         zero_level_metrics.update(classical_metrics)
                         zero_level_metrics.update(_aligned_duration_metrics(tree, base_log, dv))
-                        zero_level_dv, zero_level_vm_table = dv, vm_table
-                        zero_level_variant_probs, zero_level_skip_dict = variant_probs, skip_dict
+                        # Computed HERE, once, rather than once per dim
+                        # below - mass_by_weight/voidage_by_weight read
+                        # tree.weight/child.weight directly off the
+                        # shared, mutable tree object, which
+                        # transfer_pt_weights (inside compute_metrics)
+                        # overwrites on every OTHER cell's call too. A
+                        # second dim reusing this "shared" level-0.0
+                        # result would otherwise recompute weight_
+                        # coverage/weight_voidage LIVE, after an
+                        # unrelated nonzero-level cell of the first dim
+                        # has already reset those attributes to weights
+                        # estimated from a degraded log - silently
+                        # corrupting the per-node CSV's weight-derived
+                        # columns for every dim after the first (see
+                        # labnotes.md, finding A). dim is stamped in per
+                        # use below, since these rows are otherwise
+                        # identical regardless of which dim reuses them.
+                        zero_level_node_rows = _node_rows(
+                            log_name, combo_name, None, 0.0, dv, vm_table,
+                            variant_probs, skip_dict, base_log)
                         zero_level_status = 'ok'
                     except Exception as e:
                         logger.exception('%s - exception', cell)
@@ -346,10 +374,14 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         }
                         if zero_level_status == 'ok':
                             row.update(zero_level_metrics)
-                            node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         zero_level_dv, zero_level_vm_table,
-                                                         zero_level_variant_probs,
-                                                         zero_level_skip_dict, base_log))
+                            # Reuse the SAME precomputed rows for every
+                            # dim, just stamped with this dim's name -
+                            # not a fresh _node_rows call (see where
+                            # zero_level_node_rows is built, above, for
+                            # why recomputing here would be wrong, not
+                            # just wasteful).
+                            node_rows.extend({**r, 'degradation_dim': dim}
+                                             for r in zero_level_node_rows)
                         else:
                             row.update(weight_coverage=None, weight_voidage=None,
                                        skipprob=None, salign_coverage=None,
@@ -413,7 +445,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
     if node_out_csv is None:
         out_path = Path(out_csv)
         node_out_csv = str(out_path.with_name(f'{out_path.stem}_nodes{out_path.suffix}'))
-    node_df = pd.DataFrame(node_rows)
+    node_df = pd.DataFrame(node_rows, columns=NODE_ROW_COLUMNS)
     Path(node_out_csv).parent.mkdir(parents=True, exist_ok=True)
     node_df.to_csv(node_out_csv, index=False)
     logger.info('Wrote %d node rows to %s', len(node_df), node_out_csv)

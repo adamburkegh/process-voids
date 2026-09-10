@@ -5,12 +5,13 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 from skipalignments import Activity, Tau, Xor
 
 from lab.discovery import DiscoveryCombo, DiscoveryResult
 from lab.exp_disco_degrade import (
     run_disco_degrade, main, _node_rows, CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS,
-    ALIGNED_DURATION_METRIC_KEYS,
+    ALIGNED_DURATION_METRIC_KEYS, NODE_ROW_COLUMNS,
 )
 from process_voids.coveragemass import TREE_METRIC_KEYS
 
@@ -164,6 +165,14 @@ class ComputeMetricsErrorTest(unittest.TestCase):
             self.assertIsNone(df.iloc[0]['weight_coverage'])
             self.assertIsNone(df.iloc[0]['voidmass_deficit'])
 
+            # Every cell errored, so node_rows never got populated - the
+            # written _nodes CSV must still carry a real header (see
+            # EmptyNodeCsvHasHeaderTest for the full round-trip check;
+            # this just confirms THIS scenario is the one that triggers
+            # it) rather than a bare, columnless empty file.
+            self.assertTrue(node_df.empty)
+            self.assertGreater(len(node_df.columns), 0)
+
     def test_nonzero_level_error_does_not_block_other_levels(self):
         combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult('FAKE_TREE'))}
         degradations = {'activity': degrade_stub}
@@ -191,6 +200,143 @@ class ComputeMetricsErrorTest(unittest.TestCase):
             nonzero_row = df[df['degradation_level'] == 0.5].iloc[0]
             self.assertEqual(zero_row['status'], 'ok')
             self.assertIn('RuntimeError: boom', nonzero_row['status'])
+
+
+class SharedZeroLevelNodeRowsWeightStabilityTest(unittest.TestCase):
+    """
+    Regression test for labnotes.md finding A: mass_by_weight/voidage_
+    by_weight read tree.weight/child.weight directly off the shared,
+    mutable ProcessTree object - transfer_pt_weights (inside
+    compute_metrics) overwrites those attributes on EVERY cell's call,
+    not just the shared level-0.0 one. A second dim reusing the level-
+    0.0 result used to call _node_rows again, reading whatever weight
+    state an intervening, unrelated nonzero-level cell of the FIRST dim
+    had already left on the tree - silently corrupting weight_coverage/
+    weight_voidage for every dim after the first. Fixed by computing
+    _node_rows for level 0.0 exactly once, right when the weight state
+    is fresh, and reusing that same snapshot (dim stamped in after the
+    fact) for every dim instead of recomputing.
+    """
+
+    def setUp(self):
+        self.a = Activity(None, 'a', 100000)
+        self.a.id = '1'
+        self.b = Activity(None, 'b', 100000)
+        self.b.id = '2'
+        self.tree = Xor(None, [self.a, self.b])
+        self.tree.id = '3'
+        self.a.set_parent(self.tree)
+        self.b.set_parent(self.tree)
+
+        class FakeDv:
+            def __init__(self, skip_probs):
+                self.skip_probs = skip_probs
+
+        # a fully covered, b fully void - the Xor's own weight_coverage
+        # is then exactly a.weight / (a.weight + b.weight), so a weight
+        # swap between calls is directly visible in the number.
+        self.dv = FakeDv({self.tree: 0.0, self.a: 0.0, self.b: 1.0})
+
+        fake_vm_row = {'deficit': 0.0, 'movecount': 0.0,
+                       'voidmass_subprocess': 0.0, 'voidmass_process': 0.0}
+        self.vm_table = {self.tree: dict(fake_vm_row), self.a: dict(fake_vm_row),
+                          self.b: dict(fake_vm_row)}
+
+        self.call_count = 0
+
+        def fake_compute_metrics(log, tree, slpn_path, ppt_weights=None, return_dv=False):
+            self.call_count += 1
+            if self.call_count == 1:
+                # the shared level-0.0 call, against the undegraded log
+                self.a.weight, self.b.weight = 3, 1
+            else:
+                # a later, unrelated nonzero-level cell (first dim) -
+                # simulates transfer_pt_weights re-estimating weights
+                # from a DEGRADED log, mutating the SAME shared tree
+                self.a.weight, self.b.weight = 1, 3
+            return dict(FAKE_METRICS), self.dv
+
+        self.fake_compute_metrics = fake_compute_metrics
+
+    def test_both_dims_level_zero_node_rows_agree(self):
+        combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(self.tree))}
+        degradations = {'activity': degrade_stub, 'trace': degrade_stub}
+        tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
+
+        with patch('lab.exp_disco_degrade.compute_metrics',
+                   side_effect=self.fake_compute_metrics), \
+             patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
+             patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
+             patch('lab.exp_disco_degrade._classical_metrics',
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), self.vm_table, {}, {})), \
+             patch('lab.exp_disco_degrade._aligned_duration_metrics',
+                   return_value=dict(FAKE_ALIGNED_DURATION_METRICS)), \
+             patch('lab.exp_disco_degrade.coverage_by_alignment', return_value=0.0), \
+             patch('lab.exp_disco_degrade.coverage_by_alignment_pn', return_value=0.0), \
+             patch('lab.exp_disco_degrade.voidsat', return_value=0.0), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
+            df, node_df = run_disco_degrade(['fake_log.xes'], combos=combos,
+                                    degradations=degradations, levels=[0.0, 0.5],
+                                    out_csv=str(tmp_out))
+
+        # sanity: the mutation actually happened (zero-level call plus
+        # at least one nonzero-level call) - otherwise this test would
+        # pass vacuously without exercising the bug at all.
+        self.assertGreaterEqual(self.call_count, 2)
+
+        root_rows = node_df[(node_df['node_id'] == '3') & (node_df['degradation_level'] == 0.0)]
+        self.assertEqual(len(root_rows), 2)  # one per dim
+        weight_coverages = set(root_rows['weight_coverage'])
+        self.assertEqual(
+            len(weight_coverages), 1,
+            f"weight_coverage diverged across dims at level 0.0: "
+            f"{root_rows[['degradation_dim', 'weight_coverage']].to_dict('records')}")
+        # and it must be the snapshot from the FIRST (zero-level) call
+        # (a=3,b=1 -> 0.75), not whatever a later cell's mutation left
+        # behind (a=1,b=3 -> 0.25).
+        self.assertAlmostEqual(weight_coverages.pop(), 0.75, places=6)
+
+
+class EmptyNodeCsvHasHeaderTest(unittest.TestCase):
+    """
+    When every cell in a run errors, node_rows never gets populated -
+    pandas' default pd.DataFrame([]) has NO columns at all, and writing
+    that produces a bare, headerless file that raises pandas.errors.
+    EmptyDataError in any downstream reader expecting an empty-but-
+    columned frame instead of a crash. NODE_ROW_COLUMNS fixes this by
+    giving the DataFrame its real columns even with zero rows.
+    """
+
+    def test_written_csv_round_trips_as_an_empty_but_columned_frame(self):
+        combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult('FAKE_TREE'))}
+        degradations = {'activity': degrade_stub}
+        tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
+
+        with patch('lab.exp_disco_degrade.compute_metrics',
+                   side_effect=RuntimeError('boom')), \
+             patch('lab.exp_disco_degrade.pm4py.read_xes', return_value='FAKE_LOG'), \
+             patch('lab.exp_disco_degrade.build_id_net', return_value=('NET', 'IM', 'FM', {}, set(), [])), \
+             patch('lab.exp_disco_degrade._classical_metrics',
+                   return_value=(dict(FAKE_CLASSICAL_METRICS), {}, {}, {})), \
+             patch('lab.exp_disco_degrade._aligned_duration_metrics',
+                   return_value=dict(FAKE_ALIGNED_DURATION_METRICS)), \
+             patch('lab.exp_disco_degrade.mandatory_node_count', return_value=1), \
+             patch('lab.exp_disco_degrade.total_node_count', return_value=1):
+            _df, node_df = run_disco_degrade(['fake_log.xes'], combos=combos,
+                                    degradations=degradations, levels=[0.0],
+                                    out_csv=str(tmp_out))
+
+        self.assertTrue(node_df.empty)
+        self.assertEqual(list(node_df.columns), NODE_ROW_COLUMNS)
+
+        node_out_csv = tmp_out.with_name('out_nodes.csv')
+        self.assertTrue(node_out_csv.exists())
+        # The real regression: pd.read_csv on a genuinely headerless
+        # empty file raises EmptyDataError - this must not.
+        reread = pd.read_csv(node_out_csv)
+        self.assertTrue(reread.empty)
+        self.assertEqual(list(reread.columns), NODE_ROW_COLUMNS)
 
 
 class NodeRowsTest(unittest.TestCase):
