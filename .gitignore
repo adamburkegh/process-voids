@@ -8,3 +8,5 @@ pvoid/
 log.xes
 model.pnml
 logs/
+# private lab notebook, kept in a separate private repo
+labnotes.md
