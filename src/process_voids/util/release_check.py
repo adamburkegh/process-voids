@@ -2,8 +2,9 @@
 Release hygiene script -- a handful of checks/actions that would
 otherwise be hand-cranked (and hand-remembered) before every release:
 regenerating requirements.txt, confirming pyproject.toml's version and
-CHANGELOG.md's top entry agree, running the full test suite, and
-flagging untracked files sitting in the repo that might get missed.
+CHANGELOG.md's top entry agree, flagging git/file dependency pins,
+running the full test suite, and flagging untracked files sitting in
+the repo that might get missed.
 
 Adapted from skip-alignments' own release_check.py, cut down for a
 project that isn't published to PyPI: no `python -m build`/`twine
@@ -28,6 +29,7 @@ pre-release step, not (yet) wired into CI.
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 # src/process_voids/util/release_check.py -> repo root is three levels up
@@ -116,6 +118,23 @@ def check_version_consistency() -> tuple[bool, str]:
     return True, f"pyproject.toml and CHANGELOG.md agree: {pyproject_version} ({changelog_date})"
 
 
+def check_no_direct_dependencies(pyproject_path=None) -> tuple[bool, str]:
+    """
+    A release depends on published versions only. A PEP 508 direct
+    reference ('name @ git+https://...', 'name @ file:...') is fine while
+    developing against an unreleased dependency, but has to be swapped for
+    a published version before releasing.
+    """
+    path = pyproject_path or PROJECT_ROOT / "pyproject.toml"
+    with open(path, "rb") as f:
+        dependencies = tomllib.load(f).get("project", {}).get("dependencies", [])
+    direct = [dep for dep in dependencies if "@" in dep.split(";")[0]]
+    if direct:
+        return False, ("direct-reference dependencies in pyproject.toml - pin a published "
+                       "release before releasing: " + "; ".join(direct))
+    return True, "all dependencies are published versions"
+
+
 def run_tests() -> tuple[bool, str]:
     """Full test suite -- the release gate that actually matters here,
     with no PyPI packaging step (build/twine) to validate alongside it.
@@ -175,7 +194,8 @@ def main() -> int:
     # this run leaves it.
     print(regenerate_requirements())
 
-    for check in (check_version_consistency, run_tests, check_stray_files):
+    for check in (check_version_consistency, check_no_direct_dependencies, run_tests,
+                  check_stray_files):
         passed, message = check()
         print(("PASS: " if passed else "FAIL: ") + message)
         ok = ok and passed
