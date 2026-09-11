@@ -11,7 +11,9 @@ TiesAcrossOptimalAlignmentsTest, where the real aligner diverges from a
 hand-written expectation).
 '''
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from skipalignments import Activity, Sequence, Aligner
 
@@ -215,7 +217,10 @@ class VoidageTest(unittest.TestCase):
         }
 
         log = build_running_example_log()
-        dv = pvoid.skipprob(log, cls.tree, 'var/lab/test_voidage.slpn')
+        # The SLPN pvoid.skipprob writes is only an intermediate, so it
+        # goes in a temp dir rather than var/lab.
+        with tempfile.TemporaryDirectory() as tmp:
+            dv = pvoid.skipprob(log, cls.tree, str(Path(tmp) / 'test_voidage.slpn'))
         cls.skip_probs = dv.skip_probs
 
         cls.table = voidmass_table(cls.tree, cls.skip_dict, cls.variant_probs,
@@ -298,7 +303,9 @@ class VoidageAdditivityLossTest(unittest.TestCase):
             variant_key(variant): align(cls.tree, variant)
             for variant in cls.variant_probs
         }
-        dv = pvoid.skipprob(log, cls.tree, 'var/lab/test_voidage_additivity.slpn')
+        # Temp dir for the intermediate SLPN - see VoidageTest.setUpClass.
+        with tempfile.TemporaryDirectory() as tmp:
+            dv = pvoid.skipprob(log, cls.tree, str(Path(tmp) / 'test_voidage_additivity.slpn'))
         cls.skip_probs = dv.skip_probs
         cls.table = voidmass_table(cls.tree, cls.skip_dict, cls.variant_probs,
                                     skip_probs=cls.skip_probs)
