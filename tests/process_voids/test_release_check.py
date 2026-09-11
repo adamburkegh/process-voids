@@ -1,10 +1,22 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from process_voids.util.release_check import (
-    _next_steps, _pyproject_field, check_no_direct_dependencies,
+    _next_steps, _pyproject_field, check_no_conflict_markers, check_no_direct_dependencies,
 )
+
+
+def _git_repo_with_file(tmp, filename, content):
+    subprocess.run(['git', 'init', '-q'], cwd=tmp, check=True)
+    # a fresh `git init` has no identity configured on CI-style machines;
+    # commits below would fail without one, so set a throwaway local identity.
+    subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=tmp, check=True)
+    subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=tmp, check=True)
+    (Path(tmp) / filename).write_text(content, encoding='utf-8')
+    subprocess.run(['git', 'add', filename], cwd=tmp, check=True)
+    subprocess.run(['git', 'commit', '-q', '-m', 'x'], cwd=tmp, check=True)
 
 
 def _pyproject(tmp, dependencies):
@@ -42,6 +54,36 @@ class DirectDependencyCheckTest(unittest.TestCase):
         deps = ['pm4py>=2.7,<=2.8', 'skipalignments==0.2.2', "rustxes>=0.2.10; python_version >= '3.10'"]
         with tempfile.TemporaryDirectory() as tmp:
             passed, _message = check_no_direct_dependencies(_pyproject(tmp, deps))
+        self.assertTrue(passed)
+
+
+class ConflictMarkerCheckTest(unittest.TestCase):
+    """
+    A tracked file left with unresolved '<<<<<<<'/'>>>>>>>' merge markers
+    must block a release rather than slip through unnoticed.
+    """
+
+    def test_conflict_markers_are_flagged(self):
+        content = '<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            _git_repo_with_file(tmp, 'a.txt', content)
+            passed, message = check_no_conflict_markers(cwd=tmp)
+        self.assertFalse(passed)
+        self.assertIn('a.txt', message)
+
+    def test_a_bare_separator_line_is_not_flagged(self):
+        # '=======' alone is common outside conflicts (e.g. a markdown
+        # heading underline) and isn't itself checked.
+        content = 'Title\n=======\nbody text\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            _git_repo_with_file(tmp, 'a.txt', content)
+            passed, _message = check_no_conflict_markers(cwd=tmp)
+        self.assertTrue(passed)
+
+    def test_clean_tree_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _git_repo_with_file(tmp, 'a.txt', 'nothing to see here\n')
+            passed, _message = check_no_conflict_markers(cwd=tmp)
         self.assertTrue(passed)
 
 

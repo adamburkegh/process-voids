@@ -2,6 +2,7 @@ build/
 refs/
 var/
 pvoid/
+docs/reports/
 *.pyc
 *.swp
 *.egg-info/

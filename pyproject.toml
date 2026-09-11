@@ -11,7 +11,7 @@ dependencies = [
     "pm4py>=2.7,<=2.8",
     "rustxes>=0.2.10",
     # Pinned to specific skip-alignments release due to strong dependency
-    "skipalignments @ git+https://github.com/adamburkegh/skip-alignments@v0.2.3+p1",
+    "skipalignments @ git+https://github.com/adamburkegh/skip-alignments@v0.2.3+p2",
     "pm4py_config>=0.1.0,<=0.9",
     "matplotlib",
 ]
