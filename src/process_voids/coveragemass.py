@@ -332,27 +332,6 @@ def _classify_move(model_elem):
     return model_elem, 'sync'
 
 
-def _mandatorily_implies(ancestor_node:ProcessTree, pt:ProcessTree):
-    '''
-    True if executing/skipping ancestor_node (a strict ancestor of pt)
-    unambiguously implies pt was executed/skipped too - ie every step
-    between ancestor_node and pt is a mandatory position (a Sequence/And
-    child, or a Loop's do-child), never an Xor branch or a Loop's
-    redo-child, both of which are genuinely ambiguous/optional.
-    '''
-    current = pt
-    while current is not ancestor_node:
-        parent = current.parent
-        if parent is None:
-            return False
-        if isinstance(parent, Xor):
-            return False
-        if isinstance(parent, Loop) and parent.children[1] is current:
-            return False
-        current = parent
-    return True
-
-
 def _root_of(pt:ProcessTree):
     node = pt
     while node.parent is not None:
@@ -362,12 +341,12 @@ def _root_of(pt:ProcessTree):
 
 def _ancestor_chains(tree:ProcessTree):
     '''
-    {node: [ancestor-or-self, ...]} for every node in tree - the set a
-    move classified at `node` is relevant to under executions()'s first
-    (pt.contains_tree(node)) branch, for every pt at once. Built
-    top-down in one pass (each node's chain = its parent's chain plus
-    itself), so this is O(n) total rather than one upward walk per
-    node.
+    {node: [ancestor-or-self, ...]} for every node in tree - the nodes
+    whose executions a move classified at `node` belongs to: that node
+    and its ancestors, never its descendants, so a lumped skip on `node`
+    is no execution of anything beneath it. Built top-down in one pass
+    (each node's chain = its parent's chain plus itself), so this is
+    O(n) total rather than one upward walk per node.
     '''
     chains = {}
 
@@ -379,35 +358,6 @@ def _ancestor_chains(tree:ProcessTree):
 
     _walk(tree, [])
     return chains
-
-
-def _implied_descendant_sets(tree:ProcessTree):
-    '''
-    {node: {node itself, plus every descendant it mandatorily implies}}
-    for every node in tree - the forward/downward direction of
-    _mandatorily_implies, precomputed once per tree rather than
-    re-walked (upward, from pt to a candidate ancestor) per move per
-    queried node. Purely structural - does not depend on any alignment
-    - so this only needs recomputing when the tree itself changes.
-    '''
-    implied = {}
-
-    def _walk(node):
-        result = {node}
-        if isinstance(node, Xor):
-            for child in node.children:
-                _walk(child)
-        else:
-            for idx, child in enumerate(node.children):
-                if isinstance(node, Loop) and idx == 1:
-                    _walk(child)
-                    continue
-                result |= _walk(child)
-        implied[node] = result
-        return result
-
-    _walk(tree)
-    return implied
 
 
 def _group_executions(relevant, pt:ProcessTree):
@@ -435,16 +385,15 @@ def _group_executions(relevant, pt:ProcessTree):
             for group in groups]
 
 
-def executions_by_node(path, tree:ProcessTree, ancestor_chains=None, implied_sets=None):
+def executions_by_node(path, tree:ProcessTree, ancestor_chains=None):
     '''
     {node: executions(path, node)} for EVERY node in tree, from one
     pass over `path` - batches what calling executions(path, node) once
     per node would otherwise redo (re-walking the same path from
-    scratch each time). Pass precomputed ancestor_chains/implied_sets
-    (this function's own _ancestor_chains/_implied_descendant_sets
-    outputs) when calling repeatedly against the same tree, to also
-    skip re-deriving those structural, alignment-independent maps - see
-    make_executions_cache/alignment_mass.
+    scratch each time). Pass a precomputed ancestor_chains (this
+    function's own _ancestor_chains output) when calling repeatedly
+    against the same tree, to also skip re-deriving that structural,
+    alignment-independent map - see make_executions_cache/alignment_mass.
 
     executions() (below) is a thin facade over this for the single-node
     case the existing test suite and simpler callers use; this is the
@@ -453,21 +402,14 @@ def executions_by_node(path, tree:ProcessTree, ancestor_chains=None, implied_set
     '''
     if ancestor_chains is None:
         ancestor_chains = _ancestor_chains(tree)
-    if implied_sets is None:
-        implied_sets = _implied_descendant_sets(tree)
 
     relevant_by_node = {}
     for i, (log_elem, model_elem) in enumerate(path):
-        node, kind = _classify_move(model_elem)
+        node, _kind = _classify_move(model_elem)
         if node is None:
             continue
         for pt in ancestor_chains[node]:
             relevant_by_node.setdefault(pt, []).append((i, log_elem, model_elem))
-        if kind in ('skip', 'tau'):
-            for pt in implied_sets[node]:
-                if pt is node:
-                    continue
-                relevant_by_node.setdefault(pt, []).append((i, log_elem, model_elem))
 
     result = {pt: _group_executions(relevant, pt)
               for pt, relevant in relevant_by_node.items()}
@@ -484,11 +426,11 @@ def executions(path, pt:ProcessTree):
     model_elem) pairs, restricted to pt's subtree.
 
     A skip-alignment normal form lumps an entirely-unwitnessed subtree
-    into one Skip/TauPath on its coarsest ancestor, rather than naming
-    every descendant leaf. Where pt sits only on mandatory positions
-    beneath such a lump (see _mandatorily_implies), that lump is also
-    pt's own execution - pt inherits the ancestor's fate rather than
-    being reported as vacuous/never-reached.
+    into one Skip/TauPath on its coarsest node, rather than naming every
+    descendant leaf. That move belongs to the executions of the lumped
+    node and its ancestors only: a node beneath the lump was neither
+    traversed nor skipped in that alignment, so it has no execution
+    there, and the lumped node alone carries the void.
 
     A facade over executions_by_node - computes every node's executions
     from one pass over `path` and returns just pt's, rather than
@@ -518,13 +460,13 @@ def _variant_key(variant):
 
 def make_executions_cache(tree:ProcessTree):
     '''
-    Structural maps for `tree` (ancestor_chains, implied_sets) plus a
+    The structural map for `tree` (ancestor_chains) plus a
     per-path memo, shared across many alignment_mass calls against
     different nodes of the SAME tree/skip_dict (see
     lab.exp_disco_degrade._node_rows, which calls alignment_mass once
     per node via coverage_by_alignment/coverage_by_alignment_pn) - pass
     the SAME cache object to every one of those calls so both the
-    structural maps and each alignment's batched executions_by_node
+    structural map and each alignment's batched executions_by_node
     result are computed once per report row, not once per node. Safe to
     share between coverage_by_alignment's skip-alignment paths and
     coverage_by_alignment_pn's classical-alignment paths at once (both
@@ -534,7 +476,6 @@ def make_executions_cache(tree:ProcessTree):
     return {
         'tree': tree,
         'ancestor_chains': _ancestor_chains(tree),
-        'implied_sets': _implied_descendant_sets(tree),
         'by_path': {},
     }
 
@@ -542,8 +483,7 @@ def make_executions_cache(tree:ProcessTree):
 def _executions_for(path, pt, cache):
     by_node = cache['by_path'].get(id(path))
     if by_node is None:
-        by_node = executions_by_node(path, cache['tree'], cache['ancestor_chains'],
-                                      cache['implied_sets'])
+        by_node = executions_by_node(path, cache['tree'], cache['ancestor_chains'])
         cache['by_path'][id(path)] = by_node
     return by_node.get(pt, [])
 
@@ -656,10 +596,14 @@ divisor:
       pt's own executions. Scale-free: a 1-activity and a 20-activity
       subprocess both entirely missing both score 1.0.
   voidmass_process (variant 2) - sum(deficit) over pt / sum(movecount)
-      over the WHOLE model. Size-preserving and additive: subprocess
-      values sum over any antichain through the decomposition, so the
-      root equals the sum of everything below it - a decomposable root
-      headline, which neither alignment_mass nor skipprob provide.
+      over the WHOLE model. Size-preserving, with a decomposable root
+      headline, which neither alignment_mass nor skipprob provide: a
+      move counts at its own node and every ancestor, never below, so
+      a node's value is that of its own lumped moves plus its
+      children's. Over a cut through the tree, values sum to the root's
+      only when no lump sits above the cut. voidmass_pn's classical
+      alignments put every move on a leaf, so there any cut sums to the
+      root.
 
 A further factor of skip_prob(pt) (from the same DerivationPipeline
 already used by coverage_by_alignment) gives voidage, variants 3 and 4
@@ -672,11 +616,15 @@ VoidageAdditivityLossTest.
 Reference values: a hand-worked table of deficit, movecount and
 variants 1/2 at every node of the payment running example
 (lab.fixtures) - e.g. the root's deficit is 1/3 and its movecount 25/6,
-so both variants are 2/25 = 0.08 there. Pinned in
-tests/process_voids/test_voidmass.py against the real aligner's output
-on that fixture, not hand-picked alignments, which need not match what
-the real aligner finds (see test_coverage_by_alignment.py's
-TiesAcrossOptimalAlignmentsTest).
+so both variants are 2/25 = 0.08 there. Pinned against the real
+aligner's output on that fixture, not hand-picked alignments, which
+need not match what the real aligner finds (see
+test_coverage_by_alignment.py's TiesAcrossOptimalAlignmentsTest). The
+table counts the unwitnessed approval loop as a model move on its
+do-child a, as a classical alignment does, and voidmass_pn reproduces
+it exactly (test_voidmass_pn_prototype.py). Here the loop's lump is
+approval's execution, not a's, so tests/process_voids/test_voidmass.py
+pins a's row at 0.
 '''
 
 def deficit(execution):
@@ -720,15 +668,14 @@ def voidmass_table(tree:ProcessTree, skip_dict:dict, variant_probs:dict, skip_pr
     voidmass * skip_prob(node)). Omit for just variants 1/2, which need
     no DerivationPipeline/skip_prob at all.
 
-    Variants 3/4 lose the additivity variant 2 has - but this is
-    conditional, not universal: it only breaks when two or more siblings
-    each have nonzero deficit AND different skip_probs (a product of
-    per-node quantities doesn't sum over a cut in general). It can
-    coincidentally hold, e.g. when only one child ever contributes
-    deficit. See tests/process_voids/test_voidmass.py's VoidageTest (a
-    degenerate case where it happens to hold, documented as such) and
-    VoidageAdditivityLossTest (a constructed non-degenerate case where
-    it is lost).
+    Variants 3/4 are not additive over a cut, even where variant 2 is:
+    a product of per-node quantities doesn't sum over a cut in general.
+    Over a node's children it holds only where the node has no lump of
+    its own and its skip_prob equals the voidmass_process-weighted mean
+    of its children's. See tests/process_voids/test_voidmass.py's
+    VoidageTest (a lumped loop, whose deficit is its own) and
+    VoidageAdditivityLossTest (sibling leaves with different
+    skip_probs).
     '''
     _, root_movecount = voidmass_terms(tree, skip_dict, variant_probs)
     table = {}
@@ -860,7 +807,7 @@ def mdur(path, trace, j, consumed=None):
     return gap / len(blk) if blk else 0
 
 
-def _relevant_positions_by_node(path, tree, ancestor_chains=None, implied_sets=None):
+def _relevant_positions_by_node(path, tree, ancestor_chains=None):
     '''
     {node: [positions]} for every node in tree - the union of
     exec(m,node,path)'s members, for every node at once, WITHOUT
@@ -868,39 +815,32 @@ def _relevant_positions_by_node(path, tree, ancestor_chains=None, implied_sets=N
     adur has no per-execution averaging (a flat sum over every relevant
     position, see this section's module docstring), so the grouped
     structure executions_by_node builds is unneeded work here; this
-    shares only the structural ancestor_chains/implied_sets maps with
-    it (see make_executions_cache), not its grouping step.
+    shares only the structural ancestor_chains map with it (see
+    make_executions_cache), not its grouping step.
     '''
     if ancestor_chains is None:
         ancestor_chains = _ancestor_chains(tree)
-    if implied_sets is None:
-        implied_sets = _implied_descendant_sets(tree)
 
     positions_by_node = {}
     for i, (_log_elem, model_elem) in enumerate(path):
-        node, kind = _classify_move(model_elem)
+        node, _kind = _classify_move(model_elem)
         if node is None:
             continue
         for pt in ancestor_chains[node]:
             positions_by_node.setdefault(pt, []).append(i)
-        if kind in ('skip', 'tau'):
-            for pt in implied_sets[node]:
-                if pt is node:
-                    continue
-                positions_by_node.setdefault(pt, []).append(i)
     return positions_by_node
 
 
 def make_aligned_duration_cache(tree, log=None, traces=None):
     '''
-    Structural maps for `tree` (ancestor_chains, implied_sets) plus a
+    The structural map for `tree` (ancestor_chains) plus a
     per-path memo of _relevant_positions_by_node's own output - shared
     across many adur/admass/covat/voidat/voidsat calls against
     different nodes of the SAME tree/log (see
     lab.exp_disco_degrade._node_rows, which calls voidsat once per
     node), same purpose and shape as coveragemass.make_executions_cache
     for alignment_mass. Pass the SAME cache object to every one of
-    those calls so the structural maps and each alignment's relevant-
+    those calls so the structural map and each alignment's relevant-
     positions computation (_relevant_positions_by_node already computes
     every node's positions from one pass over a path) are done once per
     report row, not once per node.
@@ -919,7 +859,6 @@ def make_aligned_duration_cache(tree, log=None, traces=None):
     return {
         'tree': tree,
         'ancestor_chains': _ancestor_chains(tree),
-        'implied_sets': _implied_descendant_sets(tree),
         'by_path': {},
         'traces_log': log,
         'traces': (traces if traces is not None else log_to_traces(log)) if log is not None else None,
@@ -929,8 +868,7 @@ def make_aligned_duration_cache(tree, log=None, traces=None):
 def _relevant_positions_for(path, cache):
     by_node = cache['by_path'].get(id(path))
     if by_node is None:
-        by_node = _relevant_positions_by_node(path, cache['tree'], cache['ancestor_chains'],
-                                                cache['implied_sets'])
+        by_node = _relevant_positions_by_node(path, cache['tree'], cache['ancestor_chains'])
         cache['by_path'][id(path)] = by_node
     return by_node
 

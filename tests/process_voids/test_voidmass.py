@@ -5,10 +5,8 @@ against a hand-worked reference table on the payment running example -
 computed here with the real aligner (not hand-picked alignments),
 following test_coverage_by_alignment.py's RunningExampleTest fixture
 pattern exactly, since that already uses the same tree/variants/
-weights. The real aligner reproduces the hand-worked table exactly on
-this example (contrast test_coverage_by_alignment.py's
-TiesAcrossOptimalAlignmentsTest, where the real aligner diverges from a
-hand-written expectation).
+weights. The real aligner reproduces the hand-worked table everywhere
+except at a - see RunningExampleVoidmassTest.
 '''
 
 import tempfile
@@ -36,8 +34,15 @@ def align(tree, trace):
 
 
 class RunningExampleVoidmassTest(unittest.TestCase):
-    '''Pins the hand-worked reference table exactly - see
-    test_reference_table's cases.'''
+    '''
+    The hand-worked reference table over the real aligner's lumped
+    normal form. In the two <o,s,p> traces the approval loop goes
+    unwitnessed and is lumped into one Skip on the loop - approval's
+    execution, not its do-child a's - so approval carries that deficit
+    and a none of it. The hand-worked table, like a classical alignment,
+    puts it on a instead: see test_voidmass_pn_prototype.py's
+    RunningExampleCrossCheckTest.
+    '''
 
     def setUp(self):
         self.tree = build_running_example_tree()
@@ -60,7 +65,7 @@ class RunningExampleVoidmassTest(unittest.TestCase):
         cases = [
             ('N (root)', self.tree, 0.333, 4.167, 0.080, 0.080),
             ('approval', self.approval, 0.333, 1.333, 0.080, 0.250),
-            ('a', self.a, 0.333, 1.167, 0.080, 0.286),
+            ('a', self.a, 0.0, 0.833, 0.0, 0.0),
             ('e', self.e, 0.0, None, 0.0, 0.0),
             ('o', self.o, 0.0, None, 0.0, 0.0),
             ('sched', self.sched, 0.0, None, 0.0, 0.0),
@@ -76,11 +81,14 @@ class RunningExampleVoidmassTest(unittest.TestCase):
                 self.assertAlmostEqual(row['voidmass_process'], variant2_exp, places=3)
                 self.assertAlmostEqual(row['voidmass_subprocess'], variant1_exp, places=3)
 
-    def test_variant2_is_additive_over_approval(self):
-        # approval = a + e under variant 2 (process-relative)
+    def test_variant2_is_own_lump_plus_children_at_approval(self):
+        # a lump counts at its own node and above, never below: approval's
+        # variant 2 is its own lump (the two <o,s,p> traces) plus a + e
+        own_lump = (2 / 6) / self.table[self.tree]['movecount']
         self.assertAlmostEqual(
             self.table[self.approval]['voidmass_process'],
-            self.table[self.a]['voidmass_process'] + self.table[self.e]['voidmass_process'],
+            own_lump + self.table[self.a]['voidmass_process']
+                     + self.table[self.e]['voidmass_process'],
             places=6)
 
     def test_variant2_root_equals_sum_of_children(self):
@@ -88,16 +96,58 @@ class RunningExampleVoidmassTest(unittest.TestCase):
         self.assertAlmostEqual(self.table[self.tree]['voidmass_process'], total, places=6)
 
     def test_variant1_is_not_additive(self):
-        # parent (approval, 0.250) is LESS than its own child (a, 0.286) -
+        # parent (root, 0.080) is LESS than its own child (approval, 0.250) -
         # the whole point of variant 1 being scale-free, not size-preserving
         self.assertLess(
-            self.table[self.approval]['voidmass_subprocess'],
-            self.table[self.a]['voidmass_subprocess'])
+            self.table[self.tree]['voidmass_subprocess'],
+            self.table[self.approval]['voidmass_subprocess'])
 
     def test_variants_agree_at_root(self):
         # the two divisors coincide at the root
         root = self.table[self.tree]
         self.assertAlmostEqual(root['voidmass_process'], root['voidmass_subprocess'], places=6)
+
+
+class LumpCountedOnceTest(unittest.TestCase):
+    '''
+    Model seq(a, seq(b, c)), log <a,b,c> and <z> at weight 1/2 each. <z>
+    lumps the whole tree into one Skip on the root: one unit of deficit
+    on the root, counted once - not again on a, seq(b,c), b or c, none of
+    which has an execution in <z>.
+    '''
+
+    def setUp(self):
+        self.a = Activity(None, 'a', ACT_COST)
+        self.a.id = '1'
+        self.b = Activity(None, 'b', ACT_COST)
+        self.b.id = '2'
+        self.c = Activity(None, 'c', ACT_COST)
+        self.c.id = '3'
+        self.bc = Sequence(None, [self.b, self.c])
+        self.bc.id = '4'
+        self.b.set_parent(self.bc)
+        self.c.set_parent(self.bc)
+        self.tree = Sequence(None, [self.a, self.bc])
+        self.tree.id = '5'
+        self.a.set_parent(self.tree)
+        self.bc.set_parent(self.tree)
+        self.variant_probs = {('a', 'b', 'c'): 1 / 2, ('z',): 1 / 2}
+        self.skip_dict = {
+            variant_key(variant): align(self.tree, variant)
+            for variant in self.variant_probs
+        }
+        self.table = voidmass_table(self.tree, self.skip_dict, self.variant_probs)
+
+    def test_root_carries_the_lump(self):
+        self.assertAlmostEqual(self.table[self.tree]['deficit'], 0.5, places=6)
+
+    def test_descendants_carry_none_of_it(self):
+        for name, node in (('a', self.a), ('seq(b,c)', self.bc), ('b', self.b), ('c', self.c)):
+            with self.subTest(node=name):
+                self.assertAlmostEqual(self.table[node]['deficit'], 0.0, places=6)
+
+    def test_movecount_counts_only_the_trace_that_executes_the_node(self):
+        self.assertAlmostEqual(self.table[self.b]['movecount'], 0.5, places=6)
 
 
 class SizeSensitivityTest(unittest.TestCase):
@@ -237,24 +287,25 @@ class VoidageTest(unittest.TestCase):
                 self.assertAlmostEqual(row['voidage_process'],
                                         sp * row['voidmass_process'], places=9)
 
-    def test_voidage_additivity_holds_here_because_only_one_child_contributes(self):
+    def test_voidage_is_not_additive_across_the_lumped_loop(self):
         '''
-        NOT a general property - a degenerate case. 'e' has zero deficit
-        throughout this example (see reference table), so approval's
-        entire voidmass_process comes from 'a' alone, and skip_prob(a)
-        happens to equal skip_prob(approval) exactly here (both 1/3 -
-        plausibly structural: 'a' is the Loop's mandatory do-child, so
-        skipping the Loop at all structurally implies skipping 'a' - see
-        _mandatorily_implies). With only one nonzero-deficit child,
-        additivity survives the multiply by construction regardless of
-        that coincidence. See VoidageAdditivityLossTest for a
-        non-degenerate case (two siblings both with nonzero deficit and
-        different skip_probs), where additivity is lost.
+        approval's whole deficit is its own lumped skip in sigma3/sigma4
+        (<o, s, p>): neither child has an execution in those traces, so
+        neither carries any of it (see the reference table). The lump
+        also leaves the masked do-child a with skip_prob 0 - a
+        synchronises wherever it does execute - while skip_prob(approval)
+        is 2/6. So approval's voidage_process is 2/6 of its
+        voidmass_process (2/25), and its children's sum to 0. See
+        VoidageAdditivityLossTest for siblings with different
+        skip_probs.
         '''
+        self.assertEqual(self.skip_probs[self.a], 0.0)
+        self.assertAlmostEqual(self.skip_probs[self.approval], 2 / 6, places=9)
         approval_v4 = self.table[self.approval]['voidage_process']
         children_sum = (self.table[self.a]['voidage_process']
                          + self.table[self.e]['voidage_process'])
-        self.assertAlmostEqual(approval_v4, children_sum, places=6)
+        self.assertAlmostEqual(approval_v4, (2 / 6) * (2 / 25), places=9)
+        self.assertEqual(children_sum, 0.0)
 
     def test_root_skipprob_near_zero_but_voidmass_nonzero(self):
         '''

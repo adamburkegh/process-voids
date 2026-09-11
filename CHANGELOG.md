@@ -63,6 +63,27 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+* Upgraded to skip-alignments 0.2.3 (`v0.2.3+p4`), which fixes a
+  skip-probability bug present since skip-alignments 0.2.0: a node
+  nested inside a subtree that an alignment skips as a single lumped
+  move was counted as skipped whenever anything else in that alignment
+  synchronised, although it has no execution there at all. Skip
+  probabilities of such nested nodes were overstated (e.g. the children
+  of a lumped `seq(b, c)` read 1/2 instead of 0); the lumped node's own
+  value is unchanged. On the payment running example the approval
+  loop's children `a` and `e` go from 1/3 and 2/3 to 0, and the
+  scheduling choice's `s` and silent branch from 1/6 and 1 to 0, while
+  the loop (1/3) and the choice (1/6) keep theirs. Metrics built on skip
+  probabilities (`skipprob`/`skip_prob`, `weight_coverage`/
+  `weight_voidage`, `mean_leaf_skipprob`, `salign_coverage`,
+  `alignment_coverage_pn_lower`/`_upper`, `voidsat`, the voidage columns
+  `voidage_subprocess`/`voidage_process`/`target_voidage_*`/
+  `target_rank_voidage_process`, and pvoid's `duration_coverage`) change
+  at such nodes, and values aggregated over descendants can change too.
+  `weight_coverage`/`weight_voidage` read skip probabilities only at
+  leaves, so they no longer register a subtree skipped as one lumped
+  move at all. Results written before this upgrade carry the overstated
+  values.
 * `voidsat` was very slow on high case-count logs: `admass` rebuilt the
   log's trace list (a full group-by, sort and conversion over the log)
   once per tree node instead of once per report row - about 4,270s
@@ -73,6 +94,21 @@ All notable changes to this project will be documented in this file.
   split them into `_lower`/`_upper` bounds. Each is now plotted as a
   midpoint line with a shaded band between its bounds, which collapses
   to a plain line when nothing timed out.
+* The skip-alignment metrics counted an entirely unwitnessed subtree's
+  absence again at every node beneath it. The aligner records such a
+  subtree as one lumped skip move on its coarsest node, and
+  `coveragemass.executions` (and voidsat's equivalent) treated that move
+  as an execution of every descendant on a mandatory position
+  (Sequence/And child, Loop do-child) too. Definition [Executions],
+  which the metrics cite, gives such a descendant no execution there: it
+  was neither traversed nor skipped, and the lumped node alone carries
+  the void. With the skip-alignments upgrade above, skip probabilities
+  follow the same rule, so both factors of every skip_prob * mass
+  metric count the same traces. Affects nodes under a lumped subtree in
+  `salign_coverage` and `voidsat` (per-node CSV) and in every
+  `exp_voidmass` column except `skip_prob` and `n_optimal_alignments`.
+  Root values, and the classical-alignment metrics' mass terms, are
+  unchanged.
 
 ## [0.4.2] - 2026-09-11
 

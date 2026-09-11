@@ -169,17 +169,16 @@ class TauLeafIsNotADeficitTest(unittest.TestCase):
 
 class RunningExampleCrossCheckTest(unittest.TestCase):
     '''
-    Cross-check against test_voidmass.py's RunningExampleVoidmassTest,
-    which pins the hand-worked reference table using the
-    skip-alignments path. If the classical path reproduces the same
-    numbers here, that's expected: this fixture's
-    only entirely-missing subtree (approval = Loop(a,e), when the whole
-    loop is skipped) never actually exposes the lumping bug, because
-    only the do-child 'a' is mandatory when the loop runs zero times -
-    'e' is legitimately optional either way. A real divergence would
-    need a multi-mandatory-leaf subtree instead (see
-    TotalAblationSizeSensitivityTest for that case, hand-built since
-    this fixture doesn't have one).
+    The classical path on the running example. It reproduces the
+    hand-worked reference table exactly, and test_voidmass.py's
+    RunningExampleVoidmassTest (the skip-alignment path) everywhere
+    except the approval loop's do-child a. In the two <o,s,p> traces the
+    whole loop goes unwitnessed. A classical alignment has no lumped
+    skip, so the loop's cheapest traversal is a model move on a itself,
+    and a carries that deficit. The skip-alignment normal form lumps it
+    into one Skip on the loop - approval's execution, not a's - so there
+    a carries none. The same lumping stops a multi-leaf subtree's
+    deficit scaling with its size - see TotalAblationSizeSensitivityTest.
     '''
 
     def setUp(self):
@@ -197,7 +196,7 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
                                     self.fm, self.activity_to_id, self.tau_ids, timeout=30)
         self.table, self.skip_dict = result.table, result.skip_dict
 
-    def test_matches_skip_alignments_reference_table(self):
+    def test_reference_table(self):
         cases = [
             ('N (root)', self.tree, 0.333, 0.080),
             ('approval', self.approval, 0.333, 0.080),
@@ -216,6 +215,14 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
                 self.assertAlmostEqual(row['deficit_upper'], deficit_exp, places=3)
                 self.assertAlmostEqual(row['voidmass_process_lower'], variant2_exp, places=3)
                 self.assertAlmostEqual(row['voidmass_process_upper'], variant2_exp, places=3)
+
+    def test_variant2_is_additive_over_approval(self):
+        # every classical move sits on a leaf, so approval = a + e
+        self.assertAlmostEqual(
+            self.table[self.approval]['voidmass_process_lower'],
+            self.table[self.a]['voidmass_process_lower']
+            + self.table[self.e]['voidmass_process_lower'],
+            places=6)
 
 
 class TiedAlignmentDoubleCountingTest(unittest.TestCase):

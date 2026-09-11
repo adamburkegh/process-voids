@@ -158,6 +158,12 @@ class LumpedMissingSubprocessSharesBlockWithFollowingEventTest(unittest.TestCase
     def test_a_has_no_attributable_gap(self):
         self.assertAlmostEqual(admass(self.a, self.tree, self.log, self.alignments), 0.0)
 
+    def test_leaves_under_the_lump_have_no_attributable_gap(self):
+        # the lump is seq(x,y)'s execution, not x's or y's
+        for node in (self.x, self.y):
+            with self.subTest(node=node.name):
+                self.assertAlmostEqual(admass(node, self.tree, self.log, self.alignments), 0.0)
+
     def test_root_gets_the_whole_gap_since_both_halves_are_under_it(self):
         self.assertAlmostEqual(admass(self.tree, self.tree, self.log, self.alignments), 1.0)
 
@@ -167,7 +173,7 @@ class LumpedMissingSubprocessSharesBlockWithFollowingEventTest(unittest.TestCase
         # row (see make_executions_cache's equivalent for alignment_mass
         # /coverage_by_alignment_pn) - must not change any node's number.
         cache = make_aligned_duration_cache(self.tree)
-        for node in (self.a, self.missing, self.c, self.tree):
+        for node in (self.a, self.missing, self.x, self.y, self.c, self.tree):
             with self.subTest(node=node):
                 uncached = admass(node, self.tree, self.log, self.alignments)
                 cached = admass(node, self.tree, self.log, self.alignments, cache=cache)

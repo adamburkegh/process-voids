@@ -4,7 +4,7 @@ import unittest
 from skipalignments import Activity, Tau, Sequence, Xor, And, Loop, Aligner
 
 from lab.fixtures import build_running_example_tree
-from process_voids.coveragemass import alignment_mass
+from process_voids.coveragemass import alignment_mass, make_executions_cache
 
 ACT_COST = 100000
 
@@ -242,10 +242,9 @@ class TiesAcrossOptimalAlignmentsTest(unittest.TestCase):
     (matching the original spec) but renormalised reports as 1 (the
     "never exercised, default to fully covered" convention - NOT the
     spec's 0, since that assumed a decomposition the aligner doesn't do).
-    This is why: skip_prob(a)/skip_prob(b) - not alignment_mass - is what
-    correctly reports these as skipped once the ancestor-lump-skip
-    (1-skip_prob) factor is applied; the two concerns are cleanly split
-    by the metric's own (1-skip_prob)*mass factorisation.
+    The skip is the Xor's own, reported by skip_prob(choice): a and b
+    have no execution in this alignment, so this trace gives neither
+    alignment_mass nor skip_prob anything to say about them.
     """
 
     def setUp(self):
@@ -311,13 +310,12 @@ class RunningExampleTest(unittest.TestCase):
     variants (weights derived from the six-trace fixture: sigma1/5 share
     <o,a,s,p>, sigma3/4 share <o,s,p>).
 
-    a is the Loop's mandatory do-child, itself under a mandatory Sequence
-    position - so when the whole loop goes unwitnessed (<o,s,p>), that
-    lump skip unambiguously implicates a too, and a's mass should NOT
-    change under renormalisation. e (the Loop's optional redo-child) and
-    s (an Xor branch, inherently ambiguous like M8) both should change,
-    since neither position is unambiguously implicated by an ancestor
-    lump skip.
+    When the whole loop goes unwitnessed (<o,s,p>), the normal form lumps
+    it into one Skip on the loop - approval's execution, and neither
+    child's. So a (the Loop's do-child) has no execution in <o,s,p>, e
+    (its redo-child) none outside <o,a,e,a,s,p>, and s (an Xor branch,
+    like M8) none in <o,a,p>: each reads differently under the two
+    conventions.
     """
 
     def setUp(self):
@@ -341,7 +339,7 @@ class RunningExampleTest(unittest.TestCase):
             ('N', self.tree, 11 / 12, 11 / 12),
             ('o', self.o, 1.0, 1.0),
             ('approval', self.approval, 2 / 3, 2 / 3),
-            ('a', self.a, 2 / 3, 2 / 3),
+            ('a', self.a, 2 / 3, 1.0),
             ('e', self.e, 1 / 6, 1.0),
             ('sched', self.sched, 5 / 6, 1.0),
             ('s', self.s, 5 / 6, 1.0),
@@ -362,16 +360,14 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class HeldOutTwoLevelMandatoryChainTest(unittest.TestCase):
+class LumpedLoopDescendantsTest(unittest.TestCase):
     """
-    Held-out prediction, not from the original spec: model
-    seq(o, loop(seq(x,y), z)), log <o> x1 (whole loop unwitnessed, one
-    lump Skip(Loop)). x and y sit two mandatory levels deep beneath the
-    lump (Sequence child, then Loop do-child) and should inherit it
-    (0.0 both conventions, not vacuous). z is the loop's redo-child -
-    genuinely ambiguous - and should stay vacuous (0.0 zero, 1.0
-    renormalised). Predicted by hand from _mandatorily_implies before
-    running this test.
+    Model seq(o, loop(seq(x,y), z)), log <o> x1: the whole loop goes
+    unwitnessed, lumped into one Skip on the loop - the loop's own
+    execution. Nothing beneath it has one: not seq(x,y) or x and y,
+    which every traversal of the loop traverses, and not the redo-child
+    z. All four are vacuous: 0.0 under the zero convention, 1.0
+    renormalised.
     """
 
     def setUp(self):
@@ -393,12 +389,12 @@ class HeldOutTwoLevelMandatoryChainTest(unittest.TestCase):
         self.loop.set_parent(self.tree)
         self.skip_dict, self.variant_probs = build(self.tree, {('o',): 1.0})
 
-    def test_predicted_values(self):
+    def test_masses(self):
         cases = [
             ('loop', self.loop, 0.0, 0.0),
-            ('seq(x,y)', self.do, 0.0, 0.0),
-            ('x', self.x, 0.0, 0.0),
-            ('y', self.y, 0.0, 0.0),
+            ('seq(x,y)', self.do, 0.0, 1.0),
+            ('x', self.x, 0.0, 1.0),
+            ('y', self.y, 0.0, 1.0),
             ('z', self.z, 0.0, 1.0),
         ]
         for name, node, expected_zero, expected_renorm in cases:
@@ -410,6 +406,19 @@ class HeldOutTwoLevelMandatoryChainTest(unittest.TestCase):
                     alignment_mass(node, self.skip_dict, self.variant_probs,
                                     'renormalised'),
                     expected_renorm, places=6)
+
+    def test_shared_cache_gives_identical_results_to_no_cache(self):
+        # lab.exp_disco_degrade scores every node in a report row through
+        # one shared make_executions_cache - it must not change any number
+        cache = make_executions_cache(self.tree)
+        for node in (self.tree, self.o, self.loop, self.do, self.x, self.y, self.z):
+            for convention in ('zero', 'renormalised'):
+                with self.subTest(node=node.id, convention=convention):
+                    self.assertAlmostEqual(
+                        alignment_mass(node, self.skip_dict, self.variant_probs, convention,
+                                       executions_cache=cache),
+                        alignment_mass(node, self.skip_dict, self.variant_probs, convention),
+                        places=9)
 
 
 class TimedOutVariantRatioTest(unittest.TestCase):

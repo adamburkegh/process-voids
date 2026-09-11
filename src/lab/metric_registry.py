@@ -55,6 +55,16 @@ from dataclasses import dataclass, field
 
 STATUSES = {'live', 'evaluation', 'product-only', 'retired'}
 
+# Prior meaning of every id computed from coveragemass.executions over
+# skip alignments, before v0.4.3.
+_INHERITED_LUMP_HISTORY = (
+    "Counted a lumped skip (the single Skip move for an entirely "
+    "unwitnessed subtree) as an execution of every node beneath the "
+    "lumped node on a mandatory position (Sequence/And child, Loop "
+    "do-child), not only of the lumped node and its ancestors as "
+    "Definition [Executions] specifies. Values at nodes under a lumped "
+    "subtree differ; root values do not.")
+
 
 @dataclass(frozen=True)
 class Metric:
@@ -127,6 +137,7 @@ METRICS = {
                     'based, unlike weight_coverage.',
         source='process_voids.coveragemass.coverage_by_alignment',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',
@@ -285,6 +296,7 @@ METRICS = {
                     "verified against.",
         source='process_voids.coveragemass.voidsat',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'containment_bits': Metric(
         id='containment_bits',
@@ -461,6 +473,7 @@ METRICS = {
                     "respective denominators.",
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'movecount': Metric(
         id='movecount',
@@ -469,6 +482,7 @@ METRICS = {
                     "voidmass_subprocess's own denominator.",
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'voidmass_subprocess': Metric(
         id='voidmass_subprocess',
@@ -486,7 +500,8 @@ METRICS = {
                            "v0.4.2 when exp_disco_degrade's own use split "
                            "into voidmass_subprocess_lower/_upper; "
                            "exp_voidmass.py's lumped use of the plain id is "
-                           "unaffected and continues unchanged."},
+                           "unaffected and continues unchanged.",
+                 'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'voidmass_process': Metric(
         id='voidmass_process',
@@ -498,7 +513,8 @@ METRICS = {
         history={'v0.4.1': "exp_disco_degrade.py used this same unsuffixed id "
                            "for a DIFFERENT (classical Petri-net alignment) "
                            "quantity through v0.4.1 - see voidmass_subprocess's "
-                           "history entry."},
+                           "history entry.",
+                 'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'voidage_subprocess': Metric(
         id='voidage_subprocess',
@@ -506,6 +522,7 @@ METRICS = {
                     'coveragemass.voidmass_table.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'voidage_process': Metric(
         id='voidage_process',
@@ -513,6 +530,7 @@ METRICS = {
                     'coveragemass.voidmass_table.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidmass_subprocess': Metric(
         id='target_voidmass_subprocess',
@@ -520,6 +538,7 @@ METRICS = {
                     'voidmass_subprocess, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidmass_process': Metric(
         id='target_voidmass_process',
@@ -527,6 +546,7 @@ METRICS = {
                     'voidmass_process, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidage_subprocess': Metric(
         id='target_voidage_subprocess',
@@ -534,6 +554,7 @@ METRICS = {
                     'voidage_subprocess, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidage_process': Metric(
         id='target_voidage_process',
@@ -541,6 +562,7 @@ METRICS = {
                     'voidage_process, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_rank_voidmass_process': Metric(
         id='target_rank_voidmass_process',
@@ -549,6 +571,7 @@ METRICS = {
                     'the ablated subprocess actually the biggest void?',
         source='lab.exp_voidmass._rank_descending',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_rank_voidage_process': Metric(
         id='target_rank_voidage_process',
@@ -556,6 +579,7 @@ METRICS = {
                     'voidage_process instead.',
         source='lab.exp_voidmass._rank_descending',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'n_optimal_alignments': Metric(
         id='n_optimal_alignments',
