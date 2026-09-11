@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
-* skip-alignments pinned to the `v0.2.3+p2` git tag (was `v0.2.3+p1`).
+* skip-alignments pinned to the `v0.2.3+p3` git tag (was `v0.2.3+p1`).
 
 ### Fixed
 
