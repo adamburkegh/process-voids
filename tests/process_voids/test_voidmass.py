@@ -194,28 +194,32 @@ class VoidageTest(unittest.TestCase):
     tests plus this one extra pipeline run.
     '''
 
-    def setUp(self):
-        self.tree = build_running_example_tree()
-        self.o, self.approval, self.sched, self.p = self.tree.children
-        self.a, self.e = self.approval.children
-        self.s, self.tau = self.sched.children
-        self.variant_probs = {
+    @classmethod
+    def setUpClass(cls):
+        # setUpClass, not setUp: this fixture includes a real ebi-backed
+        # pvoid.skipprob pipeline run, shared by every test in the class -
+        # tests must not mutate it.
+        cls.tree = build_running_example_tree()
+        cls.o, cls.approval, cls.sched, cls.p = cls.tree.children
+        cls.a, cls.e = cls.approval.children
+        cls.s, cls.tau = cls.sched.children
+        cls.variant_probs = {
             ('o', 'a', 's', 'p'): 2 / 6,
             ('o', 'a', 'e', 'a', 's', 'p'): 1 / 6,
             ('o', 's', 'p'): 2 / 6,
             ('o', 'a', 'p'): 1 / 6,
         }
-        self.skip_dict = {
-            variant_key(variant): align(self.tree, variant)
-            for variant in self.variant_probs
+        cls.skip_dict = {
+            variant_key(variant): align(cls.tree, variant)
+            for variant in cls.variant_probs
         }
 
         log = build_running_example_log()
-        dv = pvoid.skipprob(log, self.tree, 'var/lab/test_voidage.slpn')
-        self.skip_probs = dv.skip_probs
+        dv = pvoid.skipprob(log, cls.tree, 'var/lab/test_voidage.slpn')
+        cls.skip_probs = dv.skip_probs
 
-        self.table = voidmass_table(self.tree, self.skip_dict, self.variant_probs,
-                                     skip_probs=self.skip_probs)
+        cls.table = voidmass_table(cls.tree, cls.skip_dict, cls.variant_probs,
+                                    skip_probs=cls.skip_probs)
 
     def test_voidage_is_skipprob_times_voidmass(self):
         for node in (self.tree, self.approval, self.a, self.e, self.o,
@@ -267,35 +271,37 @@ class VoidageAdditivityLossTest(unittest.TestCase):
     so skip_prob(x) != skip_prob(y). Model: seq(x, y).
     '''
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
+        # setUpClass, not setUp - see VoidageTest.setUpClass for why.
         from process_voids import dtlog
 
-        self.x = Activity(None, 'x', ACT_COST)
-        self.x.id = '1'
-        self.y = Activity(None, 'y', ACT_COST)
-        self.y.id = '2'
-        self.tree = Sequence(None, [self.x, self.y])
-        self.tree.id = '3'
-        self.x.set_parent(self.tree)
-        self.y.set_parent(self.tree)
+        cls.x = Activity(None, 'x', ACT_COST)
+        cls.x.id = '1'
+        cls.y = Activity(None, 'y', ACT_COST)
+        cls.y.id = '2'
+        cls.tree = Sequence(None, [cls.x, cls.y])
+        cls.tree.id = '3'
+        cls.x.set_parent(cls.tree)
+        cls.y.set_parent(cls.tree)
 
         traces = (['x:0 y:1'] * 2) + (['y:0'] * 1) + (['x:0'] * 2)
         names = [f'c{i}' for i in range(len(traces))]
         log = dtlog.convert_timed(*traces, names=names, time_unit='hours')
 
-        self.variant_probs = {
+        cls.variant_probs = {
             ('x', 'y'): 2 / 5,
             ('y',): 1 / 5,
             ('x',): 2 / 5,
         }
-        self.skip_dict = {
-            variant_key(variant): align(self.tree, variant)
-            for variant in self.variant_probs
+        cls.skip_dict = {
+            variant_key(variant): align(cls.tree, variant)
+            for variant in cls.variant_probs
         }
-        dv = pvoid.skipprob(log, self.tree, 'var/lab/test_voidage_additivity.slpn')
-        self.skip_probs = dv.skip_probs
-        self.table = voidmass_table(self.tree, self.skip_dict, self.variant_probs,
-                                     skip_probs=self.skip_probs)
+        dv = pvoid.skipprob(log, cls.tree, 'var/lab/test_voidage_additivity.slpn')
+        cls.skip_probs = dv.skip_probs
+        cls.table = voidmass_table(cls.tree, cls.skip_dict, cls.variant_probs,
+                                    skip_probs=cls.skip_probs)
 
     def test_skip_probs_actually_differ(self):
         self.assertNotAlmostEqual(self.skip_probs[self.x], self.skip_probs[self.y], places=6)
