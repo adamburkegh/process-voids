@@ -11,7 +11,8 @@ exp_disco_degrade directly - same schema, no separate bespoke script or
 registry entries needed for it.
 
 Each Metric carries a status ('live': currently emitted; 'evaluation':
-currently emitted but not yet a settled/trusted metric; 'product-only':
+currently emitted, but only to evaluate other metrics - oracle
+baselines, diagnostics - not a metric in its own right; 'product-only':
 computed by process_voids, never emitted by a lab script; 'retired': no
 current script emits it), an optional superseded_by (the id that
 replaced it, for a clean rename/merge), and a history dict (commit or
