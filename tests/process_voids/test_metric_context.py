@@ -1,6 +1,6 @@
 import unittest
 
-from process_voids.metric_context import ProcessMetric, CellContext, METRIC_ERROR
+from process_voids.metric_context import ProcessMetric, CellContext, METRIC_ERROR, score_all
 
 
 class RecordingListener:
@@ -254,6 +254,88 @@ class WeightMutationHazardTest(unittest.TestCase):
 
         self.assertEqual(value1, 'log1')
         self.assertEqual(shared['weight'], 'log2')
+
+
+class ScoreAllTest(unittest.TestCase):
+    """
+    score_all(ctx, metrics, node) - the row-assembly counterpart to
+    CellContext.score: scores every declared ProcessMetric against one
+    node and returns {id: value}, keeping ProcessMetric itself a single-
+    quantity declaration rather than a bundle.
+    """
+
+    def test_returns_one_value_per_metric_keyed_by_id(self):
+        metrics = [
+            ProcessMetric(id='a', scope='node', needs=(), compute=lambda ctx, node: node + 1),
+            ProcessMetric(id='b', scope='node', needs=(), compute=lambda ctx, node: node * 2),
+        ]
+        ctx = _make_ctx()
+        self.assertEqual(score_all(ctx, metrics, node=5), {'a': 6, 'b': 10})
+
+    def test_a_failing_metric_contributes_its_error_sentinel_not_raise(self):
+        metrics = [
+            ProcessMetric(id='ok', scope='node', needs=(), compute=lambda ctx, node: 1),
+            ProcessMetric(id='bad', scope='node', needs=(), compute=lambda ctx, node: 1 / 0),
+        ]
+        ctx = _make_ctx()
+        result = score_all(ctx, metrics, node='n')
+        self.assertEqual(result['ok'], 1)
+        self.assertIs(result['bad'], METRIC_ERROR)
+
+    def test_each_metric_fires_its_own_started_finished_events(self):
+        listener = RecordingListener()
+        metrics = [
+            ProcessMetric(id='a', scope='node', needs=(), compute=lambda ctx, node: 1),
+            ProcessMetric(id='b', scope='node', needs=(), compute=lambda ctx, node: 2),
+        ]
+        ctx = _make_ctx(listeners=[listener])
+        score_all(ctx, metrics, node='n')
+        ids = [id_ for e, id_, node, extra in listener.events]
+        self.assertEqual(ids, ['a', 'a', 'b', 'b'])
+
+    def test_root_level_use_passes_the_tree_as_node(self):
+        seen = []
+        metrics = [ProcessMetric(id='a', scope='root', needs=(),
+                                 compute=lambda ctx, node: seen.append(node))]
+        ctx = _make_ctx()
+        score_all(ctx, metrics, node=ctx.tree)
+        self.assertEqual(seen, [ctx.tree])
+
+
+class ClassicalStageIntegrationTest(unittest.TestCase):
+    """
+    The 'classical' stage reproduces process_voids.voidmass_pn.
+    voidmass_table_pn's own values for the same (tree, log) - proves it
+    runs the SAME pipeline exp_disco_degrade._classical_metrics does
+    today, not a reimplementation.
+    """
+
+    def test_classical_stage_matches_a_direct_voidmass_table_pn_call(self):
+        from lab.fixtures import build_running_example_log, build_running_example_tree
+        from process_voids.voidmass_pn import build_id_net, voidmass_table_pn
+
+        log = build_running_example_log()
+        tree = build_running_example_tree()
+        net, im, fm, activity_to_id, tau_ids, id_loop_list = build_id_net(tree)
+
+        def variant_probs(log):
+            n_cases = log['case:concept:name'].nunique()
+            variants = {}
+            for _case, group in log.groupby('case:concept:name', sort=False):
+                variant = tuple(group.sort_values('time:timestamp')['concept:name'])
+                variants[variant] = variants.get(variant, 0) + 1
+            return {v: c / n_cases for v, c in variants.items()}
+
+        expected = voidmass_table_pn(tree, variant_probs(log), net, im, fm,
+                                     activity_to_id, tau_ids, id_loop_list=id_loop_list)
+
+        ctx = CellContext(log=log, tree=tree,
+                          classical_net=(net, im, fm, activity_to_id, tau_ids, id_loop_list))
+        result, actual_variant_probs = ctx.stage('classical')
+
+        self.assertEqual(result.table[tree]['deficit_lower'], expected.table[tree]['deficit_lower'])
+        self.assertEqual(result.table[tree]['movecount'], expected.table[tree]['movecount'])
+        self.assertEqual(actual_variant_probs, variant_probs(log))
 
 
 class RealStageIntegrationTest(unittest.TestCase):

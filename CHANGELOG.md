@@ -33,8 +33,20 @@ All notable changes to this project will be documented in this file.
   stage runs at most once per cell even when several metrics need it.
   `lab.timing` gains `TimingListener`, collecting one long-form timing
   row per stage/metric actually computed in a cell from these events.
+  `CellContext` also gained a `classical` stage (`voidmass_pn.
+  voidmass_table_pn`) and a `score_all(ctx, metrics, node)` helper -
+  scores a list of `ProcessMetric`s against one node, keeping
+  `ProcessMetric` itself a single declared quantity rather than a bundle.
 * `release_check` fails on leftover merge conflict markers (`<<<<<<<`/
   `>>>>>>>` at the start of a line) in tracked files.
+* `lab.exp_disco_degrade` now runs every metric through `CellContext`/
+  `ProcessMetric` (`ALL_METRICS`) instead of hand-assembling each row at
+  its call site - the root row is the same per-node scoring at
+  `node=tree`, not a separate computation, and the three independently
+  hand-typed "every metric is None" fallback dicts are one
+  `NULL_METRIC_VALUES` constant. `run_disco_degrade` now also returns
+  (and writes) a third, long-form `_timings` CSV with one row per
+  stage/metric actually computed per cell.
 
 ### Changed
 

@@ -29,6 +29,7 @@ from process_voids.coveragemass import (
     transfer_pt_weights, make_executions_cache, make_aligned_duration_cache, log_to_traces,
 )
 from process_voids.surprise import event_surprise
+from process_voids.voidmass_pn import voidmass_table_pn
 
 
 METRIC_ERROR = object()  # sentinel: distinct from a genuine None metric value
@@ -66,12 +67,46 @@ def _surprise_self_stage(ctx):
     return event_surprise(ctx.stage('traces'), obs=None)
 
 
+def _variant_probs(log):
+    """{trace variant (activity tuple): probability} from a log's case
+    frequencies - duplicated from lab.exp_disco_degrade rather than
+    imported, per this package's small-helper convention."""
+    n_cases = log['case:concept:name'].nunique()
+    variants = {}
+    for _case, group in log.groupby('case:concept:name', sort=False):
+        variant = tuple(group.sort_values('time:timestamp')['concept:name'])
+        variants[variant] = variants.get(variant, 0) + 1
+    return {v: c / n_cases for v, c in variants.items()}
+
+
+def _classical_stage(ctx):
+    """
+    (VoidmassPnResult, variant_probs) for this cell's (tree, log) - the
+    classical-alignment pipeline. ctx.refs['classical_net'] is the
+    (net, im, fm, activity_to_id, tau_ids, id_loop_list) tuple from
+    voidmass_pn.build_id_net(tree) - reference-scoped (depends only on
+    tree structure, not the cell's own log), so the runner computes it
+    once per (log, combo) and passes it in rather than this stage
+    rebuilding it every cell. ctx.refs['classical_timeout'] (optional)
+    overrides voidmass_table_pn's default per-variant timeout.
+    """
+    net, im, fm, activity_to_id, tau_ids, id_loop_list = ctx.refs['classical_net']
+    variant_probs = _variant_probs(ctx.log)
+    kwargs = {'id_loop_list': id_loop_list}
+    if 'classical_timeout' in ctx.refs:
+        kwargs['timeout'] = ctx.refs['classical_timeout']
+    result = voidmass_table_pn(ctx.tree, variant_probs, net, im, fm, activity_to_id,
+                               tau_ids, **kwargs)
+    return result, variant_probs
+
+
 STAGES = {
     'dv': _dv_stage,
     'executions_cache': _executions_cache_stage,
     'traces': _traces_stage,
     'aligned_duration_cache': _aligned_duration_cache_stage,
     'surprise_self': _surprise_self_stage,
+    'classical': _classical_stage,
 }
 
 
@@ -148,3 +183,14 @@ class CellContext:
             return METRIC_ERROR
         self._emit('metric_finished', metric.id, node, elapsed_s=time.monotonic() - started)
         return value
+
+
+def score_all(ctx, metrics, node=None):
+    """
+    {metric.id: ctx.score(metric, node) for metric in metrics} - the
+    row-assembly counterpart to CellContext.score. A ProcessMetric stays
+    a single declared quantity; this is the one place "loop several
+    metrics over one node" lives, so a caller building a CSV row doesn't
+    hand-roll that loop (and its own error handling) at every call site.
+    """
+    return {metric.id: ctx.score(metric, node) for metric in metrics}
