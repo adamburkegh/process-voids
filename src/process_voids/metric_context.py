@@ -1,0 +1,138 @@
+"""
+A single (log, tree) cell's shared, lazily-computed stages, and a Metric
+declaration that scores against them. Replaces hand-wiring every metric
+function at its call site (see lab.exp_disco_degrade's per-cell loop):
+a metric declares the stage ids it needs (via Metric.needs, read through
+CellContext.stage) instead of the caller threading the right values
+through by hand at every row-building site.
+
+A CellContext is built fresh per cell and never reused across cells - see
+STAGES' 'dv' entry, which mutates the tree's own .weight attributes in
+place (process_voids.coveragemass.transfer_pt_weights); a stage-dependent
+metric is only correct if scored before a LATER cell's own 'dv' stage
+runs again, which holds as long as one context is fully scored before the
+next is built.
+
+Reference-scoped values that don't depend on the cell's own (possibly
+degraded) log - a discovered tree, a classical net, an undegraded-log
+surprise distribution - are NOT stages here: they're computed once by
+whichever runner is iterating cells and passed into CellContext.__init__
+as refs, so this module stays scoped to one cell's own lazy stages.
+"""
+
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+from process_voids import pvoid, slpn_importer
+from process_voids.coveragemass import transfer_pt_weights, make_executions_cache, log_to_traces
+from process_voids.surprise import event_surprise
+
+
+METRIC_ERROR = object()  # sentinel: distinct from a genuine None metric value
+
+
+@dataclass(frozen=True)
+class Metric:
+    id: str
+    scope: str          # 'node' | 'root'
+    needs: tuple         # stage ids this metric's compute() reads via ctx.stage(...)
+    compute: Callable    # (ctx, node) -> value; node is ctx.tree when scope='root'
+
+
+def _dv_stage(ctx):
+    Path(ctx.slpn_path).parent.mkdir(parents=True, exist_ok=True)
+    dv = pvoid.skipprob(ctx.log, ctx.tree, ctx.slpn_path, ppt_weights=ctx.ppt_weights)
+    slpn = slpn_importer.read_slpn(ctx.slpn_path)
+    transfer_pt_weights(ctx.tree, slpn)
+    return dv
+
+
+def _executions_cache_stage(ctx):
+    return make_executions_cache(ctx.tree)
+
+
+def _traces_stage(ctx):
+    return log_to_traces(ctx.log)
+
+
+def _aligned_duration_cache_stage(ctx):
+    """
+    Same shape as coveragemass.make_aligned_duration_cache(tree, log), but
+    built from the already-computed 'traces' stage rather than letting it
+    recompute log_to_traces(log) a second time for this cell.
+    """
+    from process_voids.coveragemass import make_aligned_duration_cache
+    cache = make_aligned_duration_cache(ctx.tree, log=None)
+    cache['traces_log'] = ctx.log
+    cache['traces'] = ctx.stage('traces')
+    return cache
+
+
+def _surprise_self_stage(ctx):
+    return event_surprise(ctx.stage('traces'), obs=None)
+
+
+STAGES = {
+    'dv': _dv_stage,
+    'executions_cache': _executions_cache_stage,
+    'traces': _traces_stage,
+    'aligned_duration_cache': _aligned_duration_cache_stage,
+    'surprise_self': _surprise_self_stage,
+}
+
+
+class CellContext:
+    """
+    One cell's (log, tree) worth of lazily-computed, memoised stages, plus
+    Metric scoring with lifecycle events and per-metric error isolation.
+
+    refs: reference-scoped values the runner already computed for this
+    (log, combo) - e.g. a discovered tree's classical net, or the
+    undegraded-log surprise distribution - available to a Metric's
+    compute() as ctx.refs[...], never recomputed here.
+
+    listeners: callables invoked as listener(event, ctx, id_, node, **extra)
+    for 'stage_started'/'stage_finished'/'metric_started'/'metric_finished'/
+    'metric_failed'. 'stage_finished'/'metric_finished' carry elapsed_s;
+    'metric_failed' carries elapsed_s and exception. Fired around the
+    computing call only - a memoised stage's later accesses fire nothing.
+    """
+
+    STAGES = STAGES
+
+    def __init__(self, log, tree, slpn_path=None, ppt_weights=None, listeners=(), **refs):
+        self.log = log
+        self.tree = tree
+        self.slpn_path = slpn_path
+        self.ppt_weights = ppt_weights
+        self.listeners = tuple(listeners)
+        self.refs = refs
+        self._stages = {}
+
+    def _emit(self, event, id_, node, **extra):
+        for listener in self.listeners:
+            listener(event, self, id_, node, **extra)
+
+    def stage(self, stage_id):
+        if stage_id not in self._stages:
+            self._emit('stage_started', stage_id, None)
+            started = time.monotonic()
+            value = self.STAGES[stage_id](self)
+            self._emit('stage_finished', stage_id, None, elapsed_s=time.monotonic() - started)
+            self._stages[stage_id] = value
+        return self._stages[stage_id]
+
+    def score(self, metric, node=None):
+        node = self.tree if node is None else node
+        self._emit('metric_started', metric.id, node)
+        started = time.monotonic()
+        try:
+            value = metric.compute(self, node)
+        except Exception as e:
+            self._emit('metric_failed', metric.id, node,
+                       elapsed_s=time.monotonic() - started, exception=e)
+            return METRIC_ERROR
+        self._emit('metric_finished', metric.id, node, elapsed_s=time.monotonic() - started)
+        return value

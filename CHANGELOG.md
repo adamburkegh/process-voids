@@ -21,6 +21,16 @@ All notable changes to this project will be documented in this file.
   `NODE_METRIC_KEYS`/`SUMMARY_METRIC_KEYS` constants so its ids are
   covered by the same registry drift test as the other experiment
   scripts.
+* `process_voids.metric_context`: `Metric` (id, scope, needs, compute) and
+  `CellContext`, a per-cell object with named, lazily-computed and
+  memoised stages (`dv`, `executions_cache`, `traces`,
+  `aligned_duration_cache`, `surprise_self`) and `stage_started`/
+  `stage_finished`/`metric_started`/`metric_finished`/`metric_failed`
+  lifecycle events. `CellContext.score` isolates a metric's own exception
+  to a sentinel (`METRIC_ERROR`) rather than raising, without catching a
+  failing stage. `lab.timing` gains `TimingListener`, collecting one
+  long-form timing row per stage/metric actually computed in a cell from
+  these events.
 
 ### Changed
 
