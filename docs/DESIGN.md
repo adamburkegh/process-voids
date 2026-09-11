@@ -2,9 +2,8 @@
 
 *Maintained by the house critic. This document distils the ideas the code and
 experiments rest on, and gives guidance to anyone, human or bot, working here.
-Dated argument and criticism live in [`reports/`](reports/). Where this
-document and executable code disagree, the code is authoritative, and one of
-them needs fixing.*
+Where this document and executable code disagree, the code is authoritative,
+and one of them needs fixing.*
 
 Some things have an executable source of truth and are deliberately not
 repeated here:
@@ -37,8 +36,8 @@ the process is at stake.
 
 ## 2. Principles
 
-These come from the project's own results, failures included. Each has cost
-at least one candidate metric its life.
+These come from the project's own results, failures included. Most have
+cost at least one candidate metric its life.
 
 1. **No expectation, no void.** Nothing in a log points at what the log
    doesn't contain. Missing data can be detected only against an expectation
@@ -82,10 +81,6 @@ at least one candidate metric its life.
    silently absorbing a subprocess that ran unrecorded. They should present
    evidence (where, how often, how much), not conclusions.
 
-7. **Headlines must decompose.** A root-level number is honest only if it
-   equals the sum of its parts over any cut of the tree. `voidmass_process`
-   has this property; products of per-node factors don't.
-
 ## 3. The metric design space
 
 Every void or coverage metric pairs a **source of model information** (none,
@@ -116,7 +111,7 @@ one should say so in its registry description.
 | Specificity | No response to ablating an optional subprocess, or to thinning the log (fewer cases, same proportions) | Claims fixture `appeal_seq`; trace-wise degradation |
 | Size sensitivity | A missing subprocess of eight activities outweighs one of two | `SizeSensitivityTest` in `test_voidmass.py` |
 | Extremes (proposed) | Zero when nothing is missing, maximal when the subprocess is always missing | Not yet pinned for every metric |
-| Decomposability | Root value equals the sum over any antichain cut | `test_variant2_root_equals_sum_of_children` |
+| Decomposability (desirable) | The root value can be explained from its parts: a sum over any antichain cut, or a stated weighted average | `test_variant2_root_equals_sum_of_children` |
 | Honesty under failure | Timeouts produce provable bounds, not guesses or crashes | `_lower`/`_upper` columns, `timed_out_weight` |
 | Interpretable units | A reader can say what 0.25 means (a share of expected moves, of elapsed time, ...) | Registry descriptions |
 | Cost | Runs on logs the size of Road Traffic Fines inside a sweep | Per-cell timing in run logs |
@@ -186,25 +181,25 @@ one should say so in its registry description.
 ## 7. Open questions
 
 These are unresolved. They're listed so that nobody mistakes the current code
-for a decision. Dispatch numbers point to the argument.
+for a decision.
 
 1. **Which metric is the headline?** The candidates are `voidmass_process`
    (decomposable, interpretable units, expensive to compute), `voidsat`
    (time-based, unaffected by lumping), and a skip-weighted count. This waits
    on the experiments.
-2. **Product forms may count the skip twice** (Dispatch 01). Masses built
-   from match/move ratios already score a skipped execution as zero, so
-   multiplying by P(skip) counts the skip again. As defined, `voidsalign`
-   scores an always-missing subprocess as zero.
+2. **Product forms may count the skip twice.** Masses built from match/move
+   ratios already score a skipped execution as zero, so multiplying by
+   P(skip) counts the skip again. As defined, `voidsalign` scores an
+   always-missing subprocess as zero.
 3. **Do skip probability and the mass terms condition on the same
    executions?** `coveragemass.executions` lets mandatorily-implied
    descendants inherit an ancestor's lumped skip. The published
-   skip-probability definition gives such descendants no execution at all
-   (Dispatch 01).
+   skip-probability definition gives such descendants no execution at all.
 4. **How should a skip move share a time gap?** The definition and the tests
-   split the gap with the following event, but some prose says the skip takes
-   the whole gap. In concurrent regions, the normal form's ordering
-   convention, not evidence, decides which gap a skip lands in (Dispatch 01).
+   split the gap with the following event, but the Coverage By Aligned
+   Duration docstring in `coveragemass` says the skip takes the whole gap. In
+   concurrent regions, the normal form's ordering convention, not evidence,
+   decides which gap a skip lands in.
 5. **Model provenance.** By principle 2, voids are meaningful only against
    external obligations, yet nothing records which nodes of a hybrid model a
    person asserted and which were discovered.
