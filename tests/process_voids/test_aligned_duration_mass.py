@@ -344,6 +344,14 @@ class CachedTracesTest(unittest.TestCase):
         self.assertAlmostEqual(
             admass(self.b, self.tree, self.log_early, self.alignments, cache), 1 / 3, places=6)
 
+    def test_a_precomputed_traces_list_is_used_instead_of_recomputing(self):
+        precomputed = log_to_traces(self.log_early)
+        with patch('process_voids.coveragemass.log_to_traces', wraps=log_to_traces) as counted:
+            cache = make_aligned_duration_cache(self.tree, self.log_early, traces=precomputed)
+            self.assertEqual(counted.call_count, 0)
+        self.assertIs(cache['traces'], precomputed)
+        self.assertIs(cache['traces_log'], self.log_early)
+
 
 if __name__ == '__main__':
     unittest.main()

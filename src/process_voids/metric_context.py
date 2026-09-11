@@ -1,10 +1,8 @@
 """
 A single (log, tree) cell's shared, lazily-computed stages, and a Metric
-declaration that scores against them. Replaces hand-wiring every metric
-function at its call site (see lab.exp_disco_degrade's per-cell loop):
-a metric declares the stage ids it needs (via Metric.needs, read through
-CellContext.stage) instead of the caller threading the right values
-through by hand at every row-building site.
+declaration that scores against them. A metric declares the stage ids it
+needs (Metric.needs, read through CellContext.stage) rather than a caller
+threading the right values through by hand at every call site.
 
 A CellContext is built fresh per cell and never reused across cells - see
 STAGES' 'dv' entry, which mutates the tree's own .weight attributes in
@@ -26,7 +24,9 @@ from pathlib import Path
 from typing import Callable
 
 from process_voids import pvoid, slpn_importer
-from process_voids.coveragemass import transfer_pt_weights, make_executions_cache, log_to_traces
+from process_voids.coveragemass import (
+    transfer_pt_weights, make_executions_cache, make_aligned_duration_cache, log_to_traces,
+)
 from process_voids.surprise import event_surprise
 
 
@@ -58,16 +58,7 @@ def _traces_stage(ctx):
 
 
 def _aligned_duration_cache_stage(ctx):
-    """
-    Same shape as coveragemass.make_aligned_duration_cache(tree, log), but
-    built from the already-computed 'traces' stage rather than letting it
-    recompute log_to_traces(log) a second time for this cell.
-    """
-    from process_voids.coveragemass import make_aligned_duration_cache
-    cache = make_aligned_duration_cache(ctx.tree, log=None)
-    cache['traces_log'] = ctx.log
-    cache['traces'] = ctx.stage('traces')
-    return cache
+    return make_aligned_duration_cache(ctx.tree, ctx.log, traces=ctx.stage('traces'))
 
 
 def _surprise_self_stage(ctx):
@@ -94,10 +85,11 @@ class CellContext:
     compute() as ctx.refs[...], never recomputed here.
 
     listeners: callables invoked as listener(event, ctx, id_, node, **extra)
-    for 'stage_started'/'stage_finished'/'metric_started'/'metric_finished'/
-    'metric_failed'. 'stage_finished'/'metric_finished' carry elapsed_s;
-    'metric_failed' carries elapsed_s and exception. Fired around the
-    computing call only - a memoised stage's later accesses fire nothing.
+    for 'stage_started'/'stage_finished'/'stage_failed'/'metric_started'/
+    'metric_finished'/'metric_failed'. 'stage_finished'/'metric_finished'
+    carry elapsed_s; 'stage_failed'/'metric_failed' carry elapsed_s and
+    exception. Fired around the computing call only - a memoised stage's
+    later accesses (success OR failure) fire nothing further.
     """
 
     STAGES = STAGES
@@ -116,13 +108,31 @@ class CellContext:
             listener(event, self, id_, node, **extra)
 
     def stage(self, stage_id):
+        """
+        Computes and memoises STAGES[stage_id](self) on first access. A
+        stage that raises is memoised as a failure too - its exception is
+        re-raised (not recomputed) on every later access within this
+        context's lifetime, so an expensive, failing stage (eg the
+        ebi-backed 'dv' stage) runs at most once per cell even though
+        every metric needing it fails independently via score()'s own
+        exception handling.
+        """
         if stage_id not in self._stages:
             self._emit('stage_started', stage_id, None)
             started = time.monotonic()
-            value = self.STAGES[stage_id](self)
+            try:
+                value = self.STAGES[stage_id](self)
+            except Exception as e:
+                self._emit('stage_failed', stage_id, None,
+                           elapsed_s=time.monotonic() - started, exception=e)
+                self._stages[stage_id] = ('error', e)
+                raise
             self._emit('stage_finished', stage_id, None, elapsed_s=time.monotonic() - started)
-            self._stages[stage_id] = value
-        return self._stages[stage_id]
+            self._stages[stage_id] = ('ok', value)
+        status, payload = self._stages[stage_id]
+        if status == 'error':
+            raise payload
+        return payload
 
     def score(self, metric, node=None):
         node = self.tree if node is None else node

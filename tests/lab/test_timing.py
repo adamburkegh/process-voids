@@ -57,6 +57,16 @@ class TimingListenerTest(unittest.TestCase):
         self.assertEqual(len(listener.rows), 1)
         self.assertEqual(listener.rows[0]['status'], 'error')
 
+    def test_a_failed_stage_gets_a_row_marked_error(self):
+        listener = TimingListener()
+        ctx = self._ctx(listener)
+        ctx.STAGES = dict(ctx.STAGES, flaky=lambda c: 1 / 0)
+        with self.assertRaises(ZeroDivisionError):
+            ctx.stage('flaky')
+        self.assertEqual(len(listener.rows), 1)
+        self.assertEqual(listener.rows[0]['metric_or_stage'], 'flaky')
+        self.assertEqual(listener.rows[0]['status'], 'error')
+
     def test_records_a_row_for_a_computed_stage_too(self):
         listener = TimingListener()
         ctx = self._ctx(listener)

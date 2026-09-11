@@ -46,7 +46,7 @@ class StageMemoisationTest(unittest.TestCase):
         ctx.stage('thing')
         self.assertEqual(seen, [ctx])
 
-    def test_a_stage_exception_propagates_and_is_not_cached(self):
+    def test_a_failed_stage_is_memoised_as_an_error_not_recomputed(self):
         calls = []
 
         def flaky(ctx):
@@ -56,10 +56,13 @@ class StageMemoisationTest(unittest.TestCase):
         ctx = _make_ctx(stages={'flaky': flaky})
         with self.assertRaises(RuntimeError):
             ctx.stage('flaky')
-        # not memoised as a value - a second access retries (and fails again)
-        with self.assertRaises(RuntimeError):
+        # second access re-raises the SAME cached failure, not a fresh computation -
+        # an expensive stage (eg the ebi-backed 'dv' stage) must run at most once
+        # per cell even if several metrics need it and it fails.
+        with self.assertRaises(RuntimeError) as second:
             ctx.stage('flaky')
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(str(second.exception), 'stage boom')
 
 
 class StageLifecycleEventsTest(unittest.TestCase):
@@ -79,6 +82,31 @@ class StageLifecycleEventsTest(unittest.TestCase):
         self.assertEqual(len(finished), 1)
         self.assertIn('elapsed_s', finished[0])
         self.assertGreaterEqual(finished[0]['elapsed_s'], 0.0)
+
+    def test_a_failing_stage_emits_stage_failed_not_stage_finished(self):
+        listener = RecordingListener()
+        boom = RuntimeError('stage boom')
+
+        def flaky(ctx):
+            raise boom
+
+        ctx = _make_ctx(stages={'flaky': flaky}, listeners=[listener])
+        with self.assertRaises(RuntimeError):
+            ctx.stage('flaky')
+        event_names = [e for e, id_, node, extra in listener.events]
+        self.assertEqual(event_names, ['stage_started', 'stage_failed'])
+        failed_extra = listener.events[1][3]
+        self.assertIs(failed_extra['exception'], boom)
+        self.assertIn('elapsed_s', failed_extra)
+
+    def test_a_memoised_failed_stage_emits_no_further_events_on_later_access(self):
+        listener = RecordingListener()
+        ctx = _make_ctx(stages={'flaky': lambda c: 1 / 0}, listeners=[listener])
+        with self.assertRaises(ZeroDivisionError):
+            ctx.stage('flaky')
+        with self.assertRaises(ZeroDivisionError):
+            ctx.stage('flaky')
+        self.assertEqual(len(listener.events), 2)  # just the one started/failed pair
 
 
 class MetricScoringTest(unittest.TestCase):
@@ -163,6 +191,38 @@ class MetricErrorIsolationTest(unittest.TestCase):
         result = ctx.score(none_metric, node='n')
         self.assertIsNone(result)
         self.assertIsNot(result, METRIC_ERROR)
+
+    def test_a_failing_stage_reached_via_compute_runs_once_even_for_two_metrics(self):
+        """
+        The realistic failure mode: a metric's compute() calls ctx.stage(),
+        not stage() called directly. An expensive, failing stage (eg the
+        ebi-backed 'dv' stage) must run at most once per cell even though
+        every metric needing it fails independently - not be retried once
+        per metric.
+        """
+        calls = []
+
+        def flaky_dv(ctx):
+            calls.append(1)
+            raise RuntimeError('ebi boom')
+
+        metric_a = Metric(id='a', scope='node', needs=('dv',),
+                          compute=lambda ctx, node: ctx.stage('dv'))
+        metric_b = Metric(id='b', scope='node', needs=('dv',),
+                          compute=lambda ctx, node: ctx.stage('dv'))
+        listener = RecordingListener()
+        ctx = _make_ctx(stages={'dv': flaky_dv}, listeners=[listener])
+
+        result_a = ctx.score(metric_a, node='n')
+        result_b = ctx.score(metric_b, node='n')
+
+        self.assertIs(result_a, METRIC_ERROR)
+        self.assertIs(result_b, METRIC_ERROR)
+        self.assertEqual(len(calls), 1)
+        metric_failed_ids = [id_ for e, id_, node, extra in listener.events if e == 'metric_failed']
+        self.assertEqual(metric_failed_ids, ['a', 'b'])
+        stage_events = [e for e, id_, node, extra in listener.events if id_ == 'dv']
+        self.assertEqual(stage_events, ['stage_started', 'stage_failed'])
 
 
 class WeightMutationHazardTest(unittest.TestCase):

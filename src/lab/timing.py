@@ -59,9 +59,9 @@ class TimingListener:
         self.rows = []
 
     def __call__(self, event, ctx, id_, node, **extra):
-        if event in ('stage_finished', 'metric_finished', 'metric_failed'):
+        if event in ('stage_finished', 'stage_failed', 'metric_finished', 'metric_failed'):
             self.rows.append({
                 'metric_or_stage': id_,
                 'seconds': extra['elapsed_s'],
-                'status': 'error' if event == 'metric_failed' else 'ok',
+                'status': 'error' if event in ('stage_failed', 'metric_failed') else 'ok',
             })
