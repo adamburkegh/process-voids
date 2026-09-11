@@ -17,6 +17,7 @@ design direction and handles all source control on `main`.
   `C:\working\tools\toothpaste`.
 - **Logs**: small fixtures are in `data/`; large logs (rtfm, sepsis, BPI) live
   outside the repo in `C:/working/data`.
+- **Papers**: The relevant papers can be found in /c/working/data which you have permission to read
 - **Dependencies**: declared in `pyproject.toml`. After changing it, reinstall
   with `bash run.sh pip install -e .`. `requirements.txt` is a `pip freeze`
   record of the environment - regenerate it, don't hand-edit it. Don't add
