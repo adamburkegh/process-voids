@@ -38,7 +38,7 @@ Captures the metrics currently available:
     over silently absorbing a subprocess that ran but wasn't recorded).
     Named _salign (skip-alignment): unlike weight_coverage, this one
     genuinely is built on skip-alignments' machinery - alignment_mass ->
-    executions() -> Aligner.align2's lumped normal form, the same
+    executions() -> Aligner.align_normal_form's lumped normal form, the same
     representation voidmass's deficit had to move off of. Kept under
     this name until a classical-alignment replacement lands under the
     unqualified alignment_coverage name.

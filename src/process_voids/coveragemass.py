@@ -555,7 +555,7 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     factor is not applied here (see coverage_by_alignment), so this can
     be computed and tested without a real skip-probability estimation
     (no ebi dependency) - skip_dict is a variant-key -> list of skip-
-    alignment State (as produced by Aligner.align2/DerivationPipeline.
+    alignment State (as produced by Aligner.align_normal_form/DerivationPipeline.
     compute_skip_alignments), variant_probs is a variant tuple -> weight.
 
     convention: 'zero' or 'renormalised', see module docstring above.

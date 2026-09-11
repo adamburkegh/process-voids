@@ -1,7 +1,7 @@
 '''
 Prototype: voidmass deficit computed on CLASSICAL (standard) Petri-net
 alignments, via skipalignments.alignall.align_pn_all, rather than
-skip-alignments' Aligner.align2/executions().
+skip-alignments' Aligner.align_normal_form/executions().
 
 Why this exists: coveragemass.executions() is built on skip-alignments'
 normal form, which lumps an entirely-unwitnessed subtree into a single
