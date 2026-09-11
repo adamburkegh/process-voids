@@ -889,7 +889,7 @@ def _relevant_positions_by_node(path, tree, ancestor_chains=None, implied_sets=N
     return positions_by_node
 
 
-def make_aligned_duration_cache(tree, log=None):
+def make_aligned_duration_cache(tree, log=None, traces=None):
     '''
     Structural maps for `tree` (ancestor_chains, implied_sets) plus a
     per-path memo of _relevant_positions_by_node's own output - shared
@@ -908,6 +908,11 @@ def make_aligned_duration_cache(tree, log=None):
     once and reused by admass for every node - but only when admass is
     called with this same log object; any other log gets its own trace
     list.
+
+    traces (optional): an already-computed log_to_traces(log) result, for
+    a caller that built it separately (eg to share it with something
+    else scoring the same log) and wants this cache to reuse it rather
+    than computing it again. Ignored if log is None.
     '''
     return {
         'tree': tree,
@@ -915,7 +920,7 @@ def make_aligned_duration_cache(tree, log=None):
         'implied_sets': _implied_descendant_sets(tree),
         'by_path': {},
         'traces_log': log,
-        'traces': log_to_traces(log) if log is not None else None,
+        'traces': (traces if traces is not None else log_to_traces(log)) if log is not None else None,
     }
 
 

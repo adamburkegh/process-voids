@@ -21,6 +21,18 @@ All notable changes to this project will be documented in this file.
   `NODE_METRIC_KEYS`/`SUMMARY_METRIC_KEYS` constants so its ids are
   covered by the same registry drift test as the other experiment
   scripts.
+* `process_voids.metric_context`: `ProcessMetric` (id, scope, needs, compute) and
+  `CellContext`, a per-cell object with named, lazily-computed and
+  memoised stages (`dv`, `executions_cache`, `traces`,
+  `aligned_duration_cache`, `surprise_self`) and `stage_started`/
+  `stage_finished`/`stage_failed`/`metric_started`/`metric_finished`/
+  `metric_failed` lifecycle events. `CellContext.score` isolates a
+  metric's own exception to a sentinel (`METRIC_ERROR`) rather than
+  raising; a stage's failure is memoised and re-raised (not recomputed)
+  on every later access within the same cell, so an expensive, failing
+  stage runs at most once per cell even when several metrics need it.
+  `lab.timing` gains `TimingListener`, collecting one long-form timing
+  row per stage/metric actually computed in a cell from these events.
 * `release_check` fails on leftover merge conflict markers (`<<<<<<<`/
   `>>>>>>>` at the start of a line) in tracked files.
 
@@ -28,7 +40,9 @@ All notable changes to this project will be documented in this file.
 
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
-* skip-alignments pinned to the `v0.2.3+p3` git tag (was `v0.2.3+p1`).
+* `coveragemass.make_aligned_duration_cache` takes an optional `traces=`
+  parameter, for a caller that already has a log's `log_to_traces` result
+  and wants the cache to reuse it instead of recomputing it.
 
 ### Fixed
 
