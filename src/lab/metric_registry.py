@@ -395,7 +395,7 @@ METRICS = {
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
         status='retired',
-        history={'db5be5a': 'Retired and split into voidmass_deficit_lower/'
+        history={'4116fa3': 'Retired and split into voidmass_deficit_lower/'
                             'voidmass_deficit_upper, to give a timed-out '
                             "variant's deficit an honest bracket instead of "
                             'the ZeroDivisionError this unsplit id hit.'},
