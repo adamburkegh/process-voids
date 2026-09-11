@@ -4,12 +4,24 @@ from lab.exp_disco_degrade import (
     CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS, ALIGNED_DURATION_METRIC_KEYS,
 )
 from lab.exp_surprise import (
-    NODE_METRIC_KEYS, NODE_METRIC_BASELINE_KEYS,
-    SUMMARY_METRIC_KEYS, SUMMARY_METRIC_BASELINE_KEYS,
+    NODE_METRIC_KEYS as SURPRISE_NODE_METRIC_KEYS,
+    NODE_METRIC_BASELINE_KEYS, SUMMARY_METRIC_KEYS, SUMMARY_METRIC_BASELINE_KEYS,
 )
-from lab.metric_registry import METRICS, format_registry
+from lab.exp_voidmass import (
+    NODE_METRIC_KEYS as VOIDMASS_NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS as VOIDMASS_SUMMARY_METRIC_KEYS,
+)
+from lab.metric_registry import METRICS, STATUSES, format_registry
 from lab.metrics import METRIC_KEYS
 from process_voids.coveragemass import TREE_METRIC_KEYS
+
+
+def _all_emitted_ids():
+    return (set(METRIC_KEYS) | set(CLASSICAL_METRIC_KEYS)
+            | set(SURPRISE_NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS)
+            | set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS)
+            | set(TREE_METRIC_KEYS) | set(PER_NODE_METRIC_KEYS)
+            | set(ALIGNED_DURATION_METRIC_KEYS) | set(VOIDMASS_NODE_METRIC_KEYS)
+            | set(VOIDMASS_SUMMARY_METRIC_KEYS))
 
 
 class DriftTest(unittest.TestCase):
@@ -33,7 +45,8 @@ class DriftTest(unittest.TestCase):
             'lab.metrics.mean_leaf_skipprob',
         }
         skip_alignment_ids = {mid for mid, m in METRICS.items()
-                               if m.source in skip_alignment_sources}
+                               if m.source in skip_alignment_sources and m.status == 'live'
+                               and 'exp_disco_degrade' in m.scripts}
         self.assertEqual(set(METRIC_KEYS), skip_alignment_ids)
 
     def test_per_node_metric_keys_match_registry(self):
@@ -49,46 +62,76 @@ class DriftTest(unittest.TestCase):
             'process_voids.coveragemass.coverage_by_alignment',
             'dv.skip_probs (direct lookup, no computation of its own)',
         }
-        per_node_ids = {mid for mid, m in METRICS.items() if m.source in per_node_sources}
+        per_node_ids = {mid for mid, m in METRICS.items() if m.source in per_node_sources
+                        and m.status == 'live' and 'exp_disco_degrade' in m.scripts}
         self.assertEqual(set(PER_NODE_METRIC_KEYS), per_node_ids)
 
     def test_classical_metric_keys_match_registry(self):
         classical_ids = {mid for mid, m in METRICS.items()
-                          if m.source.startswith('process_voids.voidmass_pn')}
+                          if m.source.startswith('process_voids.voidmass_pn') and m.status == 'live'
+                          and 'exp_disco_degrade' in m.scripts}
         self.assertEqual(set(CLASSICAL_METRIC_KEYS), classical_ids)
 
     def test_aligned_duration_metric_keys_match_registry(self):
         aligned_duration_ids = {mid for mid, m in METRICS.items()
-                                 if m.source == 'process_voids.coveragemass.voidsat'}
+                                 if m.source == 'process_voids.coveragemass.voidsat'
+                                 and m.status == 'live'}
         self.assertEqual(set(ALIGNED_DURATION_METRIC_KEYS), aligned_duration_ids)
 
     def test_tree_metric_keys_match_registry(self):
         tree_ids = {mid for mid, m in METRICS.items()
                     if m.source in ('process_voids.coveragemass.mandatory_node_count',
-                                     'process_voids.coveragemass.total_node_count')}
+                                     'process_voids.coveragemass.total_node_count')
+                    and m.status == 'live'}
         self.assertEqual(set(TREE_METRIC_KEYS), tree_ids)
 
     def test_surprise_node_keys_match_registry(self):
         node_ids = {mid for mid, m in METRICS.items()
                     if m.source in ('process_voids.surprise.surprise_totals',
-                                     'process_voids.surprise.predecessor_totals')}
-        self.assertEqual(set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS), node_ids)
+                                     'process_voids.surprise.predecessor_totals')
+                    and m.status == 'live'}
+        self.assertEqual(set(SURPRISE_NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS), node_ids)
 
     def test_surprise_summary_keys_match_registry(self):
         summary_ids = {mid for mid, m in METRICS.items()
-                       if m.source == 'lab.exp_surprise._compute_variant'}
+                       if m.source == 'lab.exp_surprise._compute_variant' and m.status == 'live'}
         self.assertEqual(set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS), summary_ids)
 
-    def test_every_registered_id_is_emitted_by_at_least_one_script(self):
-        all_emitted = (set(METRIC_KEYS) | set(CLASSICAL_METRIC_KEYS)
-                       | set(NODE_METRIC_KEYS) | set(NODE_METRIC_BASELINE_KEYS)
-                       | set(SUMMARY_METRIC_KEYS) | set(SUMMARY_METRIC_BASELINE_KEYS)
-                       | set(TREE_METRIC_KEYS) | set(PER_NODE_METRIC_KEYS)
-                       | set(ALIGNED_DURATION_METRIC_KEYS))
-        self.assertEqual(set(METRICS), all_emitted)
+    def test_exp_voidmass_keys_match_registry(self):
+        voidmass_ids = {mid for mid, m in METRICS.items()
+                        if m.status == 'live' and m.scripts == ('exp_voidmass',)}
+        self.assertEqual(set(VOIDMASS_NODE_METRIC_KEYS) | set(VOIDMASS_SUMMARY_METRIC_KEYS),
+                         voidmass_ids)
 
-    def test_every_metric_declares_a_nonempty_script_list(self):
+    def test_live_and_evaluation_ids_are_all_emitted(self):
+        live_or_evaluation = {mid for mid, m in METRICS.items()
+                              if m.status in ('live', 'evaluation')}
+        self.assertEqual(live_or_evaluation, _all_emitted_ids())
+
+    def test_retired_ids_are_never_emitted(self):
+        retired = {mid for mid, m in METRICS.items() if m.status == 'retired'}
+        self.assertEqual(retired & _all_emitted_ids(), set())
+        self.assertTrue(retired, 'expected at least one retired id to exist')
+
+    def test_product_only_ids_are_never_emitted_by_lab(self):
+        product_only = {mid for mid, m in METRICS.items() if m.status == 'product-only'}
+        self.assertEqual(product_only & _all_emitted_ids(), set())
+        self.assertTrue(product_only, 'expected at least one product-only id to exist')
+
+    def test_every_status_is_a_known_status(self):
         for metric_id, metric in METRICS.items():
+            self.assertIn(metric.status, STATUSES, metric_id)
+
+    def test_superseded_by_targets_exist(self):
+        for metric_id, metric in METRICS.items():
+            if metric.superseded_by is not None:
+                self.assertIn(metric.superseded_by, METRICS,
+                              f'{metric_id}.superseded_by={metric.superseded_by!r} is not a registered id')
+
+    def test_every_metric_declares_a_nonempty_script_list_unless_product_only(self):
+        for metric_id, metric in METRICS.items():
+            if metric.status == 'product-only':
+                continue
             self.assertTrue(metric.scripts, f'{metric_id} declares no scripts')
 
     def test_format_registry_mentions_every_id(self):

@@ -39,6 +39,18 @@ logger = logging.getLogger(__name__)
 CELL_COLS = ['log', 'combo', 'target', 'n_drop_cases']
 TREE_CACHE_DIR = Path('var/lab/tree_cache')
 
+# Metric ids this script's per-node rows carry, in the order
+# run_voidmass_doseresponse actually writes them - see lab.metric_registry,
+# which this tuple's membership is checked against.
+NODE_METRIC_KEYS = ('skip_prob', 'deficit', 'movecount', 'voidmass_subprocess',
+                    'voidmass_process', 'voidage_subprocess', 'voidage_process')
+
+# Metric ids this script's summary rows carry - see NODE_METRIC_KEYS.
+SUMMARY_METRIC_KEYS = ('target_voidmass_subprocess', 'target_voidmass_process',
+                       'target_voidage_subprocess', 'target_voidage_process',
+                       'target_rank_voidmass_process', 'target_rank_voidage_process',
+                       'n_optimal_alignments')
+
 
 def _merge_write(df, path, cell_cols=CELL_COLS):
     """
