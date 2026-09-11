@@ -61,13 +61,10 @@ class GitVersionTest(unittest.TestCase):
 
 
 class SkipAlignmentsDependencyVersionTest(unittest.TestCase):
-    """skip-alignments is pinned to a real PyPI release (skipalignments==
-    0.2.2 in pyproject.toml) as of the switch off its editable dev-HEAD
-    install - see that pin's own comment. installed_package_version
-    still resolves it; editable_source_dir correctly has nothing to
-    find any more (no direct_url.json - see build_id_net/dependency_
-    version_line's own docstrings), so its git state is 'unknown' until
-    something re-installs it editable again."""
+    """skip-alignments is installed non-editable in this dev env (a
+    published release or a git tag, per pyproject.toml), so
+    installed_package_version resolves it but editable_source_dir has no
+    source tree to inspect, and its git state reports as 'unknown'."""
 
     def test_installed_package_version_is_a_dotted_string(self):
         version = installed_package_version('skipalignments')
@@ -85,7 +82,7 @@ class SkipAlignmentsDependencyVersionTest(unittest.TestCase):
 
     def test_dependency_version_line_has_version_but_no_git_state(self):
         line = dependency_version_line('skipalignments')
-        self.assertRegex(line, r'^\d+\.\d+(\.\d+)? \(git unknown\)$')
+        self.assertEqual(line, f"{installed_package_version('skipalignments')} (git unknown)")
 
     def test_uninstalled_package_line_says_unknown(self):
         line = dependency_version_line('not-a-real-package-xyz')
