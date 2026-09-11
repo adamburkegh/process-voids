@@ -7,36 +7,33 @@ undegraded log - that discovered model is the fixed reference for that
 and checks it against that same fixed model, producing a dose-response
 curve in the coverage metrics as degradation increases.
 
-Computes the full metric roster at the ROOT of the (log, combo)'s
-discovered tree, plus a full per-node breakdown (see below) covering
-every node including ablation targets like the claims fixture's
-appeal_seq/loop_block/assess - lab.claims_fixture's CLAIMS_COMBOS/
-CLAIMS_DEGRADATIONS registers that fixture's known tree and its named
-ablation targets as combo/degradation-dimension names usable here, so
-there's no separate per-target concept or script needed: compute_metrics'
-skip-
-alignments-based weight_coverage/weight_voidage/skipprob/salign_coverage,
-plus process_voids.voidmass_pn's classical-alignment voidmass_deficit/
-voidmass_movecount/voidmass_subprocess/voidmass_process/
-alignment_coverage_pn, plus process_voids.coveragemass's skip-alignment-
-based, real-elapsed-time voidsat. duration_coverage stays off the roster
-(dropped - see lab.metrics).
+Every metric in ALL_METRICS (process_voids.metric_context.ProcessMetric
+declarations - skip-alignments-based weight_coverage/weight_voidage/
+skipprob/salign_coverage, process_voids.voidmass_pn's classical-alignment
+voidmass_deficit/voidmass_movecount/voidmass_subprocess/voidmass_process/
+alignment_coverage_pn, and process_voids.coveragemass's skip-alignment-
+based, real-elapsed-time voidsat) is scored once per node in the
+discovered tree (Activity, Tau, and composite Sequence/Xor/And/Loop
+alike) via a per-cell CellContext - see _compute_cell. The root-level row
+is that same scoring at the tree root, not a separate computation - this
+project is fundamentally about subprocess-level voids, so collapsing the
+per-node data away by default would be the wrong call. duration_coverage
+stays off the roster (product-only - see lab.metric_registry).
+skipprob here is dv.skip_probs[node] directly (skip-alignments' own
+published definition) - not lab.metrics.mean_leaf_skipprob (a different,
+root-only statistic, scored separately - see MEAN_LEAF_SKIPPROB_METRIC).
 
-Writes TWO CSVs per run (node_out_csv defaults to inserting '_nodes'
-before out_csv's extension): the root-level one above, one row per
-(log, combo, dim, level), plus a per-node one - every metric above
-again, but evaluated at EVERY node in the discovered tree (Activity,
-Tau, and composite Sequence/Xor/And/Loop alike), one row per (log,
-combo, dim, level, node_id) - see _node_rows/PER_NODE_METRIC_KEYS. The
-root-level row was always a lossy collapse of data already computed
-per-node internally (voidmass_table_pn builds a full table; only
-vm_table[tree] was ever kept) - this project is fundamentally about
-subprocess-level voids, so throwing that away by default was the wrong
-call. skipprob here is dv.skip_probs[node] directly (skip-alignments'
-own published definition), same id and same computation as the
-root-level CSV's 'skipprob' column - not lab.metrics.mean_leaf_skipprob
-(a different, unrelated statistic that used to be wired to the
-'skipprob' name by mistake - see lab.metrics' module docstring).
+lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS registers that
+fixture's known tree and its named ablation targets (appeal_seq/
+loop_block/assess) as combo/degradation-dimension names usable here, so
+there's no separate per-target concept or script needed.
+
+Writes THREE CSVs per run (node_out_csv/timings_out_csv default to
+inserting '_nodes'/'_timings' before out_csv's extension): the root-level
+one above (one row per (log, combo, dim, level)), a per-node one (every
+metric above again, one row per (log, combo, dim, level, node_id) - see
+NODE_ROW_COLUMNS), and a long-form timing one (one row per stage/metric
+actually computed in a cell - see lab.timing.TimingListener).
 
 NOTE on the classical-alignment metrics specifically: they're computed
 via align_pn_all with id_loop_list=[] (skip-alignments' own
@@ -69,16 +66,16 @@ import pm4py_config as pm4py
 
 from lab.claims_fixture import CLAIMS_COMBOS, CLAIMS_DEGRADATIONS
 from lab.logconfig import configure, enable_skipalignments_debug
-from lab.metrics import compute_metrics
+from lab.metrics import mean_leaf_skipprob
 from lab.params import ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS
 from lab.runs import Experiment, RUNS
-from lab.timing import Timer
+from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
-    mass_by_weight, voidage_by_weight, coverage_by_alignment,
-    make_executions_cache, voidsat, make_aligned_duration_cache,
+    mass_by_weight, voidage_by_weight, coverage_by_alignment, voidsat,
 )
-from process_voids.voidmass_pn import build_id_net, voidmass_table_pn, coverage_by_alignment_pn
+from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
+from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
 
 logger = logging.getLogger(__name__)
 
@@ -106,18 +103,6 @@ def _log_stats(log):
     n_variants = log.groupby('case:concept:name')['concept:name'] \
                      .apply(tuple).nunique()
     return n_cases, n_variants
-
-
-def _variant_probs(log):
-    """{trace variant (activity tuple): probability} from a log's case
-    frequencies - duplicated from lab.exp_claims_degrade rather than
-    imported, per this package's small-helper convention."""
-    n_cases = log['case:concept:name'].nunique()
-    variants = {}
-    for _case, group in log.groupby('case:concept:name', sort=False):
-        variant = tuple(group.sort_values('time:timestamp')['concept:name'])
-        variants[variant] = variants.get(variant, 0) + 1
-    return {v: c / n_cases for v, c in variants.items()}
 
 
 # _lower/_upper: align_variant_all can return zero alignments for a
@@ -160,11 +145,6 @@ PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat',)
 
 
-def _aligned_duration_metrics(tree, log, dv):
-    """(root-level {'voidsat': ...} dict) - see ALIGNED_DURATION_METRIC_KEYS."""
-    return dict(zip(ALIGNED_DURATION_METRIC_KEYS, (voidsat(tree, tree, dv, log),)))
-
-
 # Every key _node_rows' row dict actually builds from, in the same order -
 # used to give the per-node CSV a real header even when node_rows is empty
 # (every cell in a run errored) rather than pandas' default empty-columns
@@ -178,104 +158,156 @@ NODE_ROW_COLUMNS = (
 )
 
 
-def _classical_metrics(tree, log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv,
-                        timeout=CLASSICAL_ALIGNMENT_TIMEOUT):
-    """
-    (root-level classical-alignment metrics dict, full per-node vm_table,
-    variant_probs, skip_dict) - process_voids.voidmass_pn, reusing
-    dv.skip_probs (already computed by compute_metrics) rather than
-    deriving a separate skip-probability estimate. vm_table/variant_probs/
-    skip_dict are returned alongside the root-only dict (not just
-    discarded) so callers can also build a full per-node breakdown - see
-    _node_rows - without paying for a second, redundant voidmass_table_pn
-    call (skip_dict in particular is the expensive part - the same
-    deduped alignments coverage_by_alignment_pn needs, already translated
-    into coveragemass.alignment_mass's input shape)."""
-    variant_probs = _variant_probs(log)
-    result = voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id,
-                               tau_ids, id_loop_list=id_loop_list, timeout=timeout)
-    vm_table, skip_dict = result.table, result.skip_dict
-    root_row = vm_table[tree]
-    values = (
-        root_row['deficit_lower'],
-        root_row['deficit_upper'],
-        root_row['movecount'],
-        root_row['movecount_bound'],
-        root_row['voidmass_subprocess_lower'],
-        root_row['voidmass_subprocess_upper'],
-        root_row['voidmass_process_lower'],
-        root_row['voidmass_process_upper'],
-        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs,
-                                  timed_out_ratio=0.0),
-        coverage_by_alignment_pn(tree, dv.skip_probs[tree], skip_dict, variant_probs,
-                                  timed_out_ratio=1.0),
-    )
-    metrics = dict(zip(CLASSICAL_METRIC_KEYS, values))
-    metrics.update(zip(TIMEOUT_DIAGNOSTIC_KEYS, (result.timed_out_count, result.timed_out_weight)))
-    return metrics, vm_table, variant_probs, skip_dict
+def _classical_field(field):
+    def compute(ctx, node):
+        result, _variant_probs = ctx.stage('classical')
+        return result.table[node][field]
+    return compute
 
 
-def _node_rows(log_name, combo_name, dim, level, dv, vm_table, variant_probs, skip_dict, log):
-    """
-    One row per node in vm_table (every node in the tree - Activity,
-    Tau, and composite Sequence/Xor/And/Loop nodes alike), the full
-    per-node breakdown the root-level row in `rows` collapses away.
-    Every metric here is the SAME quantity/id as the root-level row,
-    just evaluated at that specific node - see PER_NODE_METRIC_KEYS.
+def _alignment_coverage_pn(timed_out_ratio):
+    def compute(ctx, node):
+        result, variant_probs = ctx.stage('classical')
+        return coverage_by_alignment_pn(node, ctx.stage('dv').skip_probs[node], result.skip_dict,
+                                        variant_probs, executions_cache=ctx.stage('executions_cache'),
+                                        timed_out_ratio=timed_out_ratio)
+    return compute
 
-    `log` is the real (possibly degraded) event log this cell scored -
-    voidsat needs real per-trace timestamps, unlike every other metric
-    here (see coveragemass.admass).
+
+# Every metric this experiment scores, both at the tree root and at
+# every node - see _compute_cell. Each is the SAME quantity/id whether
+# evaluated at the root or a subprocess node - the root row is just this
+# list scored at node=tree, not a separately-derived computation (see
+# module docstring). mean_leaf_skipprob and TIMEOUT_DIAGNOSTIC_KEYS are
+# root-only bookkeeping, not in this list - see _compute_cell.
+ALL_METRICS = [
+    ProcessMetric(id='weight_coverage', scope='node', needs=('dv',),
+                  compute=lambda ctx, node: mass_by_weight(node, ctx.stage('dv').skip_probs)),
+    ProcessMetric(id='weight_voidage', scope='node', needs=('dv',),
+                  compute=lambda ctx, node: voidage_by_weight(node, ctx.stage('dv').skip_probs)),
+    ProcessMetric(id='skipprob', scope='node', needs=('dv',),
+                  compute=lambda ctx, node: ctx.stage('dv').skip_probs[node]),
+    ProcessMetric(id='salign_coverage', scope='node', needs=('dv', 'executions_cache'),
+                  compute=lambda ctx, node: coverage_by_alignment(
+                      node, ctx.stage('dv'), executions_cache=ctx.stage('executions_cache'))),
+    ProcessMetric(id='voidmass_deficit_lower', scope='node', needs=('classical',),
+                  compute=_classical_field('deficit_lower')),
+    ProcessMetric(id='voidmass_deficit_upper', scope='node', needs=('classical',),
+                  compute=_classical_field('deficit_upper')),
+    ProcessMetric(id='voidmass_movecount', scope='node', needs=('classical',),
+                  compute=_classical_field('movecount')),
+    ProcessMetric(id='voidmass_movecount_bound', scope='node', needs=('classical',),
+                  compute=_classical_field('movecount_bound')),
+    ProcessMetric(id='voidmass_subprocess_lower', scope='node', needs=('classical',),
+                  compute=_classical_field('voidmass_subprocess_lower')),
+    ProcessMetric(id='voidmass_subprocess_upper', scope='node', needs=('classical',),
+                  compute=_classical_field('voidmass_subprocess_upper')),
+    ProcessMetric(id='voidmass_process_lower', scope='node', needs=('classical',),
+                  compute=_classical_field('voidmass_process_lower')),
+    ProcessMetric(id='voidmass_process_upper', scope='node', needs=('classical',),
+                  compute=_classical_field('voidmass_process_upper')),
+    ProcessMetric(id='alignment_coverage_pn_lower', scope='node',
+                  needs=('classical', 'dv', 'executions_cache'),
+                  compute=_alignment_coverage_pn(0.0)),
+    ProcessMetric(id='alignment_coverage_pn_upper', scope='node',
+                  needs=('classical', 'dv', 'executions_cache'),
+                  compute=_alignment_coverage_pn(1.0)),
+    ProcessMetric(id='voidsat', scope='node', needs=('dv', 'aligned_duration_cache'),
+                  compute=lambda ctx, node: voidsat(
+                      node, ctx.tree, ctx.stage('dv'), ctx.log,
+                      cache=ctx.stage('aligned_duration_cache'))),
+]
+
+MEAN_LEAF_SKIPPROB_METRIC = ProcessMetric(
+    id='mean_leaf_skipprob', scope='root', needs=('dv',),
+    compute=lambda ctx, node: mean_leaf_skipprob(ctx.tree, ctx.stage('dv').skip_probs))
+
+# Every ALL_METRICS id plus the root-only extras, all None - one shared
+# fallback for a cell that never got as far as computing anything (a
+# stage failure propagating out of _compute_cell, or a discovery
+# failure), replacing three independently hand-typed copies of the same
+# set of Nones.
+NULL_METRIC_VALUES = {m.id: None for m in ALL_METRICS}
+NULL_METRIC_VALUES.update({k: None for k in TIMEOUT_DIAGNOSTIC_KEYS})
+NULL_METRIC_VALUES['mean_leaf_skipprob'] = None
+
+
+def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, classical_net,
+                  slpn_path, timing_rows):
     """
-    node_rows = []
-    # voidmass_table_pn's own _walk inserts the root first - see that
-    # function - so vm_table's first key is the tree root, no separate
-    # root parameter needed here. vm_table can be empty in tests that
-    # stub out _classical_metrics - nothing to cache/iterate then.
-    tree = next(iter(vm_table)) if vm_table else None
-    executions_cache = make_executions_cache(tree) if tree is not None else None
-    aligned_duration_cache = make_aligned_duration_cache(tree, log) if tree is not None else None
-    for node, classical_row in vm_table.items():
-        per_node_values = (
-            mass_by_weight(node, dv.skip_probs),
-            voidage_by_weight(node, dv.skip_probs),
-            dv.skip_probs[node],
-            coverage_by_alignment(node, dv, executions_cache=executions_cache),
-        )
-        classical_values = (
-            classical_row['deficit_lower'],
-            classical_row['deficit_upper'],
-            classical_row['movecount'],
-            classical_row['movecount_bound'],
-            classical_row['voidmass_subprocess_lower'],
-            classical_row['voidmass_subprocess_upper'],
-            classical_row['voidmass_process_lower'],
-            classical_row['voidmass_process_upper'],
-            coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
-                                      executions_cache=executions_cache, timed_out_ratio=0.0),
-            coverage_by_alignment_pn(node, dv.skip_probs[node], skip_dict, variant_probs,
-                                      executions_cache=executions_cache, timed_out_ratio=1.0),
-        )
-        aligned_duration_values = (
-            voidsat(node, tree, dv, log, cache=aligned_duration_cache),
-        )
-        tree_values = (mandatory_node_count(node), total_node_count(node))
-        node_rows.append({
-            'log': log_name, 'combo': combo_name,
-            'degradation_dim': dim, 'degradation_level': level,
-            'node_id': node.id, 'node_type': type(node).__name__,
-            'alphabet': ','.join(sorted(set(node.get_leaf_labels()))),
-            **dict(zip(PER_NODE_METRIC_KEYS, per_node_values)),
-            **dict(zip(CLASSICAL_METRIC_KEYS, classical_values)),
-            **dict(zip(ALIGNED_DURATION_METRIC_KEYS, aligned_duration_values)),
-            **dict(zip(TREE_METRIC_KEYS, tree_values)),
-        })
-    return node_rows
+    Runs one cell's full metric computation via a fresh CellContext,
+    returning (root_metrics, node_rows). Every metric in ALL_METRICS is
+    scored once per node in the classical stage's table (root included -
+    see ALL_METRICS), so the root dict is that same scoring for node=tree,
+    not a separate computation.
+
+    A stage failure (the dv/classical alignment pipelines - the realistic
+    failure mode) propagates out of this function; the caller's own
+    try/except records that as a cell-wide error row, same as before
+    this used CellContext. A single ProcessMetric's own compute() failing
+    is isolated per (metric, node) by CellContext.score and surfaces as
+    METRIC_ERROR -> None in the row it belongs to, not a cell-wide
+    failure - see process_voids.metric_context.
+
+    timing_rows: extended in place with this cell's TimingListener rows,
+    stamped with this cell's (log, combo, degradation_dim,
+    degradation_level) cell key - see lab.timing.TimingListener.
+    """
+    listener = TimingListener()
+    ctx = CellContext(log=log, tree=tree, slpn_path=slpn_path, ppt_weights=ppt_weights,
+                      listeners=[listener], classical_net=classical_net,
+                      classical_timeout=CLASSICAL_ALIGNMENT_TIMEOUT)
+    try:
+        # Both stages triggered directly, outside any ProcessMetric's
+        # compute() - a stage accessed only from within a metric closure
+        # (via score_all/ctx.score below) has its failure caught and
+        # isolated to just that metric, per node, rather than failing the
+        # whole cell. dv/classical failing (the ebi/alignment-search
+        # calls - the realistic failure mode) should still fail the
+        # whole cell uniformly, matching this experiment's behaviour
+        # before the CellContext migration.
+        result, _variant_probs = ctx.stage('classical')
+        ctx.stage('dv')
+
+        node_rows = []
+        for node in result.table:
+            values = score_all(ctx, ALL_METRICS, node=node)
+            node_rows.append({
+                'log': log_name, 'combo': combo_name,
+                'degradation_dim': dim, 'degradation_level': level,
+                'node_id': node.id, 'node_type': type(node).__name__,
+                'alphabet': ','.join(sorted(set(node.get_leaf_labels()))),
+                **{k: (None if v is METRIC_ERROR else v) for k, v in values.items()},
+                'mandatory_node_count': mandatory_node_count(node),
+                'total_node_count': total_node_count(node),
+            })
+
+            # result.table's own _walk inserts the root first (see
+            # voidmass_pn), so node_rows[0] is the tree root's row - the
+            # root dict is that same scoring, not a second call, plus the
+            # two root-only extras.
+        root_metrics = ({m.id: node_rows[0][m.id] for m in ALL_METRICS} if node_rows
+                        else dict(NULL_METRIC_VALUES))
+        mean_leaf_value = ctx.score(MEAN_LEAF_SKIPPROB_METRIC)
+        root_metrics['mean_leaf_skipprob'] = (None if mean_leaf_value is METRIC_ERROR
+                                              else mean_leaf_value)
+        root_metrics['timed_out_count'] = result.timed_out_count
+        root_metrics['timed_out_weight'] = result.timed_out_weight
+        return root_metrics, node_rows
+    finally:
+        # Flushed even when a stage failure propagates out of this
+        # function below - the listener has already recorded that
+        # stage's own stage_failed row by the time the exception reaches
+        # here, and it's the one useful diagnostic a caller gets for a
+        # cell that otherwise contributes only an error-status row.
+        timing_rows.extend({'log': log_name, 'combo': combo_name, 'degradation_dim': dim,
+                            'degradation_level': level, **row}
+                           for row in listener.rows)
 
 
 def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS,
                      levels=ALL_LEVELS, out_csv='var/lab/results/exp_disco_degrade.csv',
-                     node_out_csv=None):
+                     node_out_csv=None, timings_out_csv=None):
     logger.info('Experiment: disco_degrade | logs=%s | combos=%s | '
                 'degradations=%s | levels=%s',
                 [Path(p).stem for p in log_paths], list(combos),
@@ -283,6 +315,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
 
     rows = []
     node_rows = []
+    timing_rows = []
     for log_path in log_paths:
         log_name = Path(log_path).stem
         base_log = pm4py.read_xes(log_path)
@@ -337,33 +370,25 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                 slpn_path = f'var/lab/disco_degrade_{log_name}_{combo_name}_level0.slpn'
                 with Timer() as t:
                     try:
-                        zero_level_metrics, dv = compute_metrics(
-                            base_log, tree, slpn_path, ppt_weights=ppt_weights, return_dv=True)
-                        net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                        classical_metrics, vm_table, variant_probs, skip_dict = _classical_metrics(
-                            tree, base_log, net, im, fm, activity_to_id, tau_ids, id_loop_list, dv)
-                        zero_level_metrics.update(classical_metrics)
-                        zero_level_metrics.update(_aligned_duration_metrics(tree, base_log, dv))
                         # Computed HERE, once, rather than once per dim
                         # below - mass_by_weight/voidage_by_weight read
                         # tree.weight/child.weight directly off the
-                        # shared, mutable tree object, which
-                        # transfer_pt_weights (inside compute_metrics)
-                        # overwrites on every OTHER cell's call too. A
-                        # second dim reusing this "shared" level-0.0
-                        # result would otherwise recompute weight_
-                        # coverage/weight_voidage LIVE, after an
-                        # unrelated nonzero-level cell of the first dim
-                        # has already reset those attributes to weights
-                        # estimated from a degraded log - silently
+                        # shared, mutable tree object, which the 'dv'
+                        # stage's transfer_pt_weights overwrites on every
+                        # OTHER cell's call too. A second dim reusing
+                        # this "shared" level-0.0 result would otherwise
+                        # recompute weight_coverage/weight_voidage LIVE,
+                        # after an unrelated nonzero-level cell of the
+                        # first dim has already reset those attributes to
+                        # weights estimated from a degraded log - silently
                         # corrupting the per-node CSV's weight-derived
                         # columns for every dim after the first (found
                         # in the 2026-09-10 runs). dim is stamped in per
                         # use below, since these rows are otherwise
                         # identical regardless of which dim reuses them.
-                        zero_level_node_rows = _node_rows(
-                            log_name, combo_name, None, 0.0, dv, vm_table,
-                            variant_probs, skip_dict, base_log)
+                        zero_level_metrics, zero_level_node_rows = _compute_cell(
+                            log_name, combo_name, None, 0.0, base_log, tree, ppt_weights,
+                            classical_net, slpn_path, timing_rows)
                         zero_level_status = 'ok'
                     except Exception as e:
                         logger.exception('%s - exception', cell)
@@ -385,10 +410,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': discover_status,
                             'elapsed_s': None,
-                            'weight_coverage': None, 'weight_voidage': None, 'skipprob': None,
-                            'salign_coverage': None,
-                            **{k: None for k in CLASSICAL_METRIC_KEYS},
-                            **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS},
+                            **NULL_METRIC_VALUES,
                             **tree_metrics,
                         }
                         rows.append(row)
@@ -407,17 +429,14 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             row.update(zero_level_metrics)
                             # Reuse the SAME precomputed rows for every
                             # dim, just stamped with this dim's name -
-                            # not a fresh _node_rows call (see where
+                            # not a fresh _compute_cell call (see where
                             # zero_level_node_rows is built, above, for
                             # why recomputing here would be wrong, not
                             # just wasteful).
                             node_rows.extend({**r, 'degradation_dim': dim}
                                              for r in zero_level_node_rows)
                         else:
-                            row.update(weight_coverage=None, weight_voidage=None,
-                                       skipprob=None, salign_coverage=None,
-                                       **{k: None for k in CLASSICAL_METRIC_KEYS},
-                                       **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS})
+                            row.update(NULL_METRIC_VALUES)
                         rows.append(row)
                         logger.debug('%s - reused level-0.0 result', cell)
                         continue
@@ -439,27 +458,15 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                                  f'{dim}_{level}.slpn')
                     with Timer() as t:
                         try:
-                            metrics, dv = compute_metrics(
-                                degraded_log, tree, slpn_path,
-                                ppt_weights=ppt_weights, return_dv=True)
-                            net, im, fm, activity_to_id, tau_ids, id_loop_list = classical_net
-                            classical_metrics, vm_table, variant_probs, skip_dict = _classical_metrics(
-                                tree, degraded_log, net, im, fm, activity_to_id, tau_ids,
-                                id_loop_list, dv)
-                            metrics.update(classical_metrics)
-                            metrics.update(_aligned_duration_metrics(tree, degraded_log, dv))
+                            metrics, cell_node_rows = _compute_cell(
+                                log_name, combo_name, dim, level, degraded_log, tree, ppt_weights,
+                                classical_net, slpn_path, timing_rows)
                             row['status'] = 'ok'
                             row.update(metrics)
-                            node_rows.extend(_node_rows(log_name, combo_name, dim, level,
-                                                         dv, vm_table, variant_probs, skip_dict,
-                                                         degraded_log))
+                            node_rows.extend(cell_node_rows)
                         except Exception as e:
                             logger.exception('%s - exception', cell)
-                            row.update(status=f'error: {type(e).__name__}: {e}',
-                                        weight_coverage=None, weight_voidage=None, skipprob=None,
-                                        salign_coverage=None,
-                                        **{k: None for k in CLASSICAL_METRIC_KEYS},
-                                        **{k: None for k in ALIGNED_DURATION_METRIC_KEYS + TIMEOUT_DIAGNOSTIC_KEYS})
+                            row.update(status=f'error: {type(e).__name__}: {e}', **NULL_METRIC_VALUES)
                     row['elapsed_s'] = t.elapsed_s
                     rows.append(row)
 
@@ -481,7 +488,15 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
     node_df.to_csv(node_out_csv, index=False)
     logger.info('Wrote %d node rows to %s', len(node_df), node_out_csv)
 
-    return df, node_df
+    if timings_out_csv is None:
+        out_path = Path(out_csv)
+        timings_out_csv = str(out_path.with_name(f'{out_path.stem}_timings{out_path.suffix}'))
+    timings_df = pd.DataFrame(timing_rows)
+    Path(timings_out_csv).parent.mkdir(parents=True, exist_ok=True)
+    timings_df.to_csv(timings_out_csv, index=False)
+    logger.info('Wrote %d timing rows to %s', len(timings_df), timings_out_csv)
+
+    return df, node_df, timings_df
 
 
 def _timestamped(path):
@@ -596,11 +611,12 @@ def main():
         return
 
     out_csv = _timestamped(experiment.out_csv)
-    df, node_df = run_disco_degrade(log_paths=experiment.log_paths, combos=experiment.combos,
-                                     degradations=experiment.degradations,
-                                     levels=experiment.levels, out_csv=out_csv)
+    df, node_df, timings_df = run_disco_degrade(
+        log_paths=experiment.log_paths, combos=experiment.combos,
+        degradations=experiment.degradations, levels=experiment.levels, out_csv=out_csv)
     print(df)
-    logger.info("Wrote %s (%d rows) and %d node rows", out_csv, len(df), len(node_df))
+    logger.info("Wrote %s (%d rows), %d node rows and %d timing rows",
+                out_csv, len(df), len(node_df), len(timings_df))
 
 
 if __name__ == '__main__':
