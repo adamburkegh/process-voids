@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+* `lab.metric_registry`'s `Metric` now carries `status` (`live`,
+  `evaluation`, `product-only`, `retired`), `superseded_by`, and `history`
+  (commit/version -> prior meaning), so the registry is an append-only
+  historical record of every CSV column this package has ever written,
+  not just the currently-emitted ones. Restored `voidmass_deficit`,
+  `node_skip_prob` and `alignment_coverage` as retired ids; registered
+  `duration_coverage` (`process_voids.coveragemass.coverage_by_duration`)
+  as product-only; and registered `lab.exp_voidmass`'s previously
+  unregistered ids (`skip_prob`, `deficit`, `movecount`,
+  `voidmass_subprocess`/`voidmass_process`, `voidage_subprocess`/
+  `voidage_process`, `target_voidmass_*`/`target_voidage_*`,
+  `target_rank_*`, `n_optimal_alignments`). `lab.exp_voidmass` gained
+  `NODE_METRIC_KEYS`/`SUMMARY_METRIC_KEYS` constants so its ids are
+  covered by the same registry drift test as the other experiment
+  scripts.
+
 ### Changed
 
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
