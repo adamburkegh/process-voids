@@ -57,6 +57,11 @@ All notable changes to this project will be documented in this file.
 
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
+* `lab.metric_registry` records the skip-probability correction below as a
+  `v0.4.3` history entry on every id built on `dv.skip_probs`, alongside
+  the executions entry the ids computed from `coveragemass.executions`
+  already carry, so a pre-0.4.3 result CSV's columns are still readable
+  from the registry alone.
 * `coveragemass.make_aligned_duration_cache` takes an optional `traces=`
   parameter, for a caller that already has a log's `log_to_traces` result
   and wants the cache to reuse it instead of recomputing it.

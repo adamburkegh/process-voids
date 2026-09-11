@@ -19,6 +19,13 @@ version -> prior meaning) for an id whose CURRENT meaning changed
 in-place without a rename - as opposed to superseded_by, which is for
 an old id abandoned in favour of a new one.
 
+This module is the one exception to the repo's rule that comments and
+docstrings describe the code as it is, with change history kept in
+CHANGELOG.md and commit messages. A history entry here is not narration:
+it is the only record of what a column in an already-written result CSV
+actually holds, and those files are not regenerated. Entries are
+appended, never edited away.
+
 Deliberately scoped to analytical quantities only - not administrative/
 bookkeeping columns each script also writes (log, combo, degradation_dim,
 degradation_level, status, dropped_count, elapsed_s, node_id, node_type,
@@ -65,6 +72,30 @@ _INHERITED_LUMP_HISTORY = (
     "Definition [Executions] specifies. Values at nodes under a lumped "
     "subtree differ; root values do not.")
 
+# Prior meaning of every id built on skip-alignments' skip probabilities,
+# before v0.4.3 (skip-alignments v0.2.3+p4).
+_MASKED_SKIP_PROB_HISTORY = (
+    "Used skip probabilities from skip-alignments before v0.2.3+p4, "
+    "which counted a node nested inside an ancestor's lumped move as "
+    "skipped whenever anything else in that alignment synchronised, "
+    "although it has no execution there at all. Such a node's skip "
+    "probability was overstated (e.g. the children of a lumped "
+    "seq(b, c) read 1/2 rather than 0); the lumped node's own value is "
+    "unchanged.")
+
+# The subset of those ids whose mass term is also computed from
+# coveragemass.executions - both factors changed in v0.4.3.
+_LUMPED_SKIP_BOTH_FACTORS_HISTORY = (
+    _INHERITED_LUMP_HISTORY + ' ' + _MASKED_SKIP_PROB_HISTORY)
+
+# weight_coverage/weight_voidage read skip probabilities only at the
+# leaves, so the correction changes what they can register at all.
+_MASKED_SKIP_PROB_WEIGHT_HISTORY = (
+    _MASKED_SKIP_PROB_HISTORY + " Since these aggregate skip_probs at "
+    "the leaves only, an entirely unwitnessed subtree (recorded as one "
+    "lumped move on its coarsest node, whose leaves now read 0) used to "
+    "register here and no longer does.")
+
 
 @dataclass(frozen=True)
 class Metric:
@@ -87,6 +118,7 @@ METRICS = {
                     "input, the same as skipprob does directly.",
         source='process_voids.coveragemass.mass_by_weight',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'weight_voidage': Metric(
         id='weight_voidage',
@@ -95,6 +127,7 @@ METRICS = {
                     'not a separately-derived quantity).',
         source='process_voids.coveragemass.voidage_by_weight',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'skipprob': Metric(
         id='skipprob',
@@ -111,7 +144,8 @@ METRICS = {
                             'leaf in the tree (lab.metrics.mean_skipprob), not '
                             "dv.skip_probs[node] itself - the id was wired to the "
                             "wrong quantity. Renamed to mean_leaf_skipprob and "
-                            "skipprob repointed to the correct lookup."},
+                            "skipprob repointed to the correct lookup.",
+                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'mean_leaf_skipprob': Metric(
         id='mean_leaf_skipprob',
@@ -128,6 +162,7 @@ METRICS = {
                     'argument.',
         source='lab.metrics.mean_leaf_skipprob',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'salign_coverage': Metric(
         id='salign_coverage',
@@ -137,7 +172,7 @@ METRICS = {
                     'based, unlike weight_coverage.',
         source='process_voids.coveragemass.coverage_by_alignment',
         scripts=('exp_disco_degrade',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',
@@ -268,7 +303,8 @@ METRICS = {
                             'voidmass_process at the scored node, not the '
                             'per-execution average the definition specifies - '
                             'computed from voidmass_process by mistake, since '
-                            'that table was already built.'},
+                            'that table was already built.',
+                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'alignment_coverage_pn_upper': Metric(
         id='alignment_coverage_pn_upper',
@@ -279,6 +315,7 @@ METRICS = {
                     "pn_lower whenever no variant times out.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
+        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'voidsat': Metric(
         id='voidsat',
@@ -296,7 +333,7 @@ METRICS = {
                     "verified against.",
         source='process_voids.coveragemass.voidsat',
         scripts=('exp_disco_degrade',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'containment_bits': Metric(
         id='containment_bits',
@@ -419,7 +456,8 @@ METRICS = {
                             "dv.skip_probs[node] directly - node_skip_prob "
                             "and skipprob became the same id/computation at "
                             "the root and at every node alike, so the split "
-                            "was no longer needed."},
+                            "was no longer needed.",
+                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'alignment_coverage': Metric(
         id='alignment_coverage',
@@ -434,7 +472,8 @@ METRICS = {
         history={'fa85701': 'Renamed to salign_coverage (skip-alignment) once '
                             'alignment_coverage_pn (classical-alignment) was '
                             'added, freeing the unqualified name for the '
-                            'eventual classical-alignment replacement.'},
+                            'eventual classical-alignment replacement.',
+                 'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
 
     # Product-only ids - computed by process_voids for pvoid's own output,
@@ -448,6 +487,7 @@ METRICS = {
         source='process_voids.coveragemass.coverage_by_duration',
         scripts=(),
         status='product-only',
+        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
 
     # exp_voidmass.py's own ids - a target-subprocess dose-response sweep
@@ -464,6 +504,7 @@ METRICS = {
                     "own column name (with an underscore, unlike skipprob).",
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_voidmass',),
+        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'deficit': Metric(
         id='deficit',
@@ -522,7 +563,7 @@ METRICS = {
                     'coveragemass.voidmass_table.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidage_process': Metric(
         id='voidage_process',
@@ -530,7 +571,7 @@ METRICS = {
                     'coveragemass.voidmass_table.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidmass_subprocess': Metric(
         id='target_voidmass_subprocess',
@@ -554,7 +595,7 @@ METRICS = {
                     'voidage_subprocess, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidage_process': Metric(
         id='target_voidage_process',
@@ -562,7 +603,7 @@ METRICS = {
                     'voidage_process, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_rank_voidmass_process': Metric(
         id='target_rank_voidmass_process',
@@ -579,7 +620,7 @@ METRICS = {
                     'voidage_process instead.',
         source='lab.exp_voidmass._rank_descending',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'n_optimal_alignments': Metric(
         id='n_optimal_alignments',
