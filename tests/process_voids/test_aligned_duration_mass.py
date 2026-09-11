@@ -21,7 +21,7 @@ def leaf(name, node_id, cost=ACT_COST):
 
 
 def align(tree, trace):
-    states, _ = Aligner(tree).align2(list(trace), [ACT_COST] * len(trace), True, timeout=100)
+    states, _ = Aligner(tree).align_normal_form(list(trace), [ACT_COST] * len(trace), True, timeout=100)
     return states
 
 

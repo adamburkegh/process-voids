@@ -45,6 +45,7 @@ design direction and handles all source control on `main`.
   the commands for the user instead.
 - Work is exchanged between sessions as branches (and findings as messages to
   the user), never as patch files applied in another session's tree.
+- Don't sign your commits with the Claude Code guff
 
 ## Tests
 

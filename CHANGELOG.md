@@ -22,6 +22,11 @@ All notable changes to this project will be documented in this file.
   covered by the same registry drift test as the other experiment
   scripts.
 
+### Changed
+
+* Tests call skip-alignments' `Aligner.align_normal_form` instead of the
+  deprecated `align2`, clearing its deprecation warnings from the suite.
+
 ### Fixed
 
 * `voidsat` was very slow on high case-count logs: `admass` rebuilt the
