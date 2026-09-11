@@ -1,8 +1,9 @@
 """
-A single (log, tree) cell's shared, lazily-computed stages, and a Metric
-declaration that scores against them. A metric declares the stage ids it
-needs (Metric.needs, read through CellContext.stage) rather than a caller
-threading the right values through by hand at every call site.
+A single (log, tree) cell's shared, lazily-computed stages, and a
+ProcessMetric declaration that scores against them. A metric declares the
+stage ids it needs (ProcessMetric.needs, read through CellContext.stage)
+rather than a caller threading the right values through by hand at every
+call site.
 
 A CellContext is built fresh per cell and never reused across cells - see
 STAGES' 'dv' entry, which mutates the tree's own .weight attributes in
@@ -34,7 +35,7 @@ METRIC_ERROR = object()  # sentinel: distinct from a genuine None metric value
 
 
 @dataclass(frozen=True)
-class Metric:
+class ProcessMetric:
     id: str
     scope: str          # 'node' | 'root'
     needs: tuple         # stage ids this metric's compute() reads via ctx.stage(...)
@@ -77,11 +78,12 @@ STAGES = {
 class CellContext:
     """
     One cell's (log, tree) worth of lazily-computed, memoised stages, plus
-    Metric scoring with lifecycle events and per-metric error isolation.
+    ProcessMetric scoring with lifecycle events and per-metric error
+    isolation.
 
     refs: reference-scoped values the runner already computed for this
     (log, combo) - e.g. a discovered tree's classical net, or the
-    undegraded-log surprise distribution - available to a Metric's
+    undegraded-log surprise distribution - available to a ProcessMetric's
     compute() as ctx.refs[...], never recomputed here.
 
     listeners: callables invoked as listener(event, ctx, id_, node, **extra)

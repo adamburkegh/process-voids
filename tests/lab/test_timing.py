@@ -2,7 +2,7 @@ import time
 import unittest
 
 from lab.timing import Timer, TimingListener
-from process_voids.metric_context import CellContext, Metric
+from process_voids.metric_context import CellContext, ProcessMetric
 
 
 class TimerTest(unittest.TestCase):
@@ -41,7 +41,7 @@ class TimingListenerTest(unittest.TestCase):
     def test_records_one_row_per_finished_metric_with_seconds(self):
         listener = TimingListener()
         ctx = self._ctx(listener)
-        metric = Metric(id='m', scope='node', needs=(), compute=lambda c, node: 'ok')
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda c, node: 'ok')
         ctx.score(metric, node='n')
         self.assertEqual(len(listener.rows), 1)
         row = listener.rows[0]
@@ -52,7 +52,7 @@ class TimingListenerTest(unittest.TestCase):
     def test_a_failed_metric_still_gets_a_row_marked_error(self):
         listener = TimingListener()
         ctx = self._ctx(listener)
-        metric = Metric(id='m', scope='node', needs=(), compute=lambda c, node: 1 / 0)
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda c, node: 1 / 0)
         ctx.score(metric, node='n')
         self.assertEqual(len(listener.rows), 1)
         self.assertEqual(listener.rows[0]['status'], 'error')
@@ -85,7 +85,7 @@ class TimingListenerTest(unittest.TestCase):
     def test_started_events_do_not_add_rows(self):
         listener = TimingListener()
         ctx = self._ctx(listener)
-        metric = Metric(id='m', scope='node', needs=(), compute=lambda c, node: 'ok')
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda c, node: 'ok')
         ctx.score(metric, node='n')
         # one row total: the finished event only, not a separate started row
         self.assertEqual(len(listener.rows), 1)

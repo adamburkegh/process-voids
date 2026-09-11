@@ -1,6 +1,6 @@
 import unittest
 
-from process_voids.metric_context import Metric, CellContext, METRIC_ERROR
+from process_voids.metric_context import ProcessMetric, CellContext, METRIC_ERROR
 
 
 class RecordingListener:
@@ -109,10 +109,10 @@ class StageLifecycleEventsTest(unittest.TestCase):
         self.assertEqual(len(listener.events), 2)  # just the one started/failed pair
 
 
-class MetricScoringTest(unittest.TestCase):
+class ProcessMetricScoringTest(unittest.TestCase):
     def test_score_calls_compute_with_context_and_node(self):
         seen = []
-        metric = Metric(id='m', scope='node', needs=(),
+        metric = ProcessMetric(id='m', scope='node', needs=(),
                          compute=lambda ctx, node: seen.append((ctx, node)) or 'ok')
         ctx = _make_ctx()
         result = ctx.score(metric, node='node1')
@@ -121,21 +121,21 @@ class MetricScoringTest(unittest.TestCase):
 
     def test_root_scope_defaults_node_to_the_tree(self):
         seen = []
-        metric = Metric(id='m', scope='root', needs=(),
+        metric = ProcessMetric(id='m', scope='root', needs=(),
                          compute=lambda ctx, node: seen.append(node))
         ctx = _make_ctx()
         ctx.score(metric)
         self.assertEqual(seen, [ctx.tree])
 
     def test_compute_can_read_a_needed_stage_via_ctx_stage(self):
-        metric = Metric(id='m', scope='node', needs=('thing',),
+        metric = ProcessMetric(id='m', scope='node', needs=('thing',),
                          compute=lambda ctx, node: ctx.stage('thing'))
         ctx = _make_ctx(stages={'thing': lambda c: 42})
         self.assertEqual(ctx.score(metric, node='n'), 42)
 
     def test_metric_events_fire_in_order(self):
         listener = RecordingListener()
-        metric = Metric(id='m', scope='node', needs=(), compute=lambda ctx, node: 'ok')
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda ctx, node: 'ok')
         ctx = _make_ctx(listeners=[listener])
         ctx.score(metric, node='n')
         events = [(e, id_, node) for e, id_, node, extra in listener.events]
@@ -143,7 +143,7 @@ class MetricScoringTest(unittest.TestCase):
 
     def test_metric_finished_event_carries_elapsed_seconds(self):
         listener = RecordingListener()
-        metric = Metric(id='m', scope='node', needs=(), compute=lambda ctx, node: 'ok')
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda ctx, node: 'ok')
         ctx = _make_ctx(listeners=[listener])
         ctx.score(metric, node='n')
         finished = [extra for e, id_, node, extra in listener.events if e == 'metric_finished']
@@ -151,9 +151,9 @@ class MetricScoringTest(unittest.TestCase):
         self.assertIn('elapsed_s', finished[0])
 
 
-class MetricErrorIsolationTest(unittest.TestCase):
+class ProcessMetricErrorIsolationTest(unittest.TestCase):
     def test_a_raising_metric_returns_the_error_sentinel_not_raise(self):
-        metric = Metric(id='m', scope='node', needs=(),
+        metric = ProcessMetric(id='m', scope='node', needs=(),
                          compute=lambda ctx, node: 1 / 0)
         ctx = _make_ctx()
         self.assertIs(ctx.score(metric, node='n'), METRIC_ERROR)
@@ -165,7 +165,7 @@ class MetricErrorIsolationTest(unittest.TestCase):
         def compute(ctx, node):
             raise boom
 
-        metric = Metric(id='m', scope='node', needs=(), compute=compute)
+        metric = ProcessMetric(id='m', scope='node', needs=(), compute=compute)
         ctx = _make_ctx(listeners=[listener])
         ctx.score(metric, node='n')
         failed = [(id_, node, extra) for e, id_, node, extra in listener.events
@@ -178,7 +178,7 @@ class MetricErrorIsolationTest(unittest.TestCase):
 
     def test_no_metric_started_finished_pair_on_failure(self):
         listener = RecordingListener()
-        metric = Metric(id='m', scope='node', needs=(),
+        metric = ProcessMetric(id='m', scope='node', needs=(),
                          compute=lambda ctx, node: 1 / 0)
         ctx = _make_ctx(listeners=[listener])
         ctx.score(metric, node='n')
@@ -186,7 +186,7 @@ class MetricErrorIsolationTest(unittest.TestCase):
         self.assertEqual(event_names, ['metric_started', 'metric_failed'])
 
     def test_error_sentinel_is_distinct_from_a_genuine_none_result(self):
-        none_metric = Metric(id='m', scope='node', needs=(), compute=lambda ctx, node: None)
+        none_metric = ProcessMetric(id='m', scope='node', needs=(), compute=lambda ctx, node: None)
         ctx = _make_ctx()
         result = ctx.score(none_metric, node='n')
         self.assertIsNone(result)
@@ -206,9 +206,9 @@ class MetricErrorIsolationTest(unittest.TestCase):
             calls.append(1)
             raise RuntimeError('ebi boom')
 
-        metric_a = Metric(id='a', scope='node', needs=('dv',),
+        metric_a = ProcessMetric(id='a', scope='node', needs=('dv',),
                           compute=lambda ctx, node: ctx.stage('dv'))
-        metric_b = Metric(id='b', scope='node', needs=('dv',),
+        metric_b = ProcessMetric(id='b', scope='node', needs=('dv',),
                           compute=lambda ctx, node: ctx.stage('dv'))
         listener = RecordingListener()
         ctx = _make_ctx(stages={'dv': flaky_dv}, listeners=[listener])
@@ -241,7 +241,7 @@ class WeightMutationHazardTest(unittest.TestCase):
             shared['weight'] = ctx.log  # stands in for transfer_pt_weights, keyed by this cell's log
             return shared
 
-        weight_metric = Metric(id='w', scope='root', needs=('mutate',),
+        weight_metric = ProcessMetric(id='w', scope='root', needs=('mutate',),
                                 compute=lambda c, node: c.stage('mutate')['weight'])
 
         ctx1 = _make_ctx(stages={'mutate': mutate_stage})
@@ -276,9 +276,9 @@ class RealStageIntegrationTest(unittest.TestCase):
 
         ctx = CellContext(log=log, tree=build_running_example_tree(),
                           slpn_path='var/lab/test_metric_context_ctx.slpn')
-        skipprob_metric = Metric(id='skipprob', scope='root', needs=('dv',),
+        skipprob_metric = ProcessMetric(id='skipprob', scope='root', needs=('dv',),
                                  compute=lambda c, node: c.stage('dv').skip_probs[node])
-        weight_coverage_metric = Metric(
+        weight_coverage_metric = ProcessMetric(
             id='weight_coverage', scope='root', needs=('dv',),
             compute=lambda c, node: mass_by_weight(node, c.stage('dv').skip_probs))
 

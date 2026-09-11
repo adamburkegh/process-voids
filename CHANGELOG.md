@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
   `NODE_METRIC_KEYS`/`SUMMARY_METRIC_KEYS` constants so its ids are
   covered by the same registry drift test as the other experiment
   scripts.
-* `process_voids.metric_context`: `Metric` (id, scope, needs, compute) and
+* `process_voids.metric_context`: `ProcessMetric` (id, scope, needs, compute) and
   `CellContext`, a per-cell object with named, lazily-computed and
   memoised stages (`dv`, `executions_cache`, `traces`,
   `aligned_duration_cache`, `surprise_self`) and `stage_started`/
