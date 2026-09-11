@@ -29,7 +29,7 @@ rustxes==0.2.11
 scipy==1.18.1
 setuptools==84.0.0
 six==1.17.0
-skipalignments==0.2.2
+skipalignments @ git+https://github.com/adamburkegh/skip-alignments@4cf26058ef2019aeee236cedf60d506f968c9640
 tqdm==4.70.0
 tzdata==2026.3
 wheel==0.48.0

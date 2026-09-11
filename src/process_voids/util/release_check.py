@@ -3,8 +3,9 @@ Release hygiene script -- a handful of checks/actions that would
 otherwise be hand-cranked (and hand-remembered) before every release:
 regenerating requirements.txt, confirming pyproject.toml's version and
 CHANGELOG.md's top entry agree, flagging git/file dependency pins,
-running the full test suite, and flagging untracked files sitting in
-the repo that might get missed.
+running the full test suite, flagging untracked files sitting in the
+repo that might get missed, and scanning tracked files for leftover
+merge conflict markers.
 
 Adapted from skip-alignments' own release_check.py, cut down for a
 project that isn't published to PyPI: no `python -m build`/`twine
@@ -171,6 +172,27 @@ def check_stray_files() -> tuple[bool, str]:
     return True, "no untracked files"
 
 
+def check_no_conflict_markers(cwd=None) -> tuple[bool, str]:
+    """
+    An unresolved merge can leave '<<<<<<<'/'>>>>>>>' markers sitting in a
+    tracked file - easy to miss in a large diff, and disastrous if it
+    reaches a release. Only those two markers are checked: '=======' alone
+    is common outside conflicts (markdown headings, ASCII separators), so
+    checking it too would flag plenty of files that were never touched by
+    a conflict.
+
+    git grep only searches tracked files, so this can't flag markers
+    sitting in an untracked/ignored file (check_stray_files covers those
+    separately).
+    """
+    result = _run(["git", "grep", "-n", "-E", r"^(<{7}|>{7})"], cwd=cwd or PROJECT_ROOT)
+    if result.returncode == 0:
+        return False, "merge conflict markers found:\n" + result.stdout.strip()
+    if result.returncode == 1:
+        return True, "no merge conflict markers in tracked files"
+    return False, f"git grep failed:\n{result.stderr}"
+
+
 def _next_steps() -> str:
     version = _pyproject_field("version")
     return "\n".join([
@@ -195,7 +217,7 @@ def main() -> int:
     print(regenerate_requirements())
 
     for check in (check_version_consistency, check_no_direct_dependencies, run_tests,
-                  check_stray_files):
+                  check_stray_files, check_no_conflict_markers):
         passed, message = check()
         print(("PASS: " if passed else "FAIL: ") + message)
         ok = ok and passed
