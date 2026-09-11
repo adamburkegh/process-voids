@@ -13,6 +13,13 @@ degradation_level, one figure per (log, facet value), one line per
 it's exactly 1 - weight_coverage, so its own panel would just be a
 mirror image with no new signal.
 
+alignment_coverage_pn/voidmass_subprocess/voidmass_process are each a
+_lower/_upper bound pair, not a single column (the timed-out-variant
+bound - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS): plotted as the
+midpoint line with a shaded band between the two. A cell with no
+timed-out variants has lower == upper, so the band collapses to a plain
+line with no special-casing needed.
+
 line_by='combo' (default): compare discovery/estimator combos under
 one fixed degradation dimension - faceted by (log, degradation_dim).
 The natural question for a real discovered-model sweep: "which combo
@@ -48,8 +55,25 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-METRICS = ['weight_coverage', 'skipprob', 'salign_coverage', 'alignment_coverage_pn',
-           'voidmass_subprocess', 'voidmass_process']
+# (label, columns): columns is a 1-tuple for a plain value or a 2-tuple
+# (lower, upper) for a bound pair - see module docstring. label is the
+# axis text (and the lookup key for the skipprob-inversion special case
+# below), independent of the column name(s) it reads.
+METRICS = [
+    ('weight_coverage', ('weight_coverage',)),
+    ('skipprob', ('skipprob',)),
+    ('salign_coverage', ('salign_coverage',)),
+    ('alignment_coverage_pn', ('alignment_coverage_pn_lower', 'alignment_coverage_pn_upper')),
+    ('voidmass_subprocess', ('voidmass_subprocess_lower', 'voidmass_subprocess_upper')),
+    ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
+]
+
+
+def _metric_columns():
+    """Every column METRICS reads, flattened - the one place the flat
+    list lives, so average_over_nodes can't drift from what
+    plot_dose_response itself actually plots."""
+    return [col for _label, cols in METRICS for col in cols]
 
 
 def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
@@ -102,8 +126,7 @@ def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
     node's reading would otherwise contaminate that cell's average even
     when other nodes in it look fine.
     """
-    metric_cols = ['weight_coverage', 'skipprob', 'salign_coverage',
-                   'alignment_coverage_pn', 'voidmass_subprocess', 'voidmass_process']
+    metric_cols = _metric_columns()
     group_cols = ['log', 'combo', 'degradation_dim', 'degradation_level']
 
     filtered = node_df[(node_df['node_type'] != 'Tau') & (node_df['degradation_level'] != 1.0)]
@@ -143,19 +166,34 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
             axes = [axes]
 
         group_ok = ok[(ok['log'] == log) & (ok[facet_by] == facet_val)]
-        for ax, metric in zip(axes, METRICS):
+        for ax, (metric_label, cols) in zip(axes, METRICS):
             # skipprob is a skip probability (higher = worse); every other
             # metric here is a coverage proxy (higher = better) - plot
             # 1-skipprob so all four panels read the same direction.
-            label = '1 - skipprob' if metric == 'skipprob' else metric
+            label = '1 - skipprob' if metric_label == 'skipprob' else metric_label
             for line_val, line_group in group_ok.groupby(line_by):
                 line_group = line_group.sort_values('degradation_level')
                 if line_group.empty:
                     continue
-                y = (1 - line_group[metric] if metric == 'skipprob'
-                     else line_group[metric])
-                ax.plot(line_group['degradation_level'], y,
-                        marker='o', label=line_val)
+                x = line_group['degradation_level']
+                if len(cols) == 1:
+                    y = (1 - line_group[cols[0]] if metric_label == 'skipprob'
+                         else line_group[cols[0]])
+                    ax.plot(x, y, marker='o', label=line_val)
+                else:
+                    lower_col, upper_col = cols
+                    # to_numeric: a column that HELD a non-numeric value
+                    # anywhere (eg an excluded level=1.0 row elsewhere in
+                    # the same CSV) can stay object-dtype even after
+                    # _exclude_degenerate drops that row - fill_between's
+                    # own isfinite check can't handle object dtype even
+                    # when every remaining value is a real float, unlike
+                    # ax.plot below, which tolerates it.
+                    lower = pd.to_numeric(line_group[lower_col])
+                    upper = pd.to_numeric(line_group[upper_col])
+                    midpoint = (lower + upper) / 2
+                    line, = ax.plot(x, midpoint, marker='o', label=line_val)
+                    ax.fill_between(x, lower, upper, alpha=0.2, color=line.get_color())
             ax.set_xlabel(f'{facet_val}-wise degradation level' if facet_by == 'degradation_dim'
                            else 'degradation level')
             ax.set_ylabel(label)

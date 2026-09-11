@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from lab.plots import plot_dose_response, average_over_nodes, _exclude_degenerate
+from lab.plots import plot_dose_response, average_over_nodes, _exclude_degenerate, METRICS
 
 
 def fake_disco_df():
@@ -22,8 +22,9 @@ def fake_disco_df():
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'status': 'ok',
             'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-            'alignment_coverage_pn': 0.95, 'voidmass_subprocess': 0.1,
-            'voidmass_process': 0.05,
+            'alignment_coverage_pn_lower': 0.90, 'alignment_coverage_pn_upper': 0.95,
+            'voidmass_subprocess_lower': 0.08, 'voidmass_subprocess_upper': 0.1,
+            'voidmass_process_lower': 0.04, 'voidmass_process_upper': 0.05,
         })
     return pd.DataFrame(rows)
 
@@ -41,8 +42,9 @@ def fake_claims_shaped_df():
                 'log': 'claims', 'combo': 'claims_known', 'degradation_dim': target,
                 'degradation_level': level, 'status': 'ok',
                 'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-                'alignment_coverage_pn': 0.95, 'voidmass_subprocess': 0.05 * level,
-                'voidmass_process': 0.01 * level,
+                'alignment_coverage_pn_lower': 0.90, 'alignment_coverage_pn_upper': 0.95,
+                'voidmass_subprocess_lower': 0.05 * level, 'voidmass_subprocess_upper': 0.05 * level,
+                'voidmass_process_lower': 0.01 * level, 'voidmass_process_upper': 0.01 * level,
             })
     rows.append({'log': 'claims', 'combo': 'claims_known', 'degradation_dim': 'assess',
                  'degradation_level': 0.9, 'status': 'error: boom'})
@@ -54,7 +56,9 @@ def fake_node_df():
     _node_rows/PER_NODE_METRIC_KEYS): one row per (log, combo,
     degradation_dim, degradation_level, node_id), no status column at
     all (a node CSV only ever holds successful cells - see
-    run_disco_degrade).'''
+    run_disco_degrade). voidmass_subprocess/process and
+    alignment_coverage_pn carry _lower/_upper bound columns rather than
+    a single column - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS.'''
     def row(node_id, node_type, weight_coverage, skipprob,
              voidmass_subprocess, voidmass_process, level=0.0):
         return {
@@ -62,9 +66,12 @@ def fake_node_df():
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
             'alphabet': 'a', 'weight_coverage': weight_coverage,
             'weight_voidage': 1 - weight_coverage, 'skipprob': skipprob,
-            'salign_coverage': 0.9, 'voidmass_deficit': 0.1, 'voidmass_movecount': 1.0,
-            'voidmass_subprocess': voidmass_subprocess, 'voidmass_process': voidmass_process,
-            'alignment_coverage_pn': 0.9, 'mandatory_node_count': 1, 'total_node_count': 1,
+            'salign_coverage': 0.9, 'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
+            'voidmass_movecount': 1.0, 'voidmass_movecount_bound': 1.0,
+            'voidmass_subprocess_lower': voidmass_subprocess, 'voidmass_subprocess_upper': voidmass_subprocess,
+            'voidmass_process_lower': voidmass_process, 'voidmass_process_upper': voidmass_process,
+            'alignment_coverage_pn_lower': 0.85, 'alignment_coverage_pn_upper': 0.9,
+            'voidsat': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
         }
     return pd.DataFrame([
         row('1', 'Activity', 1.0, 0.0, 0.0, 1.0),
@@ -86,6 +93,13 @@ class AverageOverNodesTest(unittest.TestCase):
         # pulled toward the Tau row's 0.0
         self.assertAlmostEqual(row['weight_coverage'], 0.75)
         self.assertAlmostEqual(row['skipprob'], 0.25)
+
+    def test_averages_both_bound_columns_for_a_banded_metric(self):
+        averaged = average_over_nodes(fake_node_df())
+        row = averaged[(averaged['degradation_dim'] == 'activity')
+                        & (averaged['degradation_level'] == 0.0)].iloc[0]
+        self.assertAlmostEqual(row['voidmass_subprocess_lower'], 0.25)
+        self.assertAlmostEqual(row['voidmass_subprocess_upper'], 0.25)
 
     def test_adds_an_ok_status_column(self):
         averaged = average_over_nodes(fake_node_df())
@@ -113,6 +127,21 @@ class ExcludeDegenerateTest(unittest.TestCase):
         df.loc[df['degradation_level'] == 0.5, 'status'] = 'error: boom'
         filtered = _exclude_degenerate(df)
         self.assertEqual(set(filtered['degradation_level']), {0.0})
+
+
+class MetricsSchemaTest(unittest.TestCase):
+    '''METRICS must describe every panel as (label, columns) with columns
+    a 1-tuple (plain value) or 2-tuple (lower, upper bound pair) - the
+    shape both plot_dose_response and average_over_nodes rely on.'''
+
+    def test_every_entry_is_a_one_or_two_column_tuple(self):
+        for label, cols in METRICS:
+            with self.subTest(label=label):
+                self.assertIn(len(cols), (1, 2))
+
+    def test_no_duplicate_columns_across_metrics(self):
+        seen = [col for _label, cols in METRICS for col in cols]
+        self.assertEqual(len(seen), len(set(seen)))
 
 
 class PlotDoseResponseTest(unittest.TestCase):
@@ -151,10 +180,21 @@ class PlotDoseResponseTest(unittest.TestCase):
         # (an exception, not just a wrong plot), _exclude_degenerate has
         # stopped being applied inside plot_dose_response
         df = fake_disco_df()
-        df['voidmass_subprocess'] = df['voidmass_subprocess'].astype(object)
-        df.loc[df['degradation_level'] == 1.0, 'voidmass_subprocess'] = 'not a number'
+        df['voidmass_subprocess_lower'] = df['voidmass_subprocess_lower'].astype(object)
+        df['voidmass_subprocess_upper'] = df['voidmass_subprocess_upper'].astype(object)
+        df.loc[df['degradation_level'] == 1.0,
+               ['voidmass_subprocess_lower', 'voidmass_subprocess_upper']] = 'not a number'
         out_dir = tempfile.mkdtemp()
         written = plot_dose_response(df, out_dir=out_dir)
+        self.assertTrue(Path(written[0]).exists())
+
+    def test_a_bound_pair_with_no_divergence_still_plots(self):
+        # the common case (no timed-out variants, lower == upper
+        # everywhere) - the banded path must not require real divergence
+        # to work.
+        out_dir = tempfile.mkdtemp()
+        written = plot_dose_response(fake_claims_shaped_df(), out_dir=out_dir,
+                                      line_by='degradation_dim')
         self.assertTrue(Path(written[0]).exists())
 
 

@@ -63,6 +63,11 @@ All notable changes to this project will be documented in this file.
   once per tree node instead of once per report row - about 4,270s
   extra per cell on rtfm. The trace list is now built once, with the
   per-row cache, and reused for every node.
+* `lab.plots` read `alignment_coverage_pn`/`voidmass_subprocess`/
+  `voidmass_process` as single columns, which no longer exist since 0.4.2
+  split them into `_lower`/`_upper` bounds. Each is now plotted as a
+  midpoint line with a shaded band between its bounds, which collapses
+  to a plain line when nothing timed out.
 
 ## [0.4.2] - 2026-09-11
 
