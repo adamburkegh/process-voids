@@ -475,6 +475,89 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(tau_row['total_node_count'], 0)
 
 
+class MetricsExclusionTest(FakePipelineMixin, unittest.TestCase):
+    """
+    run_disco_degrade(..., metrics=...) lets a caller score a SUBSET of
+    ALL_METRICS - for a metric that's known-expensive (voidsat on a
+    high-case-count log) or known-wrong (pending an upstream fix) and
+    not worth paying for on a given run, re-collecting it later being
+    cheap. An excluded metric contributes no timing row and its CSV
+    column is entirely absent from the scored values (NaN once written
+    to a fixed-schema CSV), never a KeyError or an inconsistent column
+    set between rows - see the null_metric_values construction in
+    run_disco_degrade, which is derived from the SAME metrics argument
+    actually used to score, not the frozen ALL_METRICS default.
+    """
+
+    def setUp(self):
+        self.tree = _single_activity_tree()
+        self.combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(self.tree))}
+        self.degradations = {'activity': degrade_stub}
+        self.tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
+        self.metrics_without_voidsat = [m for m in ALL_METRICS if m.id != 'voidsat']
+
+    def test_excluded_metric_gets_no_timing_row(self):
+        self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
+                            voidsat_value=0.99)
+        _df, _node_df, timings_df = run_disco_degrade(
+            ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
+            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
+        self.assertNotIn('voidsat', set(timings_df['metric_or_stage']))
+        # a metric that WAS scored is still there, so this isn't just an
+        # empty/broken timings frame
+        self.assertIn('skipprob', set(timings_df['metric_or_stage']))
+
+    def test_excluded_metric_column_is_absent_from_scored_values_not_crashed_around(self):
+        self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
+                            voidsat_value=0.99)
+        df, node_df, _timings_df = run_disco_degrade(
+            ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
+            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
+        # root df has no fixed schema (plain pd.DataFrame(rows)) - a key
+        # absent from every row means the column doesn't exist at all,
+        # not a NaN-filled one.
+        self.assertNotIn('voidsat', df.columns)
+        # node_df DOES have a fixed schema (NODE_ROW_COLUMNS), so the
+        # excluded metric still gets its column - just entirely empty.
+        self.assertIn('voidsat', node_df.columns)
+        self.assertTrue(node_df['voidsat'].isna().all())
+        # a metric that WAS scored has its real value, not also nulled
+        self.assertEqual(df.iloc[0]['skipprob'], 0.1)
+
+    def test_error_row_null_fallback_matches_the_excluded_metric_set(self):
+        # a cell-wide failure (dv/classical stage) must fall back to
+        # None for every SCORED metric only - if the null fallback still
+        # referenced the frozen ALL_METRICS default, an error row would
+        # carry a 'voidsat' key a successful row in the same run does
+        # not, which is exactly the column-inconsistency this feature
+        # exists to avoid.
+        self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()})
+        self._patch('process_voids.metric_context.pvoid.skipprob',
+                    side_effect=RuntimeError('boom'))
+        df, _node_df, _timings_df = run_disco_degrade(
+            ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
+            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
+        row = df.iloc[0]
+        self.assertTrue(str(row['status']).startswith('error'))
+        # root df has no fixed schema - a metric excluded from BOTH the
+        # success and error null-fallback paths is absent from every
+        # row, so the column never exists at all. The real point of this
+        # test is what did NOT happen: no KeyError from a null fallback
+        # that still expected a 'voidsat' key this run never scores.
+        self.assertNotIn('voidsat', df.columns)
+
+    def test_default_metrics_argument_still_scores_everything(self):
+        # no metrics= passed - existing callers (and the CLI with no
+        # --exclude-metric) are unaffected.
+        self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
+                            voidsat_value=0.42)
+        df, _node_df, timings_df = run_disco_degrade(
+            ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
+            levels=[0.5], out_csv=str(self.tmp_out))
+        self.assertEqual(df.iloc[0]['voidsat'], 0.42)
+        self.assertIn('voidsat', set(timings_df['metric_or_stage']))
+
+
 class TimingRowsTest(FakePipelineMixin, unittest.TestCase):
     """
     run_disco_degrade's third return value: one long-form timing row

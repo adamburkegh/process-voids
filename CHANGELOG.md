@@ -47,6 +47,11 @@ All notable changes to this project will be documented in this file.
   `NULL_METRIC_VALUES` constant. `run_disco_degrade` now also returns
   (and writes) a third, long-form `_timings` CSV with one row per
   stage/metric actually computed per cell.
+* `run_disco_degrade(..., metrics=...)` and `lab.exp_disco_degrade`'s
+  `--exclude-metric` flag skip scoring the given metrics for a run (e.g.
+  `voidsat`, whose per-trace cost is prohibitive on high case-count
+  logs). An excluded metric gets no timing row and an empty column in
+  every row; unknown ids are rejected.
 
 ### Changed
 

@@ -220,23 +220,38 @@ MEAN_LEAF_SKIPPROB_METRIC = ProcessMetric(
     id='mean_leaf_skipprob', scope='root', needs=('dv',),
     compute=lambda ctx, node: mean_leaf_skipprob(ctx.tree, ctx.stage('dv').skip_probs))
 
-# Every ALL_METRICS id plus the root-only extras, all None - one shared
-# fallback for a cell that never got as far as computing anything (a
-# stage failure propagating out of _compute_cell, or a discovery
-# failure).
-NULL_METRIC_VALUES = {m.id: None for m in ALL_METRICS}
-NULL_METRIC_VALUES.update({k: None for k in TIMEOUT_DIAGNOSTIC_KEYS})
-NULL_METRIC_VALUES['mean_leaf_skipprob'] = None
+def _null_metric_values(metrics):
+    """
+    {metric.id: None for every metric in `metrics`} plus the root-only
+    extras - one shared fallback for a cell that never got as far as
+    computing anything (a stage failure propagating out of _compute_cell,
+    or a discovery failure).
+
+    Takes `metrics` rather than closing over ALL_METRICS so a caller that
+    excludes a metric (run_disco_degrade's own `metrics` parameter) gets
+    a null fallback matching what it actually scores - an error row
+    carrying a key no successful row in the same run has (or vice versa)
+    is exactly the column-inconsistency excluding a metric must avoid.
+    """
+    values = {m.id: None for m in metrics}
+    values.update({k: None for k in TIMEOUT_DIAGNOSTIC_KEYS})
+    values['mean_leaf_skipprob'] = None
+    return values
+
+
+# The default fallback, matching every registered metric.
+NULL_METRIC_VALUES = _null_metric_values(ALL_METRICS)
 
 
 def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, classical_net,
-                  slpn_path, timing_rows):
+                  slpn_path, timing_rows, metrics=ALL_METRICS):
     """
     Runs one cell's full metric computation via a fresh CellContext,
-    returning (root_metrics, node_rows). Every metric in ALL_METRICS is
-    scored once per node in the classical stage's table (root included -
-    see ALL_METRICS), so the root dict is that same scoring for node=tree,
-    not a separate computation.
+    returning (root_metrics, node_rows). Every metric in `metrics`
+    (default ALL_METRICS - see run_disco_degrade's own `metrics`
+    parameter for why a caller might narrow this) is scored once per
+    node in the classical stage's table (root included), so the root
+    dict is that same scoring for node=tree, not a separate computation.
 
     A stage failure (the dv/classical alignment pipelines - the realistic
     failure mode) propagates out of this function; the caller's own
@@ -267,7 +282,7 @@ def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, clas
 
         node_rows = []
         for node in result.table:
-            values = score_all(ctx, ALL_METRICS, node=node)
+            values = score_all(ctx, metrics, node=node)
             node_rows.append({
                 'log': log_name, 'combo': combo_name,
                 'degradation_dim': dim, 'degradation_level': level,
@@ -282,8 +297,8 @@ def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, clas
             # voidmass_pn), so node_rows[0] is the tree root's row - the
             # root dict is that same scoring, not a second call, plus the
             # two root-only extras.
-        root_metrics = ({m.id: node_rows[0][m.id] for m in ALL_METRICS} if node_rows
-                        else dict(NULL_METRIC_VALUES))
+        root_metrics = ({m.id: node_rows[0][m.id] for m in metrics} if node_rows
+                        else _null_metric_values(metrics))
         mean_leaf_value = ctx.score(MEAN_LEAF_SKIPPROB_METRIC)
         root_metrics['mean_leaf_skipprob'] = (None if mean_leaf_value is METRIC_ERROR
                                               else mean_leaf_value)
@@ -302,12 +317,25 @@ def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, clas
 
 
 def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS,
-                     levels=ALL_LEVELS, out_csv='var/lab/results/exp_disco_degrade.csv',
+                     levels=ALL_LEVELS, metrics=ALL_METRICS,
+                     out_csv='var/lab/results/exp_disco_degrade.csv',
                      node_out_csv=None, timings_out_csv=None):
+    """
+    metrics: the ProcessMetrics to score (default ALL_METRICS) - narrow
+    this to skip a metric entirely for this run, eg one that's known-
+    expensive at a log's scale (voidsat's per-trace cost) or known-wrong
+    pending an upstream fix, where re-collecting it later is cheap. An
+    excluded metric gets no timing row and its CSV column is absent from
+    every scored row (NaN once written to the fixed NODE_ROW_COLUMNS
+    schema) - never a KeyError, and never present on some rows but not
+    others, since the null-value fallback for a failed/skipped cell is
+    derived from this SAME `metrics` argument (see _null_metric_values).
+    """
+    null_metric_values = _null_metric_values(metrics)
     logger.info('Experiment: disco_degrade | logs=%s | combos=%s | '
-                'degradations=%s | levels=%s',
+                'degradations=%s | levels=%s | metrics=%s',
                 [Path(p).stem for p in log_paths], list(combos),
-                list(degradations), levels)
+                list(degradations), levels, [m.id for m in metrics])
 
     rows = []
     node_rows = []
@@ -384,7 +412,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         # reuses them.
                         zero_level_metrics, zero_level_node_rows = _compute_cell(
                             log_name, combo_name, None, 0.0, base_log, tree, ppt_weights,
-                            classical_net, slpn_path, timing_rows)
+                            classical_net, slpn_path, timing_rows, metrics=metrics)
                         zero_level_status = 'ok'
                     except Exception as e:
                         logger.exception('%s - exception', cell)
@@ -406,7 +434,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': discover_status,
                             'elapsed_s': None,
-                            **NULL_METRIC_VALUES,
+                            **null_metric_values,
                             **tree_metrics,
                         }
                         rows.append(row)
@@ -432,7 +460,7 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                             node_rows.extend({**r, 'degradation_dim': dim}
                                              for r in zero_level_node_rows)
                         else:
-                            row.update(NULL_METRIC_VALUES)
+                            row.update(null_metric_values)
                         rows.append(row)
                         logger.debug('%s - reused level-0.0 result', cell)
                         continue
@@ -454,15 +482,15 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                                  f'{dim}_{level}.slpn')
                     with Timer() as t:
                         try:
-                            metrics, cell_node_rows = _compute_cell(
+                            cell_root_metrics, cell_node_rows = _compute_cell(
                                 log_name, combo_name, dim, level, degraded_log, tree, ppt_weights,
-                                classical_net, slpn_path, timing_rows)
+                                classical_net, slpn_path, timing_rows, metrics=metrics)
                             row['status'] = 'ok'
-                            row.update(metrics)
+                            row.update(cell_root_metrics)
                             node_rows.extend(cell_node_rows)
                         except Exception as e:
                             logger.exception('%s - exception', cell)
-                            row.update(status=f'error: {type(e).__name__}: {e}', **NULL_METRIC_VALUES)
+                            row.update(status=f'error: {type(e).__name__}: {e}', **null_metric_values)
                     row['elapsed_s'] = t.elapsed_s
                     rows.append(row)
 
@@ -588,6 +616,14 @@ def main():
                                        'else var/lab/results/exp_disco_degrade.csv) - a '
                                        'timestamp is always inserted before the extension, '
                                        'so this is never overwritten by a later run.')
+    parser.add_argument('--exclude-metric', nargs='+', default=[], metavar='METRIC_ID',
+                         help='Skip scoring the given metric id(s) entirely for this run '
+                              f'(choices: {[m.id for m in ALL_METRICS]}) - for a metric '
+                              "that's known-expensive at a log's scale (eg voidsat's "
+                              'per-trace cost) or known-wrong pending an upstream fix, '
+                              'where re-collecting it later is cheap. An excluded metric '
+                              'gets no timing row and its CSV column is entirely empty '
+                              'for this run.')
     parser.add_argument('--verbose', action='store_true',
                          help='Enable skip-alignments debug logging '
                               '(waste ratios, per-variant timing)')
@@ -600,16 +636,25 @@ def main():
     if args.verbose:
         enable_skipalignments_debug()
 
+    all_metric_ids = {m.id for m in ALL_METRICS}
+    unknown = [m for m in args.exclude_metric if m not in all_metric_ids]
+    if unknown:
+        parser.error(f'Unknown --exclude-metric {unknown}; choices: {sorted(all_metric_ids)}')
+    metrics = [m for m in ALL_METRICS if m.id not in args.exclude_metric]
+
     experiment = _resolve_experiment(args, parser)
 
     if args.dry_run:
         print(experiment.describe())
+        if args.exclude_metric:
+            print(f'  excluding metrics: {args.exclude_metric}')
         return
 
     out_csv = _timestamped(experiment.out_csv)
     df, node_df, timings_df = run_disco_degrade(
         log_paths=experiment.log_paths, combos=experiment.combos,
-        degradations=experiment.degradations, levels=experiment.levels, out_csv=out_csv)
+        degradations=experiment.degradations, levels=experiment.levels,
+        metrics=metrics, out_csv=out_csv)
     print(df)
     logger.info("Wrote %s (%d rows), %d node rows and %d timing rows",
                 out_csv, len(df), len(node_df), len(timings_df))
