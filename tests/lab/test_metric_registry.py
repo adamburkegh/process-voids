@@ -31,9 +31,7 @@ class DriftTest(unittest.TestCase):
     zip() from - see lab.metric_registry's module docstring) must have
     exactly one registry entry, tagged with that script - and the
     registry must contain nothing else. Catches a metric renamed in its
-    producing script without an accompanying registry update, the same
-    silent-drift failure mode that left plot_dose_response's METRICS
-    list stale earlier in this project's history.
+    producing script without an accompanying registry update.
     """
 
     def test_compute_metrics_keys_match_registry(self):

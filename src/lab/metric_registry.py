@@ -5,10 +5,9 @@ lab.exp_voidmass) have ever emitted, plus product-only ids computed by
 process_voids for pvoid's own output. Entries are never deleted, only
 appended or given status='retired' - a result CSV from any point in
 this project's history should still have every one of its columns
-findable here. exp_claims_degrade.py was retired once lab.claims_fixture's
-CLAIMS_COMBOS/CLAIMS_DEGRADATIONS let the claims fixture run through
-exp_disco_degrade directly - same schema, no separate bespoke script or
-registry entries needed for it.
+findable here. The claims fixture runs through exp_disco_degrade
+(lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS), so its
+columns are exp_disco_degrade's, with no entries of their own.
 
 Each Metric carries a status ('live': currently emitted; 'evaluation':
 currently emitted, but only to evaluate other metrics - oracle
@@ -29,14 +28,13 @@ and exp_disco_degrade's timeout diagnostics timed_out_count/
 timed_out_weight).
 
 This is the executable source of truth, not documentation of it: every
-id here is one of the *_KEYS constants each producing script actually
-builds its output dict from (METRIC_KEYS, CLASSICAL_METRIC_KEYS,
-NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS, TREE_METRIC_KEYS) - see tests/lab/
-test_metric_registry.py, which imports those constants directly and
-asserts this registry's ids match them exactly. A metric renamed in its
-producing script without a matching registry update fails that test,
-the same silent-drift failure mode that left plot_dose_response's
-METRICS list stale earlier in this project's history.
+live and evaluation id here is in one of the *_KEYS constants its
+producing script actually builds its output dict from (in lab.metrics,
+lab.exp_disco_degrade, lab.exp_surprise, lab.exp_voidmass and
+process_voids.coveragemass) - see tests/lab/test_metric_registry.py,
+which imports those constants directly and asserts this registry's ids
+match them exactly. A metric renamed in its producing script without a
+matching registry update fails that test.
 
 Every exp_surprise metric is registered twice: an unsuffixed id ('self'
 - the deployable mode, tail distribution estimated from the log being
@@ -44,14 +42,12 @@ scored) and a '_baseline'-suffixed id (scored against the *undegraded*
 log's distribution instead - a benchmark-only oracle comparison,
 isolating real degradation signal from the self-estimator degrading
 along with the log; unavailable under real missing-activity scenarios,
-where no undegraded reference exists). These were originally a single
-id plus a 'distribution' column, but self and baseline are different
+where no undegraded reference exists). Self and baseline are different
 quantities with different deployability - self is a dead end on its
-own (all signal vanishes without a baseline to compare against, hence
-this split), baseline is a genuine standing benchmark metric - so they
-get separate ids like every other metric here, not a shared one plus a
-modifier column. See lab.exp_surprise's module docstring and
-_compute_cell.
+own (all signal vanishes without a baseline to compare against),
+baseline is a genuine standing benchmark metric - so they get separate
+ids like every other metric here, not a shared one plus a modifier
+column. See lab.exp_surprise's module docstring and _compute_cell.
 """
 
 from dataclasses import dataclass, field
@@ -96,10 +92,9 @@ METRICS = {
                     'dv.skip_probs[node], unmodified, evaluated at whichever node '
                     'is being scored (the root in the root-level CSV, any node in '
                     "the per-node CSV - same id, same computation, both places). "
-                    "Until a naming fix, this id was wired to mean_leaf_skipprob "
-                    "(lab.metrics) by mistake - a different, unrelated statistic "
-                    "that happened to get this term's name. A result CSV written "
-                    "before that fix has the wrong quantity under this column.",
+                    "Not mean_leaf_skipprob (lab.metrics), a different, "
+                    "unrelated statistic - see this id's history for result "
+                    "CSVs where this column held that one instead.",
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_disco_degrade',),
         history={'f2aa44c': 'Blended mean of skip_probs[leaf] over every Activity '
@@ -114,9 +109,9 @@ METRICS = {
                     "whole tree, regardless of which node is passed in (see that "
                     "function's own docstring on the tree argument it ignores for "
                     "scoping) - NOT skip-alignments' own \"skipprob\" (see that "
-                    'id\'s entry - this used to be wired to the \'skipprob\' name '
-                    'by mistake). A separate, home-grown blended statistic, kept '
-                    'under an honest name rather than dropped outright since '
+                    "id's entry and history). A separate, home-grown blended "
+                    'statistic, kept under an honest name rather than dropped '
+                    'outright since '
                     "it's not yet established whether it's actually informative. "
                     'Root-level only - not meaningful per-node, since it always '
                     'returns the same whole-tree average regardless of the node '
@@ -248,15 +243,12 @@ METRICS = {
                     "executions within an alignment and across an alignment's "
                     "tied alternatives, then across a variant's own weight - "
                     "verified term-by-term against the formal definition, not "
-                    "pooled (see voidmass_process/voidmass_subprocess for the "
-                    "pooled quantities, which this id used to be computed from "
-                    "by mistake - convenient since that table was already "
-                    "built, but not what the definition specifies). Reuses "
+                    "pooled (see voidmass_subprocess_lower/_upper for the "
+                    "pooled quantity, and this id's history). Reuses "
                     "skip-alignments' own skip_probs unchanged rather than "
                     "deriving a separate estimate. LOWER bound: a variant whose "
-                    "alignment search timed out (no alignments at all - "
-                    "previously silently excluded from the weighted average "
-                    "entirely) is treated as contributing a ratio of 0 (as if "
+                    "alignment search timed out (no alignments at all) is "
+                    "treated as contributing a ratio of 0 (as if "
                     "it matched nothing), the SMALLER of the two coverage "
                     "readings.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
@@ -451,7 +443,7 @@ METRICS = {
     # voidsat (coveragemass.voidmass_table), not the classical Petri-net
     # alignments exp_disco_degrade uses. voidmass_subprocess/voidmass_process
     # here are lumped, unsuffixed, and unrelated to exp_disco_degrade's own
-    # (now _lower/_upper-suffixed) classical ids of the same short name -
+    # (_lower/_upper-suffixed) classical ids of the same short name -
     # see their history entries below.
     'skip_prob': Metric(
         id='skip_prob',
@@ -568,7 +560,7 @@ METRICS = {
     'n_optimal_alignments': Metric(
         id='n_optimal_alignments',
         description='Total optimal alignments found across all trace '
-                    'variants (E3\'s |Gamma_sigma| diagnostic) - a '
+                    'variants (the sum of |Gamma_sigma|) - a '
                     'diagnostic on the alignment search itself, not a '
                     'void/coverage metric.',
         source='lab.exp_voidmass._n_optimal_alignments',

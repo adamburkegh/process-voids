@@ -10,18 +10,18 @@ curve in the coverage metrics as degradation increases.
 Every metric in ALL_METRICS (process_voids.metric_context.ProcessMetric
 declarations - skip-alignments-based weight_coverage/weight_voidage/
 skipprob/salign_coverage, process_voids.voidmass_pn's classical-alignment
-voidmass_deficit/voidmass_movecount/voidmass_subprocess/voidmass_process/
-alignment_coverage_pn, and process_voids.coveragemass's skip-alignment-
-based, real-elapsed-time voidsat) is scored once per node in the
-discovered tree (Activity, Tau, and composite Sequence/Xor/And/Loop
+CLASSICAL_METRIC_KEYS (voidmass deficit/movecount/subprocess/process and
+alignment_coverage_pn - see that constant), and process_voids.coveragemass's
+skip-alignment-based, real-elapsed-time voidsat) is scored once per node
+in the discovered tree (Activity, Tau, and composite Sequence/Xor/And/Loop
 alike) via a per-cell CellContext - see _compute_cell. The root-level row
-is that same scoring at the tree root, not a separate computation - this
-project is fundamentally about subprocess-level voids, so collapsing the
-per-node data away by default would be the wrong call. duration_coverage
-stays off the roster (product-only - see lab.metric_registry).
-skipprob here is dv.skip_probs[node] directly (skip-alignments' own
-published definition) - not lab.metrics.mean_leaf_skipprob (a different,
-root-only statistic, scored separately - see MEAN_LEAF_SKIPPROB_METRIC).
+is that same scoring at the tree root, not a separate computation; the
+per-node CSV keeps every node's scores, since this project is about
+subprocess-level voids. duration_coverage is not on the roster
+(product-only - see lab.metric_registry). skipprob here is
+dv.skip_probs[node] directly (skip-alignments' own published definition)
+- not lab.metrics.mean_leaf_skipprob (a different, root-only statistic,
+scored separately - see MEAN_LEAF_SKIPPROB_METRIC).
 
 lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS registers that
 fixture's known tree and its named ablation targets (appeal_seq/
@@ -35,15 +35,14 @@ metric above again, one row per (log, combo, dim, level, node_id) - see
 NODE_ROW_COLUMNS), and a long-form timing one (one row per stage/metric
 actually computed in a cell - see lab.timing.TimingListener).
 
-NOTE on the classical-alignment metrics specifically: they're computed
-via align_pn_all with id_loop_list=[] (skip-alignments' own
-insert_cycle_checks gap - see session notes), so a discovered tree with
-a tau-skippable loop could in principle make that search cycle; it's
-still bounded by the per-variant timeout (default 100s, see
-voidmass_table_pn), just wastefully so, not hung outright. Worth
-watching for surprisingly slow cells on a real, unfamiliar discovered
-tree rather than assuming it's always cheap the way it was on the
-small synthetic fixtures this was validated against.
+NOTE on the classical-alignment metrics specifically: build_id_net's
+id_loop_list is passed through to align_pn_all, so its cycle guard can
+engage on a tau-skippable loop, and each variant's search is bounded
+by CLASSICAL_ALIGNMENT_TIMEOUT. A variant that times out is bounded
+rather than estimated (the _lower/_upper columns), and one that runs
+close to the timeout is logged as a warning - worth watching for on a
+real, unfamiliar discovered tree rather than assuming it's always cheap
+the way it is on small synthetic fixtures.
 
 run_disco_degrade() takes explicit logs/combos/degradations/levels and
 runs their Cartesian product - the full parameter catalog lives in
@@ -131,8 +130,7 @@ TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 # already are per-node in voidmass_table_pn / mandatory_node_count.
 # skipprob = dv.skip_probs[node] directly (skip-alignments' own
 # definition) - NOT lab.metrics.mean_leaf_skipprob, a different,
-# unrelated statistic that used to be wired to the 'skipprob' name by
-# mistake (see lab.metrics' module docstring).
+# unrelated statistic (see lab.metrics' module docstring).
 PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage')
 
 # voidsat is skip-alignments-based like PER_NODE_METRIC_KEYS (reuses
@@ -145,7 +143,7 @@ PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat',)
 
 
-# Every key _node_rows' row dict actually builds from, in the same order -
+# Every key _compute_cell's node row dicts carry, in the same order -
 # used to give the per-node CSV a real header even when node_rows is empty
 # (every cell in a run errored) rather than pandas' default empty-columns
 # DataFrame, which writes a headerless file that raises EmptyDataError in
@@ -225,8 +223,7 @@ MEAN_LEAF_SKIPPROB_METRIC = ProcessMetric(
 # Every ALL_METRICS id plus the root-only extras, all None - one shared
 # fallback for a cell that never got as far as computing anything (a
 # stage failure propagating out of _compute_cell, or a discovery
-# failure), replacing three independently hand-typed copies of the same
-# set of Nones.
+# failure).
 NULL_METRIC_VALUES = {m.id: None for m in ALL_METRICS}
 NULL_METRIC_VALUES.update({k: None for k in TIMEOUT_DIAGNOSTIC_KEYS})
 NULL_METRIC_VALUES['mean_leaf_skipprob'] = None
@@ -243,8 +240,8 @@ def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, clas
 
     A stage failure (the dv/classical alignment pipelines - the realistic
     failure mode) propagates out of this function; the caller's own
-    try/except records that as a cell-wide error row, same as before
-    this used CellContext. A single ProcessMetric's own compute() failing
+    try/except records that as a cell-wide error row. A single
+    ProcessMetric's own compute() failing
     is isolated per (metric, node) by CellContext.score and surfaces as
     METRIC_ERROR -> None in the row it belongs to, not a cell-wide
     failure - see process_voids.metric_context.
@@ -264,8 +261,7 @@ def _compute_cell(log_name, combo_name, dim, level, log, tree, ppt_weights, clas
         # isolated to just that metric, per node, rather than failing the
         # whole cell. dv/classical failing (the ebi/alignment-search
         # calls - the realistic failure mode) should still fail the
-        # whole cell uniformly, matching this experiment's behaviour
-        # before the CellContext migration.
+        # whole cell uniformly.
         result, _variant_probs = ctx.stage('classical')
         ctx.stage('dv')
 
@@ -382,10 +378,10 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
                         # first dim has already reset those attributes to
                         # weights estimated from a degraded log - silently
                         # corrupting the per-node CSV's weight-derived
-                        # columns for every dim after the first (found
-                        # in the 2026-09-10 runs). dim is stamped in per
-                        # use below, since these rows are otherwise
-                        # identical regardless of which dim reuses them.
+                        # columns for every dim after the first. dim is
+                        # stamped in per use below, since these rows are
+                        # otherwise identical regardless of which dim
+                        # reuses them.
                         zero_level_metrics, zero_level_node_rows = _compute_cell(
                             log_name, combo_name, None, 0.0, base_log, tree, ppt_weights,
                             classical_net, slpn_path, timing_rows)
@@ -505,8 +501,8 @@ def _timestamped(path):
     'var/lab/results/rtfm.csv' -> 'var/lab/results/rtfm_20260908-121549.csv'.
 
     Applied unconditionally in main() below, whether --out was given or
-    not: run_disco_degrade (unlike exp_claims_degrade/exp_voidmass/
-    exp_surprise) has no _merge_write - it's a plain df.to_csv overwrite
+    not: run_disco_degrade (unlike exp_voidmass/exp_surprise) has no
+    _merge_write - it's a plain df.to_csv overwrite
     every call, and every cell here is expensive (a real log, a real
     discovered tree, the full classical-alignment pass) - a same-name
     rerun silently clobbering the last one is exactly the mistake this

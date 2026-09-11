@@ -5,12 +5,12 @@ skip-alignments' Aligner.align_normal_form/executions().
 
 Why this exists: coveragemass.executions() is built on skip-alignments'
 normal form, which lumps an entirely-unwitnessed subtree into a single
-Skip/TauPath move on its coarsest ancestor. The voidmass brief's
-deficit is defined to count every constituent activity individually -
-skipprob is the one allowed to lift to the highest block, not deficit -
-so building deficit on the lumped representation is wrong. Classical
-alignments have no Skip(subtree) construct at all: every missing leaf
-is necessarily its own model-move, so no lumping can occur.
+Skip/TauPath move on its coarsest ancestor. Voidmass's deficit is
+defined to count every constituent activity individually - skipprob is
+the one allowed to lift to the highest block, not deficit - so building
+deficit on the lumped representation is wrong. Classical alignments
+have no Skip(subtree) construct at all: every missing leaf is
+necessarily its own model-move, so no lumping can occur.
 
 This module is a prototype (see tests/process_voids/test_voidmass_pn_prototype.py).
 voidmass_deficit/subprocess/process (terms_by_node, below) don't need
@@ -25,27 +25,18 @@ DOES need that grouping - see _to_alignment_mass_path, which translates
 a classical alignment into coveragemass.alignment_mass's own path
 shape and reuses that machinery (executions()/matchcount/movecount/the
 averaging structure itself) entirely unmodified, verified term-by-term
-against the formal definition. An earlier version of this function
-reused voidmass_table_pn's pooled sums instead of building this
-translation - convenient, but not what the definition specifies; see
-that function's own docstring for where the pooled quantity still
-lives, honestly labelled.
+against the formal definition. The pooled ratio voidmass_table_pn
+reports (alignment_mass_pooled_lower/_upper) is a different quantity -
+see coverage_by_alignment_pn.
 
 If this approach is adopted, this needs folding into coveragemass.py;
 if not, delete both files.
 
-Requires skip-alignments' tau_ids fix AND the id_loop_list/cycle-guard
-fix (build_petri_net's 6-tuple return - net, im, fm, activity_to_id,
-tau_ids, id_loop_list; align_pn_all's tau_ids parameter) -
-process-voids is pinned to a local editable install of the sibling
-skip-alignments repo for this (see pyproject.toml) until these fixes
-are released. The cycle-guard fix matters beyond correctness: id_loop_list
-was always [] before (a genuine gap, not just an unused default) - the
-A* search couldn't cycle-detect on any tau-skippable loop, which is the
-suspected cause of the near-timeout clustering found on rtfm (42/48
-variants at ~100-104s regardless of complexity - see session notes).
-Passing the real id_loop_list from build_id_net is expected to fix that,
-not just theoretically close the gap.
+Relies on skip-alignments' build_petri_net returning a 6-tuple (net,
+im, fm, activity_to_id, tau_ids, id_loop_list) and on align_pn_all's
+tau_ids parameter - see pyproject.toml for the pinned skip-alignments
+version. id_loop_list must reach align_pn_all (see build_id_net): left
+as [], the A* search can't cycle-detect on a tau-skippable loop.
 '''
 
 import logging
@@ -211,9 +202,8 @@ def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set
 
     id_to_activity/nodes_by_name are precomputed ONCE by the caller
     (voidmass_table_pn) and passed in, not rebuilt per call - this is
-    called once per deduped alignment, and rebuilding a full tree walk
-    (_leaf_nodes_by_name) every time measurably slowed a real sweep
-    (rtfm: voidmass_table_pn 105s -> 307s) before this was hoisted out.
+    called once per deduped alignment, and a full tree walk
+    (_leaf_nodes_by_name) per call is measurably slow on a real log.
     '''
     path = []
     for t in alignment:
@@ -247,9 +237,9 @@ def sum_safe_signature(alignment, id_to_activity, tau_id_set):
     that differ ONLY in where two commuting no-ops fall relative to each
     other (a silent/tau move and an unrelated log move don't constrain
     one another, so the search enumerates both orderings as if they were
-    distinct alignments - see session notes, claim_25 in the claims
-    fixture: 9 raw alignments, 3 real causal stories, a 6:1:2 raw split
-    instead of the correct 1:1:1). Dropping log/tau collapses exactly
+    distinct alignments - e.g. claim_25 in the claims fixture: 9 raw
+    alignments, 3 real causal stories, a 6:1:2 raw split instead of the
+    correct 1:1:1). Dropping log/tau collapses exactly
     those spurious duplicates, because dropping them is exactly what
     voidmass needs anyway - deficit/movecount only ever look at sync and
     model moves (see terms_by_node), and their SUM is invariant to how
@@ -280,10 +270,10 @@ def sum_safe_signature(alignment, id_to_activity, tau_id_set):
 # block/traversal a duration gets attributed to - see the docstring above)
 # but can still drop 'tau' moves, since silent transitions never carry a
 # duration. Get this wrong and durations will get attributed to the wrong
-# traversal exactly the way deficit counts got attributed to the wrong
-# activity here before the dedup fix - same failure mode, worse to debug
-# because it'd show up as a plausible-looking wrong number, not a
-# visible asymmetry between two leaves.
+# traversal - the same failure mode dedupe_alignments guards against for
+# deficit counts, but worse to debug because it'd show up as a
+# plausible-looking wrong number, not a visible asymmetry between two
+# leaves.
 
 
 def dedupe_alignments(alignments, id_to_activity, tau_id_set, signature_fn=sum_safe_signature):
@@ -361,12 +351,12 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
     '''
     VoidmassPnResult whose table is the classical-alignment analogue of
     coveragemass.voidmass_table: one pass over the tree, aggregated
-    (SUMMED, not averaged - see voidmass-brief.md) over every variant
-    and every distinct causal story among that variant's tied optimal
-    alignments (see dedupe_alignments/sum_safe_signature - raw
-    alignment count is NOT used, since align_pn_all's all-optimal search
-    can return the same causal story multiple times under different
-    commuting-move orders).
+    (SUMMED, not averaged - see coveragemass's Voidmass / Voidage section)
+    over every variant and every distinct causal story among that
+    variant's tied optimal alignments (see dedupe_alignments/
+    sum_safe_signature - raw alignment count is NOT used, since
+    align_pn_all's all-optimal search can return the same causal story
+    multiple times under different commuting-move orders).
 
     Timed-out variants: align_variant_all can return ZERO alignments for
     a variant (a per-variant timeout, seen in real runs). Its real
@@ -444,8 +434,7 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
         # likely signature of the id_loop_list gap (a tau-skippable loop
         # the A* search can't cycle-detect, so it burns the full budget
         # rather than resolving quickly or hanging outright) rather than
-        # genuine alignment cost. See session notes, the rtfm baseline
-        # run's ~75 minutes unaccounted for outside skip-alignments.
+        # genuine alignment cost.
         near_timeout = elapsed > 0.9 * timeout
         n_near_timeout += near_timeout
         log = logger.warning if near_timeout else logger.debug
@@ -519,7 +508,7 @@ def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, conventi
     result.skip_dict (already translated into coveragemass.alignment_mass's
     expected path shape - see _to_alignment_mass_path) - reuses
     coveragemass.alignment_mass entirely unmodified, verified term-by-
-    term against the formal definition (see session notes): no pooling,
+    term against the formal definition: no pooling,
     per-execution match/movecount ratios averaged uniformly within an
     alignment, alignments averaged uniformly within a variant, both
     zero-denominator conventions matching the definition's own "treated
@@ -528,18 +517,15 @@ def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, conventi
     Deliberately reuses skip-alignments' own skip_prob unchanged
     (dv.skip_probs[node]) rather than inventing a classical-alignment
     replacement for it - skip_prob answers a per-variant "was this node
-    skipped at all" question via node_reached, not a move-count, so it
-    was never subject to the lumping bug voidmass's deficit (or this
-    metric's own prior pooled implementation) had to move off of.
+    skipped at all" question via node_reached, not a move-count, so the
+    normal form's lumping that rules skip-alignments out for voidmass's
+    deficit doesn't affect it.
 
-    Prior implementations of this id used voidmass_table_pn's POOLED
-    alignment_mass_pooled (matchcount/movecount summed across every
-    execution before dividing once) - convenient since that table was
-    already being computed, but not what \\covermove's own definition
-    specifies. That pooled quantity is still available, honestly
-    labelled, as 1 - voidmass_process (equivalently
-    table[node]['alignment_mass_pooled']) - nothing was lost, this id
-    just no longer claims to be that.
+    Not the POOLED ratio (matchcount/movecount summed across every
+    execution before dividing once), which \\covermove's own definition
+    doesn't specify. That pooled quantity is 1 - voidmass_subprocess,
+    reported by voidmass_table_pn as table[node]['alignment_mass_pooled_
+    lower'/'alignment_mass_pooled_upper'].
 
     executions_cache: optional, see coveragemass.alignment_mass /
     coveragemass.make_executions_cache - pass one shared cache across
@@ -554,9 +540,7 @@ def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, conventi
     treated as contributing this synthetic per-variant ratio instead.
     See lab.exp_disco_degrade's _lower/_upper wiring for why this
     exists: align_variant_all returning nothing is a real, latent
-    failure mode on any log with one slow-enough variant, previously an
-    unhandled ZeroDivisionError in voidmass_table_pn's own pooled sums
-    rather than a defined result here.
+    failure mode on any log with one slow-enough variant.
     '''
     return (1 - skip_prob) * alignment_mass(node, skip_dict, variant_probs, convention,
                                              executions_cache, timed_out_ratio)

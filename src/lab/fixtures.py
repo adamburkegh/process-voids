@@ -15,13 +15,12 @@ sigma6 is an urgent payment that skips scheduling entirely (the only
 trace omitting s).
 
 This is the paper's worked example. It doubles as a quick smoke test for
-the harness (see exp_premodel.py) and is bookmarked for the coverage
-metric unit tests still to be written.
+the harness (see exp_premodel.py) and a fixture for the coverage metric
+unit tests.
 
-NOTE: the log below predates this model revision (loop body is now the
-mandatory `a`, not a choice with a silent skip) - see the bookmarked
-"running example not explanatory" item before relying on this pair for
-anything beyond a smoke test.
+NOTE: the log below fits a loop body with a silent skip (sigma3 and
+sigma4 have no `a` at all), not this model's mandatory `a` - don't rely
+on this pair for anything beyond a smoke test.
 
 Run this module directly to (re)write the checked-in XES copy at
 data/payment_approval.xes from the trace strings below.

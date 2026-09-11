@@ -66,8 +66,8 @@ def installed_package_version(package_name):
     whatever version its OWN pyproject.toml declared at install time -
     see editable_source_dir for that package's current git state, which
     can have moved on since without the pip-recorded version changing
-    (an editable dependency like skip-alignments is exactly the
-    "shifting dev env" case this matters for).
+    (an editable dependency is exactly the "shifting dev env" case this
+    matters for).
     """
     try:
         return importlib.metadata.version(package_name)
@@ -122,8 +122,7 @@ def configure(level=logging.INFO, log_dir=LOG_DIR):
     console output alone means the only record of a run is wherever its
     stdout happened to be captured, which is exactly what's fragile
     (a `| tail` swallowing everything until exit, a background task's
-    capture getting discarded once it's stopped or superseded - see
-    session notes on the rtfm run that left nothing behind). The file
+    capture getting discarded once it's stopped or superseded). The file
     handler makes a run's log durable and independent of how the
     command was invoked, and the timestamp in its name (script name +
     YYYYMMDD-HHMMSS) means a later run can never silently overwrite an
@@ -141,10 +140,9 @@ def configure(level=logging.INFO, log_dir=LOG_DIR):
     every commit rather than marking anything deliberate.
 
     A second line logs skip-alignments the same way (dependency_version_
-    line) - it's an editable dependency under active development
-    alongside this project, so its OWN git state can move independently
-    of process-voids' - belt-and-braces given how often that's been the
-    actual source of a numeric surprise this session.
+    line) - its installed version, plus its OWN git state when it's
+    installed editable (which can move independently of process-voids');
+    installed from a release or git tag, the git part reads 'unknown'.
     """
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)

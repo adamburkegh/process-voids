@@ -147,8 +147,7 @@ class TargetSubprocessDegradationTest(unittest.TestCase):
         # deviated trace in the log) must never be a candidate for
         # ablation-dropping, so a dose-response run against it can't be
         # accidentally confounded by removing the deviation as a side
-        # effect of the ablation - see session notes, exp_claims_degrade's
-        # appeal_seq run before this fix.
+        # effect of the ablation.
         for n in (1, 2):
             with self.subTest(n=n):
                 _, dropped = degrade_target_subprocess(

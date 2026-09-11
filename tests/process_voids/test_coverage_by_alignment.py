@@ -426,10 +426,9 @@ class TimedOutVariantRatioTest(unittest.TestCase):
     the SAME weighted-average machinery every other variant uses -
     1.0 = as if it matched perfectly (deficit=0, the "lower voidage /
     upper coverage" bound), 0.0 = as if it matched nothing (the "upper
-    voidage / lower coverage" bound). Default (timed_out_ratio=None)
-    preserves today's behaviour: such a variant is excluded from the
-    weighted sum entirely, the same as a variant genuinely absent from
-    skip_dict.
+    voidage / lower coverage" bound). By default (timed_out_ratio=None)
+    such a variant is excluded from the weighted sum entirely, the same
+    as a variant genuinely absent from skip_dict.
     """
 
     def setUp(self):
@@ -449,7 +448,7 @@ class TimedOutVariantRatioTest(unittest.TestCase):
 
     def test_default_excludes_the_timed_out_variant_entirely(self):
         # Only the fitting variant's weight (0.5) counts at all, and its
-        # own ratio is 1.0 - matches today's pre-existing behaviour.
+        # own ratio is 1.0.
         self.assertAlmostEqual(
             alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'zero'),
             0.5, places=6)

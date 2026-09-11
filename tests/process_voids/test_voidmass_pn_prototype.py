@@ -5,11 +5,9 @@ give voidmass a deficit count that scales with subtree SIZE on total
 ablation, unlike the skip-alignment path (executions()) which lumps an
 entirely-unwitnessed subtree into one Skip move regardless of size?
 
-This is a throwaway prototype file: process_voids.voidmass_pn does not
-exist in the main package yet. If this confirms the classical path is
-viable, its contents get folded into coveragemass.py/merged elsewhere;
-if not, both this file and voidmass_pn.py get deleted. Either way this
-file is not meant to survive as-is.
+Tests for process_voids.voidmass_pn, itself a prototype (see its
+module docstring): if the classical path is adopted, these tests move
+with it into coveragemass's; if not, both files get deleted.
 '''
 
 import unittest
@@ -43,12 +41,13 @@ def _sequence_of(labels, cost=100000):
 
 class TotalAblationSizeSensitivityTest(unittest.TestCase):
     '''
-    Mirrors the E1 fixture that caught skip-alignments' lumping: a
-    2-activity and an 8-activity subprocess, each entirely unwitnessed
-    (the observed trace has NONE of their activities). Under classical
-    alignments there is no Skip(subtree) construct - every missing leaf
-    must become its own model-move - so deficit should scale 1:1 with
-    subtree size, a straight 4x ratio between the two.
+    Mirrors test_voidmass.py's size-sensitivity fixture, which exposes
+    skip-alignments' lumping: a 2-activity and an 8-activity subprocess,
+    each entirely unwitnessed (the observed trace has NONE of their
+    activities). Under classical alignments there is no Skip(subtree)
+    construct - every missing leaf must become its own model-move - so
+    deficit should scale 1:1 with subtree size, a straight 4x ratio
+    between the two.
     '''
 
     def setUp(self):
@@ -89,13 +88,13 @@ class E1KnownLimitIsFixedTest(unittest.TestCase):
     (same labels: 2 small 's0'/'s1', 8 big 'b0'..'b7', witness 'other') -
     not just a structurally-similar one - so this is directly traceable
     against that test's test_total_ablation_breaks_size_preservation_via_lumping,
-    which pins the OLD (skip-alignments) behaviour: both subprocesses
+    which pins the skip-alignments behaviour: both subprocesses
     entirely missing, both lump to deficit=1, ratio 1.0 - documented
     there as a "known limit", not a bug in voidmass_terms itself.
 
     On the classical path, deficit correctly comes out 2 and 8 (ratio
     4.0, matching the 50%-ablation case's ratio) - confirming that
-    "known limit" was an artifact of skip-alignments' lumped normal
+    "known limit" is an artifact of skip-alignments' lumped normal
     form, not a fundamental property of voidmass.
     '''
 
@@ -139,18 +138,15 @@ class E1KnownLimitIsFixedTest(unittest.TestCase):
 
 class TauLeafIsNotADeficitTest(unittest.TestCase):
     '''
-    Regression test for a bug found and now fixed upstream in
-    skip-alignments: align_pn_all's cost function used to only treat a
-    model transition as free when its label was None or the literal
-    string started with "TAU" - a convention that didn't survive
-    EbiOccurance.build_petri_net's id-substitution (transition labels
-    become opaque ids like '5', not "TAU..." text). The running
-    example's schedule_choice = Xor(s, tau) has exactly this shape:
-    'tau' is a genuine skipalignments.processtree.Tau leaf
-    (model_move_cost=0), not pm4py-invisible, so it kept a real id
-    after renaming and was miscosted as a 100000 deviation instead of a
-    free model alternative. Fixed by build_id_net/align_variant now
-    passing tau_ids through to align_pn_all's tau_ids parameter. On the
+    A genuine Tau leaf must be a free model alternative, not a
+    deviation. EbiOccurance.build_petri_net substitutes opaque ids for
+    transition labels (e.g. '5', not "TAU..." text), so a Tau leaf
+    can't be recognised by its label - build_id_net returns tau_ids and
+    align_variant passes them to align_pn_all's tau_ids parameter,
+    which prices those transitions at zero. The running example's
+    schedule_choice = Xor(s, tau) has exactly this shape: 'tau' is a
+    genuine skipalignments.processtree.Tau leaf (model_move_cost=0),
+    not pm4py-invisible, so it keeps a real id after renaming. On the
     variant ('o','a','p') - approval resolved with no redo,
     schedule_choice resolved via the tau alternative since 's' never
     appears - root/schedule_choice deficit should be 0 (choosing the
@@ -174,9 +170,9 @@ class TauLeafIsNotADeficitTest(unittest.TestCase):
 class RunningExampleCrossCheckTest(unittest.TestCase):
     '''
     Cross-check against test_voidmass.py's RunningExampleVoidmassTest,
-    which pins voidmass-brief.md's own reference table using the
+    which pins the hand-worked reference table using the
     skip-alignments path. If the classical path reproduces the same
-    numbers here, that's expected - see session notes: this fixture's
+    numbers here, that's expected: this fixture's
     only entirely-missing subtree (approval = Loop(a,e), when the whole
     loop is skipped) never actually exposes the lumping bug, because
     only the do-child 'a' is mandatory when the loop runs zero times -
@@ -215,7 +211,7 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
             with self.subTest(node=name):
                 row = self.table[node]
                 # No variant times out in this fixture, so lower==upper -
-                # either reading is the real (pre-fix) value.
+                # either reading is the real value.
                 self.assertAlmostEqual(row['deficit_lower'], deficit_exp, places=3)
                 self.assertAlmostEqual(row['deficit_upper'], deficit_exp, places=3)
                 self.assertAlmostEqual(row['voidmass_process_lower'], variant2_exp, places=3)
@@ -224,7 +220,7 @@ class RunningExampleCrossCheckTest(unittest.TestCase):
 
 class TiedAlignmentDoubleCountingTest(unittest.TestCase):
     '''
-    Reproduces the claims-fixture finding (session notes, claim_25): a
+    Reproduces the claims-fixture finding (claim_25): a
     reordered pair inside an optional Xor(Sequence(a, b), Tau) has more
     than one equal-cost repair, and align_pn_all's all-optimal search
     returns every commuting reordering of the irrelevant log/tau moves
@@ -236,7 +232,7 @@ class TiedAlignmentDoubleCountingTest(unittest.TestCase):
     move a + sync b, or sync a + model-move b - each equally valid, but
     the raw alignment count across them is NOT 1:1:1 (some have more
     commuting-order duplicates than others). voidmass_table_pn must not
-    let that raw count skew the weighting - see the dedup fix.
+    let that raw count skew the weighting - see dedupe_alignments.
     '''
 
     def setUp(self):
@@ -277,13 +273,11 @@ class PooledAlignmentMassTest(unittest.TestCase):
     '''
     alignment_mass_pooled/voidmass_process: POOLED matchcount/movecount
     (summed across every variant/execution, not averaged per-execution)
-    - the divisor voidmass_process/voidmass_subprocess need, and still a
-    legitimate quantity in its own right. NOT what coverage_by_alignment_pn
-    uses any more - see NonPooledAlignmentCoverageTest below and
-    coverage_by_alignment_pn's own docstring for why an earlier version
-    of that function used this pooled quantity and that was wrong:
-    \\covermove's formal definition (defn:move-coverage) averages
-    per-execution, it doesn't pool.
+    - the divisor voidmass_process/voidmass_subprocess need, and a
+    legitimate quantity in its own right. NOT what
+    coverage_by_alignment_pn computes: \\covermove's formal definition
+    (defn:move-coverage) averages per-execution, it doesn't pool (see
+    NonPooledAlignmentCoverageTest below).
     '''
 
     def setUp(self):
@@ -344,7 +338,7 @@ class NonPooledAlignmentCoverageTest(unittest.TestCase):
     '''
     coverage_by_alignment_pn (\\covermove, defn:move-coverage): per-
     execution match/movecount ratios averaged - NOT pooled - verified
-    term-by-term against the formal definition (session notes). Uses
+    term-by-term against the formal definition. Uses
     coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs)
     - skip_dict is voidmass_table_pn's result.skip_dict.
     '''
@@ -386,11 +380,12 @@ class NonPooledAlignmentCoverageTest(unittest.TestCase):
 
 class PooledVsNonPooledDivergenceTest(unittest.TestCase):
     '''
-    Proves the fix has a real effect, not just a refactor: a case with
-    two executions of DIFFERENT size (one loop iteration vs three) and a
-    deficit only in the smaller one, where pooling (sum counts, divide
-    once) and per-execution averaging (average ratios, equal weight per
-    execution) give different, hand-derived numbers.
+    Pooling and per-execution averaging are genuinely different
+    quantities: a case with two executions of DIFFERENT size (one loop
+    iteration vs two) and a deficit only in the smaller one, where
+    pooling (sum counts, divide once) and per-execution averaging
+    (average ratios, equal weight per execution) give different,
+    hand-derived numbers.
 
     Tree: Sequence(a, Loop(x, y)) - do=x, redo=y.
       Variant A (weight 0.5): 'x' only - a MISSING (deficit 1), one loop
@@ -399,9 +394,9 @@ class PooledVsNonPooledDivergenceTest(unittest.TestCase):
       Variant B (weight 0.5): 'a','x','y','x' - fully conforming, two
         loop iterations. movecount=4, matchcount=4, ratio=1.0.
 
-    Per-execution average (what coverage_by_alignment_pn now computes):
+    Per-execution average (coverage_by_alignment_pn):
       0.5*0.5 + 0.5*1.0 = 0.75
-    Pooled (what it used to compute, still alignment_mass_pooled):
+    Pooled (alignment_mass_pooled_lower/_upper):
       deficit_sum = 0.5*1 + 0.5*0 = 0.5
       movecount_sum = 0.5*2 + 0.5*4 = 3.0
       1 - 0.5/3.0 = 5/6 (~0.8333)
@@ -542,10 +537,10 @@ def _xor_tau_tree():
 
 class TimedOutVariantDoesNotCrashTest(unittest.TestCase):
     '''
-    Regression test for a failure seen in real runs: align_variant_all
-    returning zero alignments for a variant (a per-variant timeout) used
-    to make voidmass_table_pn raise ZeroDivisionError and discard every
-    other variant's completed work.
+    align_variant_all returning zero alignments for a variant (a
+    per-variant timeout, seen in real runs) must not make
+    voidmass_table_pn raise or discard every other variant's completed
+    work.
 
     M: model seq(a,b), two variants each weight 0.5: <a,b> aligns for
     real (perfect fit), <a> is forced to time out. The timed-out variant
@@ -669,9 +664,9 @@ class TimedOutBoundsAreSoundTest(unittest.TestCase):
     alignments iterating the loop up to five times. Computed once for
     real, then again with <a,a,a,a,a> forced to time out.
 
-    Also records the previous fix's error: substituting the cheapest
-    path's length (min_activity_count) as the timed-out variant's
-    deficit and movecount lands BELOW the real value. Per-variant
+    Also shows why the cheapest path's length can't stand in for a
+    timed-out variant: substituting it (min_activity_count) as that
+    variant's deficit and movecount lands BELOW the real value. Per-variant
     deficit <= movecount says nothing about a pooled ratio, and the
     cheapest path's length bounds a variant's movecount from below, not
     above.

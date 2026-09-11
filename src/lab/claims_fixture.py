@@ -163,7 +163,7 @@ def _apply_deviation(activities, durations, kind, rng):
         # model, so this is the only place a reordering is guaranteed
         # to be a genuine deviation rather than a free reinterleaving
         # (a random position could land in the order-tolerant
-        # parallel/loop region and cost nothing - see session notes).
+        # parallel/loop region and cost nothing).
         # Callers must only pass a trace that already has an appeal.
         i = activities.index('lodge_appeal')
         j = activities.index('decide_appeal')
@@ -277,17 +277,16 @@ ablation target as its own [0,1]-level degradation dimension, so:
     python -m lab.exp_disco_degrade data/claims.xes \\
         --combos claims_known --degradations assess loop_block appeal_seq
 
-runs the same targeted, ground-truth-aware ablation exp_claims_degrade.py
-used to run bespoke, but through Experiment/--dry-run/Timer/the per-node
-CSV - every node's own metrics, not just the three named targets'.
+runs a targeted, ground-truth-aware ablation through Experiment/
+--dry-run/Timer/the per-node CSV - every node's own metrics, not just
+the three named targets'.
 
 CLAIMS_EXCLUDE_CASES is read once here from the checked-in ground truth
 CSV: the cases the fixture deliberately deviated from the model,
 excluded from ablation eligibility everywhere below so an ablation
 can't accidentally erase the log's only genuine deviation as a side
 effect of dropping cases (see degrade_target_subprocess's own
-exclude_cases docstring - this bit before it was fixed, on the
-original appeal_seq run).
+exclude_cases docstring).
 '''
 
 CLAIMS_TARGETS = {
@@ -342,10 +341,9 @@ CLAIMS_DEGRADATIONS = {name: _target_degradation(activities)
 if __name__ == '__main__':
     # 60, not the function's own default of 30: gives the appeal_seq
     # subprocess a bigger eligible-case pool for degradation sweeps
-    # (exp_claims_degrade.py), so a handful of ablated cases is a
-    # smaller fraction of it - exp_claims_degrade also deliberately
-    # excludes the deviated case from ablation eligibility either way
-    # (see degrade_target_subprocess's exclude_cases), so this isn't
+    # (CLAIMS_DEGRADATIONS), so a handful of ablated cases is a smaller
+    # fraction of it - the deviated cases are excluded from ablation
+    # eligibility either way (CLAIMS_EXCLUDE_CASES), so this isn't
     # load-bearing for correctness, just headroom.
     log, ground_truth = generate_claims_log(n_traces=60)
     dtlog.write_xes(log, CLAIMS_XES)

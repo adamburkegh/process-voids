@@ -84,15 +84,15 @@ def _not_implemented(name):
 COMBOS = {
     # Vanilla inductive (noise_threshold=0.0) and inductive_noise80
     # (aggressive filtering) are both off the default roster -
-    # discover_inductive/discover_inductive_noise80 are untouched and
-    # still directly importable, same pattern as degradation.py's
-    # 'activity' entry.
+    # discover_inductive/discover_inductive_noise80 stay directly
+    # importable, same pattern as degradation.py's step-wise
+    # degrade_activity_wise.
     #
     # Vanilla is off because it makes a poor test: discovered at exact
     # fit from the same log it is then checked against, it absorbs
     # dropped activities at no cost, staying flat-zero on the voidmass
     # metrics until degradation level 0.6 on rtfm where toothpaste
-    # responds from 0.2 (2026-09-10 sweep).
+    # responds from 0.2.
     # inductive_noise20 gives a more responsive signal for the same
     # per-cell cost.
     'inductive_noise20': DiscoveryCombo('inductive_noise20', discover_inductive_noise20),

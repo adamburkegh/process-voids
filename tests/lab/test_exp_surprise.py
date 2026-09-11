@@ -99,8 +99,8 @@ class RunSurpriseColumnsTest(unittest.TestCase):
             self.assertEqual(row['bits_per_event_baseline'], 0.5)
 
     def test_one_summary_row_per_cell_not_two(self):
-        """Before the split, each cell produced two rows (one per
-        distribution) - now it's one row with both sets of columns."""
+        """One summary row per cell, carrying both the self and baseline
+        columns - not one row per distribution."""
         with patch('lab.exp_surprise.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_surprise.observed_intervals', return_value={}), \
              patch('lab.exp_surprise._discover_cached', return_value='FAKE_TREE'), \

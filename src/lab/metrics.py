@@ -9,11 +9,11 @@ Captures the metrics currently available:
     skip_probs[leaf]). Not built on skip-alignments' alignment
     machinery at all - no executions()/Aligner involved anywhere in it,
     only a dict lookup for skip_probs, the same input skipprob itself
-    uses directly. Known incorrect independent of that (see session
-    notes) - the bug is in the weight-interpolation logic itself, not
-    which alignment engine supplies skip_probs, so this keeps the
-    unqualified weight_coverage name; a fix replaces it in place rather
-    than sitting alongside a differently-sourced version.
+    uses directly. Known incorrect independent of that - the bug is in
+    the weight-interpolation logic itself, not which alignment engine
+    supplies skip_probs, so this keeps the unqualified weight_coverage
+    name; a fix replaces it in place rather than sitting alongside a
+    differently-sourced version.
   - weight_voidage: coveragemass.voidage_by_weight - the same tree
     aggregation as weight_coverage, but skip_probs[leaf] directly
     instead of its complement. Exactly 1 - weight_coverage at every
@@ -21,12 +21,9 @@ Captures the metrics currently available:
     is a convenience read-out, not a separately-derived quantity.
   - skipprob: THE skip probability from skip-alignments' own published
     definition - dv.skip_probs[node], unmodified, evaluated at `tree`
-    here (the root) same as everywhere else this is scored. Until this
-    fix, this id was wired to mean_leaf_skipprob below by mistake - a
-    different, unrelated statistic that happened to get the real term's
-    name (see mean_leaf_skipprob's own docstring). Any result CSV
-    written before this fix has the wrong quantity under this column
-    name - not comparable to CSVs written after it.
+    here (the root) same as everywhere else this is scored. Not
+    mean_leaf_skipprob below - a different, unrelated statistic (see
+    its own docstring).
   - mean_leaf_skipprob: mean of skip_probs[leaf] over EVERY Activity
     leaf in the whole tree (not scoped to any subtree - see its own
     docstring on the `tree` argument it silently ignores). Not
@@ -84,7 +81,7 @@ def mean_leaf_skipprob(tree, skip_probs):
 def compute_metrics(log, tree, slpn_path, ppt_weights=None, return_dv=False):
     """
     Run the skip-alignment pipeline for (log, tree) and return the
-    weight-coverage and skipprob summary metrics.
+    METRIC_KEYS metrics, scored at the tree root.
 
     ppt_weights: the (weights, loop_taus) pair from a toothpaste
     discovery - passed through to pvoid.skipprob so DerivationPipeline
@@ -100,7 +97,7 @@ def compute_metrics(log, tree, slpn_path, ppt_weights=None, return_dv=False):
     itself (eg process_voids.voidmass_pn.coverage_by_alignment_pn reuses
     it unchanged rather than recomputing anything skip-alignments
     already gives us for free) without paying for the expensive pipeline
-    twice. Defaults to False so existing callers are unaffected.
+    twice.
     """
     Path(slpn_path).parent.mkdir(parents=True, exist_ok=True)
     dv = pvoid.skipprob(log, tree, slpn_path, ppt_weights=ppt_weights)

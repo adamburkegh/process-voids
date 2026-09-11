@@ -1,5 +1,5 @@
 """
-Experiment: voidmass/voidage dose-response (voidmass-brief.md E2).
+Experiment: voidmass/voidage dose-response to ablating a target subprocess.
 
 A tree is discovered once per (log, combo) from the original,
 undegraded log - the same fixed-reference-model design used elsewhere
@@ -101,7 +101,8 @@ def _rank_descending(table, node, column):
 
 
 def _n_optimal_alignments(skip_dict):
-    """Total optimal alignments found across all variants (E3's |Gamma_sigma| diagnostic)."""
+    """Total optimal alignments found across all variants (the sum of
+    |Gamma_sigma|)."""
     return sum(len(states) for states in skip_dict.values())
 
 

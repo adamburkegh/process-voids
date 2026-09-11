@@ -244,18 +244,18 @@ class ComputeErrorTest(FakePipelineMixin, unittest.TestCase):
 
 class SharedZeroLevelNodeRowsWeightStabilityTest(FakePipelineMixin, unittest.TestCase):
     """
-    Regression test for a bug found in the 2026-09-10 runs: mass_by_weight/
-    voidage_by_weight read tree.weight/child.weight directly off the
-    shared, mutable ProcessTree object - transfer_pt_weights (inside the
-    'dv' stage) overwrites those attributes on EVERY cell's call, not
-    just the shared level-0.0 one. A second dim reusing the level-0.0
-    result used to call _node_rows again, reading whatever weight state
-    an intervening, unrelated nonzero-level cell of the FIRST dim had
-    already left on the tree - silently corrupting weight_coverage/
-    weight_voidage for every dim after the first. Fixed by computing the
-    per-node rows for level 0.0 exactly once, right when the weight
-    state is fresh, and reusing that same snapshot (dim stamped in after
-    the fact) for every dim instead of recomputing.
+    Level-0.0 node rows must agree across degradation dims.
+    mass_by_weight/voidage_by_weight read tree.weight/child.weight
+    directly off the shared, mutable ProcessTree object -
+    transfer_pt_weights (inside the 'dv' stage) overwrites those
+    attributes on EVERY cell's call, not just the shared level-0.0 one.
+    So the per-node rows for level 0.0 are computed exactly once, right
+    when the weight state is fresh, and that snapshot is reused (dim
+    stamped in after the fact) for every dim. Recomputing them for a
+    second dim would read whatever weight state an intervening,
+    unrelated nonzero-level cell of the FIRST dim had left on the tree,
+    silently corrupting weight_coverage/weight_voidage for every dim
+    after the first.
     """
 
     def setUp(self):

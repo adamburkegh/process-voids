@@ -1,7 +1,7 @@
 """
 Dose-response plots for exp_disco_degrade output (log, combo,
 degradation_dim, degradation_level columns - the one schema every
-degradation sweep in this project produces now, including the claims
+degradation sweep in this project produces, including the claims
 fixture via lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS
 registration, so there's a single plot function rather than one per
 experiment script).
@@ -28,10 +28,7 @@ holds up best as this dimension degrades?"
 line_by='degradation_dim': compare degradation dimensions (eg ablation
 targets) for one fixed combo - faceted by (log, combo). The natural
 question when combo is a single fixed value, eg claims_known: "does
-this ablation target behave differently from that one?" - this is what
-exp_claims_degrade.py's own dedicated plot function used to do, before
-its output converged onto this same schema and made a separate
-function unnecessary.
+this ablation target behave differently from that one?"
 
 average_over_nodes + --average-nodes: a THIRD view, alongside (not
 instead of) the root-level one above - collapses the per-node CSV
@@ -89,11 +86,10 @@ def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
     level=1.0 point is actively misleading on a dose-response curve, not
     just an uninteresting edge case.
 
-    lab.params.ALL_LEVELS no longer includes 1.0 at all (a wasted,
-    uninformative compute point, not just an unplottable one), so this
-    filter is now defensive rather than load-bearing for a default run -
-    it still matters for older result CSVs on disk, or a call that
-    passes an explicit --levels including 1.0.
+    lab.params.ALL_LEVELS excludes 1.0 (a wasted, uninformative compute
+    point, not just an unplottable one), so for a default run this
+    filter is defensive rather than load-bearing - it matters for a
+    result CSV from an explicit --levels including 1.0.
     """
     return df[(df['status'] == 'ok') & (df['degradation_level'] != 1.0)]
 

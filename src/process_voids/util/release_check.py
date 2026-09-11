@@ -182,8 +182,8 @@ def check_no_conflict_markers(cwd=None) -> tuple[bool, str]:
     a conflict.
 
     git grep only searches tracked files, so this can't flag markers
-    sitting in an untracked/ignored file (check_stray_files covers those
-    separately).
+    sitting in an untracked or ignored file. check_stray_files flags
+    untracked files separately; ignored files are checked by neither.
     """
     result = _run(["git", "grep", "-n", "-E", r"^(<{7}|>{7})"], cwd=cwd or PROJECT_ROOT)
     if result.returncode == 0:

@@ -93,8 +93,8 @@ class EditableDependencyVersionTest(unittest.TestCase):
     """process-voids is itself editable-installed in this dev env (`pip
     install -e .` - see pip show process-voids) - the stand-in for
     exercising editable_source_dir/dependency_version_line's editable/
-    direct_url.json path now that skip-alignments no longer is one (see
-    SkipAlignmentsDependencyVersionTest)."""
+    direct_url.json path, since skip-alignments isn't installed editable
+    (see SkipAlignmentsDependencyVersionTest)."""
 
     def test_editable_source_dir_is_a_real_directory_with_pyproject(self):
         source_dir = editable_source_dir('process-voids')

@@ -1,14 +1,14 @@
 '''
 Regression tests for process_voids.coveragemass's voidmass functions
-(voidmass-brief.md variants 1 and 2), pinned against the brief's own
-worked reference table (voidage.py) on the payment running example -
-computed here with the real aligner (not the brief's hand-picked
-alignments), following test_coverage_by_alignment.py's RunningExampleTest
-fixture pattern exactly, since that already uses the same tree/variants/
-weights. Confirmed to match the brief's reference numbers exactly - see
-session notes; no aligner-vs-brief divergence found for this example
-(contrast test_coverage_by_alignment.py's TiesAcrossOptimalAlignmentsTest,
-where the real aligner did diverge from a hand-written expectation).
+(variants 1 and 2, voidmass_subprocess/voidmass_process), pinned
+against a hand-worked reference table on the payment running example -
+computed here with the real aligner (not hand-picked alignments),
+following test_coverage_by_alignment.py's RunningExampleTest fixture
+pattern exactly, since that already uses the same tree/variants/
+weights. The real aligner reproduces the hand-worked table exactly on
+this example (contrast test_coverage_by_alignment.py's
+TiesAcrossOptimalAlignmentsTest, where the real aligner diverges from a
+hand-written expectation).
 '''
 
 import unittest
@@ -34,7 +34,8 @@ def align(tree, trace):
 
 
 class RunningExampleVoidmassTest(unittest.TestCase):
-    '''Pins voidmass-brief.md's reference table exactly (see voidage.py).'''
+    '''Pins the hand-worked reference table exactly - see
+    test_reference_table's cases.'''
 
     def setUp(self):
         self.tree = build_running_example_tree()
@@ -99,7 +100,7 @@ class RunningExampleVoidmassTest(unittest.TestCase):
 
 class SizeSensitivityTest(unittest.TestCase):
     '''
-    E1 from the brief: two subprocesses of different size (2 and 8
+    Size sensitivity: two subprocesses of different size (2 and 8
     activities), ablated at the same RATE (50% missing each) - not
     wholly missing. Variant 1 (scale-free) must score them equally;
     variant 2 (size-preserving) must score the larger one roughly 4x
@@ -111,9 +112,8 @@ class SizeSensitivityTest(unittest.TestCase):
     (see coveragemass.executions' docstring) regardless of how many
     activities are inside it - movecount/deficit then count alignment
     moves, not model activities, and both subtrees score identically
-    (found empirically while building this test - a real limit of
-    building on skip-alignments' move-counting, not a bug in
-    voidmass_terms). Partial ablation avoids the lump: the aligner
+    (a real limit of building on skip-alignments' move-counting, not a
+    bug in voidmass_terms). Partial ablation avoids the lump: the aligner
     names each leaf individually once at least one sibling is
     observed, so movecount properly tracks activity count again.
     '''
@@ -244,7 +244,7 @@ class VoidageTest(unittest.TestCase):
         additivity survives the multiply by construction regardless of
         that coincidence. See VoidageAdditivityLossTest for a
         non-degenerate case (two siblings both with nonzero deficit and
-        different skip_probs), where the brief's claim does hold.
+        different skip_probs), where additivity is lost.
         '''
         approval_v4 = self.table[self.approval]['voidage_process']
         children_sum = (self.table[self.a]['voidage_process']
@@ -253,7 +253,7 @@ class VoidageTest(unittest.TestCase):
 
     def test_root_skipprob_near_zero_but_voidmass_nonzero(self):
         '''
-        E4 from the brief: root skip_prob should be near zero (whole
+        Root skip_prob should be near zero (whole
         traces mostly conform) while root voidmass is clearly nonzero
         (deficits exist locally) - the gap that gives voidmass a
         headline where skipprob alone reads as "everything's fine".
@@ -265,7 +265,7 @@ class VoidageTest(unittest.TestCase):
 
 class VoidageAdditivityLossTest(unittest.TestCase):
     '''
-    A non-degenerate case for the brief's additivity-loss claim: two
+    A non-degenerate case of voidage's additivity loss: two
     sibling leaves (x, y) BOTH with nonzero deficit and DIFFERENT
     skip_probs - x missing from 1/5 of traces, y missing from 2/5,
     so skip_prob(x) != skip_prob(y). Model: seq(x, y).

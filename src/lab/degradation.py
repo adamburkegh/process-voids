@@ -8,9 +8,7 @@ in [0, 1]:
   - activity-wise (gradual): same fixed drop order and same one-at-a-time
     commitment, but the "currently being dropped" activity's own events
     are removed as a growing fraction rather than all at once - see
-    degrade_activity_wise_gradual for why this exists alongside the
-    original (kept separately, not replaced, for traceability against
-    stats already gathered with the step version).
+    degrade_activity_wise_gradual for when this matters.
   - trace-wise: drop a fraction of whole cases from the log
 
 Selection is a seeded shuffle, so a given (log, level, seed) is
@@ -79,14 +77,13 @@ def degrade_trace_wise(log: pd.DataFrame, level: float,
 
 
 DEGRADATIONS = {
-    # 'activity' (the step version) dropped from the default roster -
-    # activity_gradual supersedes it for sweep purposes (same fixed drop
-    # order, but a continuous ramp instead of a k-step staircase, so it
-    # never wastes/collapses levels the way the step version can on a
-    # small alphabet - see degrade_activity_wise_gradual's own
-    # docstring). degrade_activity_wise itself is untouched and still
-    # directly importable for anything that specifically wants the step
-    # behaviour.
+    # The step version (degrade_activity_wise) is not on the default
+    # roster - activity_gradual has the same fixed drop order, but a
+    # continuous ramp instead of a k-step staircase, so it never wastes/
+    # collapses levels the way the step version can on a small alphabet
+    # (see degrade_activity_wise_gradual's own docstring).
+    # degrade_activity_wise stays directly importable for anything that
+    # specifically wants the step behaviour.
     'activity_gradual': degrade_activity_wise_gradual,
     'trace': degrade_trace_wise,
 }
@@ -97,10 +94,11 @@ def degrade_target_subprocess(log: pd.DataFrame, target_activities: Set[str],
                                exclude_cases: Set[str] = None) -> Tuple[pd.DataFrame, Set[str]]:
     '''
     Remove every event whose activity is in target_activities from
-    exactly n_drop_cases cases - an explicit count, not a fraction (see
-    voidmass-brief.md's E2: fractions rounding to the same integer count
-    at low levels produced duplicate, uninformative rows). Only cases
-    that actually contain at least one target-activity event are
+    exactly n_drop_cases cases - an explicit count, not a fraction: on a
+    small eligible-case pool, neighbouring low fractions round to the
+    same integer count and give duplicate, uninformative dose-response
+    rows. Only cases that actually contain at least one target-activity
+    event are
     eligible - dropping from a case that never had the target would
     silently waste a dose-response level. Selection is a seeded shuffle
     of eligible cases, so lower counts are always a subset of what
@@ -112,13 +110,15 @@ def degrade_target_subprocess(log: pd.DataFrame, target_activities: Set[str],
     ever ablated (eg it's the log's one deliberately-deviated trace, so
     dropping it would remove that deviation as an accidental side effect
     of the ablation rather than the ablation itself producing the
-    result - see exp_claims_degrade.py). Not the same as "eligible but
-    never happens to be picked": excluded cases are never candidates at
-    any n_drop_cases, deliberately, not by chance of the shuffle.
+    result - see lab.claims_fixture's CLAIMS_EXCLUDE_CASES). Not the
+    same as "eligible but never happens to be picked": excluded cases
+    are never candidates at any n_drop_cases, deliberately, not by
+    chance of the shuffle.
 
     Not part of DEGRADATIONS: this parameterises by (target, count), not
     a single [0,1] level, so it doesn't fit that registry's shape - used
-    directly by lab/exp_voidmass.py's dose-response sweep instead.
+    directly by lab.exp_voidmass's dose-response sweep, and wrapped as
+    [0,1]-level dimensions by lab.claims_fixture's CLAIMS_DEGRADATIONS.
     '''
     eligible_mask = log['concept:name'].isin(target_activities)
     eligible_cases = sorted(log.loc[eligible_mask, 'case:concept:name'].unique())

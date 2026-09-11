@@ -1,11 +1,10 @@
 '''
 Unit tests for process_voids.surprise (interval surprise metric).
 
-TestRunningExampleWorkedNumbers pins the exact figures from the
-void-entropy-brief-v2 worked example (headline 10.93 bits/17 events,
-containment sched=4.96, predecessor approval=9.60) - a regression
-baseline against the brief's own independently-computed reference
-numbers.
+TestRunningExampleWorkedNumbers pins hand-worked figures for the
+running example (headline 10.93 bits/17 events, containment
+sched=4.96, predecessor approval=9.60) - a regression baseline against
+independently-computed reference numbers.
 
 TestComputePredecessorsLoop documents the loop predecessor rule: both
 the do-child and the redo-child allocate to the body (do-child) node
