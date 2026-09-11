@@ -21,11 +21,14 @@ All notable changes to this project will be documented in this file.
   `NODE_METRIC_KEYS`/`SUMMARY_METRIC_KEYS` constants so its ids are
   covered by the same registry drift test as the other experiment
   scripts.
+* `release_check` fails on leftover merge conflict markers (`<<<<<<<`/
+  `>>>>>>>` at the start of a line) in tracked files.
 
 ### Changed
 
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
+* skip-alignments pinned to the `v0.2.3+p2` git tag (was `v0.2.3+p1`).
 
 ### Fixed
 
