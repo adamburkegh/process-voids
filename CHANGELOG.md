@@ -86,6 +86,16 @@ All notable changes to this project will be documented in this file.
   written under the two definitions can't be confused.
   `coveragemass.observed_alignment_mass` is the new mass term;
   `alignment_mass` is unchanged and still backs `salign_coverage`.
+* skip-alignments is now a published dependency, `skipalignments==0.3.0`,
+  in place of the `v0.2.3+p4` git tag. 0.3.0 is the released form of the
+  skip-probability fix recorded under Fixed below, plus alignment-search
+  performance work; per-node skip probabilities and the metrics built on
+  them are unchanged from `v0.2.3+p4` on the payment, claims and rtfm
+  fixtures. The version is pinned exactly rather than to a range while
+  the two projects move together, so a result CSV's recorded
+  skip-alignments version is unambiguous. Direct-reference dependencies
+  block `release_check`, so this is also what makes a process-voids
+  release possible.
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
 * `lab.metric_registry` records the skip-probability correction below as a
