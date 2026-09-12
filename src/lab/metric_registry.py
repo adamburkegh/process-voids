@@ -174,6 +174,27 @@ METRICS = {
         scripts=('exp_disco_degrade',),
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
+    'voidsalign': Metric(
+        id='voidsalign',
+        description="Voidage by Skip-Weighted Alignment Moves: skip_prob * "
+                    "node's SHARE of the whole tree's skip-weighted move "
+                    "volume (smovetotal(node) / smovetotal(root)), over the "
+                    "SAME lumped skip-alignment normal form salign_coverage "
+                    "uses. A size share, not a match/movecount completeness "
+                    "ratio - an earlier draft used skip_prob times a "
+                    "completeness ratio, which collapses to zero exactly "
+                    "where a subprocess is wholly missing (0/w = 0 for any "
+                    "w), the opposite of what a voidage metric needs; see "
+                    "process_voids.voidsalign's module docstring. Each skip "
+                    "move is weighted by coveragemass.min_activity_count(node) "
+                    "- the minimum number of labelled activities the skipped "
+                    "subprocess would have performed - rather than counted as "
+                    "one move, so a single lumped skip move over a large "
+                    "subtree isn't underweighted the way a uniform move "
+                    "count would treat it.",
+        source='process_voids.voidsalign.voidsalign',
+        scripts=('exp_disco_degrade',),
+    ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',
         description='Number of non-Tau nodes in the scored tree with no silent '

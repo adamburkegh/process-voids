@@ -64,7 +64,7 @@ class Experiment:
 RUNS = {
     'smoke': Experiment(
         name='smoke',
-        log_paths=[ALL_LOGS['rtfm']],
+        log_paths=[ALL_LOGS['payment_approval']],
         combos={'inductive_noise20': ALL_COMBOS['inductive_noise20']},
         degradations=ALL_DEGRADATIONS,
         levels=[0.0, 0.5],

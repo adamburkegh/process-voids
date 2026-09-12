@@ -9,10 +9,11 @@ curve in the coverage metrics as degradation increases.
 
 Every metric in ALL_METRICS (process_voids.metric_context.ProcessMetric
 declarations - skip-alignments-based weight_coverage/weight_voidage/
-skipprob/salign_coverage, process_voids.voidmass_pn's classical-alignment
-CLASSICAL_METRIC_KEYS (voidmass deficit/movecount/subprocess/process and
-alignment_coverage_pn - see that constant), and process_voids.coveragemass's
-skip-alignment-based, real-elapsed-time voidsat) is scored once per node
+skipprob/salign_coverage/voidsalign, process_voids.voidmass_pn's classical-
+alignment CLASSICAL_METRIC_KEYS (voidmass deficit/movecount/subprocess/
+process and alignment_coverage_pn - see that constant), and
+process_voids.coveragemass's skip-alignment-based, real-elapsed-time
+voidsat) is scored once per node
 in the discovered tree (Activity, Tau, and composite Sequence/Xor/And/Loop
 alike) via a per-cell CellContext - see _compute_cell. The root-level row
 is that same scoring at the tree root, not a separate computation; the
@@ -75,6 +76,7 @@ from process_voids.coveragemass import (
 )
 from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
 from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
+from process_voids.voidsalign import voidsalign
 
 logger = logging.getLogger(__name__)
 
@@ -123,15 +125,20 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
 # log timing out is immaterial, 20% is not - which the count can't show.
 TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
-# weight_coverage/weight_voidage/skipprob/salign_coverage are the SAME
-# quantities (same functions/lookups, same registry entries) as
+# weight_coverage/weight_voidage/skipprob/salign_coverage/voidsalign are
+# the SAME quantities (same functions/lookups, same registry entries) as
 # lab.metrics.METRIC_KEYS - just evaluated at an arbitrary node instead
 # of only the tree root, same as CLASSICAL_METRIC_KEYS/TREE_METRIC_KEYS
 # already are per-node in voidmass_table_pn / mandatory_node_count.
 # skipprob = dv.skip_probs[node] directly (skip-alignments' own
 # definition) - NOT lab.metrics.mean_leaf_skipprob, a different,
-# unrelated statistic (see lab.metrics' module docstring).
-PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage')
+# unrelated statistic (see lab.metrics' module docstring). voidsalign
+# shares dv.skip_dict_backup/dv.pl with salign_coverage's own
+# alignment_mass call - same lumped skip-alignment normal form, just a
+# different move-weighting (see process_voids.voidsalign's own module
+# docstring).
+PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage',
+                         'voidsalign')
 
 # voidsat is skip-alignments-based like PER_NODE_METRIC_KEYS (reuses
 # dv.skip_dict_backup/dv.skip_probs, not the classical-alignment path),
@@ -188,6 +195,10 @@ ALL_METRICS = [
     ProcessMetric(id='salign_coverage', scope='node', needs=('dv', 'executions_cache'),
                   compute=lambda ctx, node: coverage_by_alignment(
                       node, ctx.stage('dv'), executions_cache=ctx.stage('executions_cache'))),
+    ProcessMetric(id='voidsalign', scope='node', needs=('dv', 'executions_cache'),
+                  compute=lambda ctx, node: voidsalign(
+                      node, ctx.tree, ctx.stage('dv').skip_dict_backup, ctx.stage('dv').pl,
+                      ctx.stage('dv').skip_probs, executions_cache=ctx.stage('executions_cache'))),
     ProcessMetric(id='voidmass_deficit_lower', scope='node', needs=('classical',),
                   compute=_classical_field('deficit_lower')),
     ProcessMetric(id='voidmass_deficit_upper', scope='node', needs=('classical',),

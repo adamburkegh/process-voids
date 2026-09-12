@@ -20,6 +20,11 @@ from process_voids.voidmass_pn import VoidmassPnResult
 class FakeDv:
     def __init__(self, skip_probs):
         self.skip_probs = skip_probs
+        # voidsalign is mocked in every test here, but its arguments
+        # (dv.skip_dict_backup/dv.pl) are still evaluated eagerly at the
+        # ProcessMetric's own call site regardless.
+        self.skip_dict_backup = {}
+        self.pl = {}
 
 
 def _fake_log():
@@ -67,7 +72,8 @@ class FakePipelineMixin:
 
     def patch_pipeline(self, skip_probs, vm_table, timed_out_count=0, timed_out_weight=0.0,
                        skip_dict=None, read_xes_return=None,
-                       salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat_value=0.0):
+                       salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat_value=0.0,
+                       voidsalign_value=0.0):
         self._patch('lab.exp_disco_degrade.pm4py.read_xes',
                     return_value=read_xes_return if read_xes_return is not None else _fake_log())
         self._patch('lab.exp_disco_degrade.build_id_net',
@@ -85,6 +91,7 @@ class FakePipelineMixin:
         self._patch('lab.exp_disco_degrade.coverage_by_alignment_pn',
                     return_value=alignment_coverage_pn)
         self._patch('lab.exp_disco_degrade.voidsat', return_value=voidsat_value)
+        self._patch('lab.exp_disco_degrade.voidsalign', return_value=voidsalign_value)
 
 
 def _single_activity_tree():
@@ -445,7 +452,8 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
 
     def test_row_has_every_metric_column_with_correct_values(self):
         _df, node_df, _timings_df = self._run(
-            salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat_value=0.33)
+            salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat_value=0.33,
+            voidsalign_value=0.66)
         row = node_df[node_df['node_id'] == '1'].iloc[0]
 
         for key in (PER_NODE_METRIC_KEYS + CLASSICAL_METRIC_KEYS
@@ -461,6 +469,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['alignment_coverage_pn_lower'], 0.88)
         self.assertEqual(row['alignment_coverage_pn_upper'], 0.88)
         self.assertEqual(row['voidsat'], 0.33)
+        self.assertEqual(row['voidsalign'], 0.66)
         # a's own subtree is just itself, no silent alternative from its
         # own perspective (mandatory_node_count/total_node_count are
         # evaluated AT that node, not from an outside ancestor's view).
@@ -623,7 +632,7 @@ class DryRunTest(unittest.TestCase):
         mock_skipprob.assert_not_called()
         mock_build_id_net.assert_not_called()
         self.assertIn('Experiment: smoke', output)
-        self.assertIn('rtfm', output)
+        self.assertIn('payment_approval', output)
         self.assertIn('inductive_noise20', output)
         self.assertIn('cells:', output)
 

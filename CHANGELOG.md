@@ -39,6 +39,16 @@ All notable changes to this project will be documented in this file.
   `ProcessMetric` itself a single declared quantity rather than a bundle.
 * `release_check` fails on leftover merge conflict markers (`<<<<<<<`/
   `>>>>>>>` at the start of a line) in tracked files.
+* `voidsalign` (Voidage by Skip-Weighted Alignment Moves,
+  `process_voids.voidsalign`): like `salign_coverage`, it works over
+  skip alignments, but each skip move is weighted by the minimum
+  number of activities its subprocess performs, so a lumped skip over
+  a large subtree isn't counted as a single move. `skip_prob` times a
+  size SHARE of the whole tree's skip-weighted moves, not a
+  match/movecount completeness ratio - a ratio collapses to zero
+  exactly where a subprocess is wholly missing, which a voidage metric
+  for missing subprocesses can't afford. Emitted by `exp_disco_degrade`
+  at the root and per node.
 * `lab.exp_disco_degrade` now runs every metric through `CellContext`/
   `ProcessMetric` (`ALL_METRICS`) instead of hand-assembling each row at
   its call site - the root row is the same per-node scoring at
@@ -62,6 +72,7 @@ All notable changes to this project will be documented in this file.
   the executions entry the ids computed from `coveragemass.executions`
   already carry, so a pre-0.4.3 result CSV's columns are still readable
   from the registry alone.
+* The `smoke` run uses `payment_approval` instead of `rtfm`.
 * `coveragemass.make_aligned_duration_cache` takes an optional `traces=`
   parameter, for a caller that already has a log's `log_to_traces` result
   and wants the cache to reuse it instead of recomputing it.
@@ -110,10 +121,10 @@ All notable changes to this project will be documented in this file.
   the void. With the skip-alignments upgrade above, skip probabilities
   follow the same rule, so both factors of every skip_prob * mass
   metric count the same traces. Affects nodes under a lumped subtree in
-  `salign_coverage` and `voidsat` (per-node CSV) and in every
-  `exp_voidmass` column except `skip_prob` and `n_optimal_alignments`.
-  Root values, and the classical-alignment metrics' mass terms, are
-  unchanged.
+  `salign_coverage`, `voidsalign` and `voidsat` (per-node CSV) and in
+  every `exp_voidmass` column except `skip_prob` and
+  `n_optimal_alignments`. Root values, and the classical-alignment
+  metrics' mass terms, are unchanged.
 
 ## [0.4.2] - 2026-09-11
 

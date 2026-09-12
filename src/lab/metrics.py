@@ -39,6 +39,16 @@ Captures the metrics currently available:
     representation voidmass's deficit had to move off of. Kept under
     this name until a classical-alignment replacement lands under the
     unqualified alignment_coverage name.
+  - voidsalign: voidsalign.voidsalign, over the SAME lumped skip-
+    alignment normal form salign_coverage uses - skip_probs[node] times
+    node's SHARE of the whole tree's skip-weighted move volume
+    (smovetotal), where each skip move is weighted by the minimum
+    executable length of the subprocess it stands for
+    (coveragemass.min_activity_count) rather than counted as one move.
+    A size share, not a match/movecount completeness ratio - see
+    process_voids.voidsalign's own module docstring for why a
+    completeness ratio collapses to zero exactly where a subprocess is
+    wholly missing, the opposite of what this metric needs to detect.
 
 duration_coverage (coveragemass.coverage_by_duration) has been dropped
 from this roster - not computed here for now.
@@ -53,10 +63,11 @@ from skipalignments import Activity
 from process_voids import pvoid, slpn_importer
 from process_voids.coveragemass import mass_by_weight, transfer_pt_weights, \
     coverage_by_alignment, voidage_by_weight
+from process_voids.voidsalign import voidsalign
 
 
 METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage',
-               'mean_leaf_skipprob')
+               'voidsalign', 'mean_leaf_skipprob')
 
 
 def mean_leaf_skipprob(tree, skip_probs):
@@ -108,6 +119,7 @@ def compute_metrics(log, tree, slpn_path, ppt_weights=None, return_dv=False):
         voidage_by_weight(tree, dv.skip_probs),
         dv.skip_probs[tree],
         coverage_by_alignment(tree, dv),
+        voidsalign(tree, tree, dv.skip_dict_backup, dv.pl, dv.skip_probs),
         mean_leaf_skipprob(tree, dv.skip_probs),
     )
     metrics = dict(zip(METRIC_KEYS, values))
