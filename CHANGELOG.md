@@ -110,7 +110,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-* Upgraded to skip-alignments 0.2.3 (`v0.2.3+p4`), which fixes a
+* Upgraded to skip-alignments 0.3.0, which fixes a
   skip-probability bug present since skip-alignments 0.2.0: a node
   nested inside a subtree that an alignment skips as a single lumped
   move was counted as skipped whenever anything else in that alignment
