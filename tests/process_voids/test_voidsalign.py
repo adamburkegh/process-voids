@@ -141,7 +141,9 @@ class LumpedSizeProportionalityTest(unittest.TestCase):
     seq(a, seq(x,y), c) on <a,c> lumps the entirely-unwitnessed seq(x,y)
     into one skip move of weight 2; seq(a, z, c) on <a,c> skips the
     single leaf z at weight 1 - same surrounding pattern, sizes differ
-    2x, and so must the resulting size shares.
+    2x, and so must the resulting size shares. Also pins x/y (the
+    lumped node's own children) at exactly 0 - they have no execution
+    at all under the lumped skip, not an inherited share of it.
     '''
 
     def test_composite_block_scores_double_a_single_leaf(self):
@@ -182,13 +184,31 @@ class LumpedSizeProportionalityTest(unittest.TestCase):
 
         # the same proportionality survives through voidsalign when both
         # blocks are given the same skipprob.
+        composite_skip_probs = {composite_tree: 1.0, xy: 1.0, x: 1.0, y: 1.0}
         composite_value = voidsalign(xy, composite_tree, composite_skip_dict,
-                                      composite_probs, {composite_tree: 1.0, xy: 1.0})
+                                      composite_probs, composite_skip_probs)
         leaf_value = voidsalign(z, leaf_tree, leaf_skip_dict, leaf_probs,
                                  {leaf_tree: 1.0, z: 1.0})
         self.assertAlmostEqual(composite_value, composite_share, places=6)
         self.assertAlmostEqual(leaf_value, leaf_share, places=6)
         self.assertGreater(composite_value, leaf_value)
+
+        # x and y themselves have NO execution in this alignment at all
+        # (coveragemass.executions gives a node beneath a lumped skip no
+        # execution there, per Definition [Executions] - the lumped node
+        # alone carries the void) - their smovetotal, and hence
+        # voidsalign, is 0 regardless of their own skip_prob. Pinned so a
+        # regression reintroducing lump inheritance fails loudly here.
+        self.assertEqual(smovetotal(x, composite_skip_dict, composite_probs), 0.0)
+        self.assertEqual(smovetotal(y, composite_skip_dict, composite_probs), 0.0)
+        self.assertEqual(
+            voidsalign(x, composite_tree, composite_skip_dict, composite_probs,
+                       composite_skip_probs),
+            0.0)
+        self.assertEqual(
+            voidsalign(y, composite_tree, composite_skip_dict, composite_probs,
+                       composite_skip_probs),
+            0.0)
 
 
 class WhollySilentSubprocessTest(unittest.TestCase):
