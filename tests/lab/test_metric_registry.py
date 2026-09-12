@@ -1,5 +1,8 @@
+import ast
+import inspect
 import unittest
 
+import lab.metric_registry as metric_registry_module
 from lab.exp_disco_degrade import (
     CLASSICAL_METRIC_KEYS, PER_NODE_METRIC_KEYS, ALIGNED_DURATION_METRIC_KEYS,
 )
@@ -139,6 +142,38 @@ class DriftTest(unittest.TestCase):
         text = format_registry()
         for metric_id in METRICS:
             self.assertIn(metric_id, text)
+
+
+class NoDuplicateKeysTest(unittest.TestCase):
+    """
+    Parses metric_registry.py's own SOURCE (not the imported METRICS
+    dict) for a duplicated key in the METRICS dict literal. A duplicate
+    can't be caught by inspecting METRICS itself - Python silently keeps
+    the last of a repeated dict key at parse time, and every drift test
+    above compares id SETS, which can't see a key that was never
+    missing. A squash merge can leave two adjacent, identical entries -
+    not a conflict, since both insertions match - so the registry can
+    carry a dead entry while every other check passes.
+    """
+
+    def test_metrics_dict_literal_has_no_duplicate_keys(self):
+        source_path = inspect.getsourcefile(metric_registry_module)
+        with open(source_path, encoding='utf-8') as f:
+            tree = ast.parse(f.read(), filename=source_path)
+
+        metrics_dict = next(
+            (node.value for node in ast.walk(tree)
+             if isinstance(node, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == 'METRICS' for t in node.targets)),
+            None)
+        self.assertIsNotNone(metrics_dict, "couldn't find a 'METRICS = {...}' assignment")
+        self.assertIsInstance(metrics_dict, ast.Dict)
+
+        keys = [k.value for k in metrics_dict.keys]
+        seen = set()
+        duplicates = {k for k in keys if k in seen or seen.add(k)}
+        self.assertEqual(duplicates, set(),
+                          f'duplicate key(s) in METRICS: {sorted(duplicates)}')
 
 
 if __name__ == '__main__':
