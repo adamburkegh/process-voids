@@ -17,7 +17,9 @@ over that same context's dv stage, with b as the target). Skip
 probabilities come from the real ebi-backed pipeline.
 '''
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from skipalignments import Activity, Sequence
 
@@ -96,23 +98,25 @@ def _score(case, traces):
     '''{script: {metric id: value at b}} for one case.'''
     tree, b = _seq_ab()
     log = dtlog.convert_timed(*traces, names=[f'c{i}' for i in range(len(traces))])
-    ctx = CellContext(log=log, tree=tree,
-                      slpn_path=f'var/lab/test_metric_extremes_{case}.slpn',
-                      classical_net=build_id_net(tree),
-                      classical_timeout=CLASSICAL_ALIGNMENT_TIMEOUT)
-    disco = score_all(ctx, ALL_METRICS, node=b)
-    errored = sorted(mid for mid, value in disco.items() if value is METRIC_ERROR)
-    if errored:
-        raise AssertionError(f'{case}: these metrics raised while scoring: {errored}')
+    # Temp dir for the intermediate SLPN: nothing here creates var/lab/.
+    with tempfile.TemporaryDirectory() as tmp:
+        ctx = CellContext(log=log, tree=tree,
+                          slpn_path=str(Path(tmp) / f'test_metric_extremes_{case}.slpn'),
+                          classical_net=build_id_net(tree),
+                          classical_timeout=CLASSICAL_ALIGNMENT_TIMEOUT)
+        disco = score_all(ctx, ALL_METRICS, node=b)
+        errored = sorted(mid for mid, value in disco.items() if value is METRIC_ERROR)
+        if errored:
+            raise AssertionError(f'{case}: these metrics raised while scoring: {errored}')
 
-    # exp_voidmass's node row, and its summary row for target b
-    dv = ctx.stage('dv')
-    table = voidmass_table(tree, dv.skip_dict_backup, dv.pl, skip_probs=dv.skip_probs)
-    voidmass = {'skip_prob': dv.skip_probs[b], **table[b]}
-    voidmass.update({f'target_{key}': table[b][key]
-                     for key in ('voidmass_subprocess', 'voidmass_process',
-                                 'voidage_subprocess', 'voidage_process')})
-    return {'exp_disco_degrade': disco, 'exp_voidmass': voidmass}
+        # exp_voidmass's node row, and its summary row for target b
+        dv = ctx.stage('dv')
+        table = voidmass_table(tree, dv.skip_dict_backup, dv.pl, skip_probs=dv.skip_probs)
+        voidmass = {'skip_prob': dv.skip_probs[b], **table[b]}
+        voidmass.update({f'target_{key}': table[b][key]
+                         for key in ('voidmass_subprocess', 'voidmass_process',
+                                     'voidage_subprocess', 'voidage_process')})
+        return {'exp_disco_degrade': disco, 'exp_voidmass': voidmass}
 
 
 class ExtremesTest(unittest.TestCase):

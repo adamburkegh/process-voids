@@ -18,7 +18,9 @@ probability, so neither factor counts those traces -
 SkipProbCountsTheSameTracesAsExecutionsTest checks that for every node.
 '''
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from skipalignments import Activity, Sequence
 
@@ -37,7 +39,10 @@ class RunningExampleMaskedDoChildTest(unittest.TestCase):
         cls.tree = build_running_example_tree()
         cls.approval = cls.tree.children[1]
         cls.a = cls.approval.children[0]
-        cls.dv = pvoid.skipprob(cls.log, cls.tree, 'var/lab/test_masked_skip_probs.slpn')
+        # Temp dir for the intermediate SLPN: nothing here creates var/lab/.
+        with tempfile.TemporaryDirectory() as tmp:
+            cls.dv = pvoid.skipprob(cls.log, cls.tree,
+                                    str(Path(tmp) / 'test_masked_skip_probs.slpn'))
 
     def test_lumped_loop_keeps_its_skip_probability(self):
         self.assertAlmostEqual(self.dv.skip_probs[self.approval], 2 / 6, places=9)
@@ -98,7 +103,10 @@ class SkipProbCountsTheSameTracesAsExecutionsTest(unittest.TestCase):
         traces = ['a:0 b:1 c:2 d:3 e:4'] * 2 + ['a:0 b:1 e:2', 'a:0 e:1']
         log = dtlog.convert_timed(*traces, names=[f'c{i}' for i in range(len(traces))],
                                   time_unit='hours')
-        cls.dv = pvoid.skipprob(log, cls.tree, 'var/lab/test_masked_skip_probs_nested.slpn')
+        # Temp dir for the intermediate SLPN - see RunningExampleMaskedDoChildTest.
+        with tempfile.TemporaryDirectory() as tmp:
+            cls.dv = pvoid.skipprob(log, cls.tree,
+                                    str(Path(tmp) / 'test_masked_skip_probs_nested.slpn'))
 
     def execution_skip_ratio(self, node):
         skipped = executed = 0.0

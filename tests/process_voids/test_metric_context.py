@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from process_voids.metric_context import ProcessMetric, CellContext, METRIC_ERROR, score_all
 
@@ -352,21 +354,23 @@ class RealStageIntegrationTest(unittest.TestCase):
         from process_voids.coveragemass import mass_by_weight
 
         log = build_running_example_log()
-        expected_metrics = compute_metrics(
-            log, build_running_example_tree(),
-            'var/lab/test_metric_context_expected.slpn')
+        # Temp dir for the intermediate SLPNs: nothing here creates var/lab/.
+        with tempfile.TemporaryDirectory() as tmp:
+            expected_metrics = compute_metrics(
+                log, build_running_example_tree(),
+                str(Path(tmp) / 'test_metric_context_expected.slpn'))
 
-        ctx = CellContext(log=log, tree=build_running_example_tree(),
-                          slpn_path='var/lab/test_metric_context_ctx.slpn')
-        skipprob_metric = ProcessMetric(id='skipprob', scope='root', needs=('dv',),
-                                 compute=lambda c, node: c.stage('dv').skip_probs[node])
-        weight_coverage_metric = ProcessMetric(
-            id='weight_coverage', scope='root', needs=('dv',),
-            compute=lambda c, node: mass_by_weight(node, c.stage('dv').skip_probs))
+            ctx = CellContext(log=log, tree=build_running_example_tree(),
+                              slpn_path=str(Path(tmp) / 'test_metric_context_ctx.slpn'))
+            skipprob_metric = ProcessMetric(id='skipprob', scope='root', needs=('dv',),
+                                     compute=lambda c, node: c.stage('dv').skip_probs[node])
+            weight_coverage_metric = ProcessMetric(
+                id='weight_coverage', scope='root', needs=('dv',),
+                compute=lambda c, node: mass_by_weight(node, c.stage('dv').skip_probs))
 
-        self.assertAlmostEqual(ctx.score(skipprob_metric), expected_metrics['skipprob'])
-        self.assertAlmostEqual(ctx.score(weight_coverage_metric),
-                               expected_metrics['weight_coverage'])
+            self.assertAlmostEqual(ctx.score(skipprob_metric), expected_metrics['skipprob'])
+            self.assertAlmostEqual(ctx.score(weight_coverage_metric),
+                                   expected_metrics['weight_coverage'])
 
 
 if __name__ == '__main__':
