@@ -19,6 +19,16 @@ version -> prior meaning) for an id whose CURRENT meaning changed
 in-place without a rename - as opposed to superseded_by, which is for
 an old id abandoned in favour of a new one.
 
+A Metric's scale, where it has one, is what it promises to read at the
+node it is scored at, when that submodel's events are never missing,
+always missing, or missing from half the traces. 'coverage' reads 1, 0
+and 0.5; 'void' reads 0, 1 and 0.5; 'void_share' - a share of the whole
+process's moves or elapsed time - reads 0, the submodel's own share
+(above 0), and half that share. Anything else (counts, bits, ranks,
+diagnostics, root-only statistics) has no scale. tests/lab/
+test_metric_extremes.py holds every live metric with a scale to its
+promise, and pins the ones that break it.
+
 This module is the one exception to the repo's rule that comments and
 docstrings describe the code as it is, with change history kept in
 CHANGELOG.md and commit messages. A history entry here is not narration:
@@ -61,6 +71,8 @@ from dataclasses import dataclass, field
 
 
 STATUSES = {'live', 'evaluation', 'product-only', 'retired'}
+
+SCALES = {'coverage', 'void', 'void_share'}
 
 # Prior meaning of every id computed from coveragemass.executions over
 # skip alignments, before v0.4.3.
@@ -106,6 +118,7 @@ class Metric:
     status: str = 'live'          # one of STATUSES
     superseded_by: str = None     # id of the metric that replaces this one, if retired
     history: dict = field(default_factory=dict)  # commit/version -> prior meaning
+    scale: str = None             # one of SCALES, or None - see the module docstring
 
 
 METRICS = {
@@ -118,6 +131,7 @@ METRICS = {
                     "input, the same as skipprob does directly.",
         source='process_voids.coveragemass.mass_by_weight',
         scripts=('exp_disco_degrade',),
+        scale='coverage',
         history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'weight_voidage': Metric(
@@ -127,6 +141,7 @@ METRICS = {
                     'not a separately-derived quantity).',
         source='process_voids.coveragemass.voidage_by_weight',
         scripts=('exp_disco_degrade',),
+        scale='void',
         history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'skipprob': Metric(
@@ -140,6 +155,7 @@ METRICS = {
                     "CSVs where this column held that one instead.",
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_disco_degrade',),
+        scale='void',
         history={'f2aa44c': 'Blended mean of skip_probs[leaf] over every Activity '
                             'leaf in the tree (lab.metrics.mean_skipprob), not '
                             "dv.skip_probs[node] itself - the id was wired to the "
@@ -169,9 +185,13 @@ METRICS = {
         description="Coverage by alignment correspondence over skip-alignments' "
                     'lumped normal form (zero convention: a unit with no valid '
                     'execution contributes 0). Genuinely alignment-machinery-'
-                    'based, unlike weight_coverage.',
+                    'based, unlike weight_coverage. Fails the extremes '
+                    'criterion: a submodel missing from half the traces reads '
+                    '0.25, not 0.5, since the mass scores an unobserved '
+                    'execution 0 and (1 - skip_prob) has already counted it.',
         source='process_voids.coveragemass.coverage_by_alignment',
         scripts=('exp_disco_degrade',),
+        scale='coverage',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidsalign': Metric(
@@ -194,6 +214,7 @@ METRICS = {
                     "count would treat it.",
         source='process_voids.voidsalign.voidsalign',
         scripts=('exp_disco_degrade',),
+        scale='void_share',
     ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',
@@ -275,6 +296,7 @@ METRICS = {
                     'moves. A valid lower bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        scale='void',
     ),
     'voidmass_subprocess_upper': Metric(
         id='voidmass_subprocess_upper',
@@ -283,6 +305,7 @@ METRICS = {
                     'moves. A valid upper bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        scale='void',
     ),
     'voidmass_process_lower': Metric(
         id='voidmass_process_lower',
@@ -292,6 +315,7 @@ METRICS = {
                     'tree). A valid lower bound on the no-timeout value.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        scale='void_share',
     ),
     'voidmass_process_upper': Metric(
         id='voidmass_process_upper',
@@ -301,42 +325,43 @@ METRICS = {
                     'numerator and denominator share it.',
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        scale='void_share',
     ),
-    'alignment_coverage_pn_lower': Metric(
-        id='alignment_coverage_pn_lower',
+    'alignment_coverage_pn2_lower': Metric(
+        id='alignment_coverage_pn2_lower',
         description="\\covermove (defn:move-coverage), the classical-alignment "
-                    "analogue of salign_coverage: (1 - skip_prob) * a per-"
-                    "execution match/movecount ratio, averaged uniformly across "
-                    "executions within an alignment and across an alignment's "
-                    "tied alternatives, then across a variant's own weight - "
-                    "verified term-by-term against the formal definition, not "
-                    "pooled (see voidmass_subprocess_lower/_upper for the "
-                    "pooled quantity, and this id's history). Reuses "
+                    "analogue of salign_coverage: (1 - skip_prob) * a mass "
+                    "conditioned on observation. Every execution of the scored "
+                    "submodel that has a synchronous move contributes a "
+                    "match/movecount ratio; those are averaged within an "
+                    "alignment, each observing alignment carries "
+                    "1/|Gamma_sigma| of its trace's weight, and the average is "
+                    "renormalised over the traces and alignments that observed "
+                    "the submodel at all (W in the definition), reading 0 "
+                    "where none did. An execution or a trace that never "
+                    "observed the submodel is excluded rather than scored "
+                    "zero, so the absence is counted once - by skip_prob - and "
+                    "coverage falls linearly rather than as (1 - p)^2. Reuses "
                     "skip-alignments' own skip_probs unchanged rather than "
-                    "deriving a separate estimate. LOWER bound: a variant whose "
-                    "alignment search timed out (no alignments at all) is "
-                    "treated as contributing a ratio of 0 (as if "
-                    "it matched nothing), the SMALLER of the two coverage "
+                    "deriving a separate estimate. LOWER bound: a variant "
+                    "whose alignment search timed out (no alignments at all) "
+                    "counts as one observed unit at a ratio of 0 (as if it "
+                    "matched nothing), the SMALLER of the two coverage "
                     "readings.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
-        history={'ab77b03': 'Pooled deficit/movecount ratio (1 - skip_prob) * '
-                            'voidmass_process at the scored node, not the '
-                            'per-execution average the definition specifies - '
-                            'computed from voidmass_process by mistake, since '
-                            'that table was already built.',
-                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        scale='coverage',
     ),
-    'alignment_coverage_pn_upper': Metric(
-        id='alignment_coverage_pn_upper',
-        description="Same as alignment_coverage_pn_lower, but a timed-out "
-                    "variant is treated as contributing a ratio of 1 (as if it "
-                    "matched perfectly) instead of being excluded - the LARGER "
-                    "of the two coverage readings. Equal to alignment_coverage_"
-                    "pn_lower whenever no variant times out.",
+    'alignment_coverage_pn2_upper': Metric(
+        id='alignment_coverage_pn2_upper',
+        description="Same as alignment_coverage_pn2_lower, but a timed-out "
+                    "variant counts as one observed unit at a ratio of 1 (as "
+                    "if it matched perfectly) - the LARGER of the two coverage "
+                    "readings. Equal to alignment_coverage_pn2_lower whenever "
+                    "no variant times out.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
-        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        scale='coverage',
     ),
     'voidsat': Metric(
         id='voidsat',
@@ -351,9 +376,13 @@ METRICS = {
                     "immediately follows it, rather than claiming the whole "
                     "gap - see coveragemass.py's own Coverage By Aligned "
                     "Duration section for the worked example this was "
-                    "verified against.",
+                    "verified against. Fails the extremes criterion when the "
+                    "submodel is the last activity: a skip move with no "
+                    "following event gets no duration, so an always-missing "
+                    "trailing submodel reads 0.",
         source='process_voids.coveragemass.voidsat',
         scripts=('exp_disco_degrade',),
+        scale='void_share',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'containment_bits': Metric(
@@ -496,6 +525,51 @@ METRICS = {
                             'eventual classical-alignment replacement.',
                  'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
+    'alignment_coverage_pn_lower': Metric(
+        id='alignment_coverage_pn_lower',
+        description="\\covermove before its mass was conditioned on "
+                    "observation: (1 - skip_prob) * a per-execution "
+                    "match/movecount ratio over every execution with a "
+                    "non-silent move, averaged uniformly across executions "
+                    "within an alignment and across an alignment's tied "
+                    "alternatives, then across a variant's own weight. An "
+                    "execution in which the submodel was traversed but nothing "
+                    "was recorded contributed a ratio of 0, so its absence was "
+                    "counted there and again in (1 - skip_prob), and coverage "
+                    "fell as (1 - p)^2: a submodel missing from half the "
+                    "traces read 0.25 rather than 0.5, the extremes criterion "
+                    "this id fails. LOWER bound: a variant whose alignment "
+                    "search timed out was treated as contributing a ratio of "
+                    "0. The function named as its source now computes "
+                    "alignment_coverage_pn2's conditioned definition instead; "
+                    "this id means the unconditioned one described here.",
+        source='process_voids.voidmass_pn.coverage_by_alignment_pn',
+        scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='alignment_coverage_pn2_lower',
+        scale='coverage',
+        history={'ab77b03': 'Pooled deficit/movecount ratio (1 - skip_prob) * '
+                            'voidmass_process at the scored node, not the '
+                            'per-execution average the definition specifies - '
+                            'computed from voidmass_process by mistake, since '
+                            'that table was already built.',
+                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+    ),
+    'alignment_coverage_pn_upper': Metric(
+        id='alignment_coverage_pn_upper',
+        description="Same as alignment_coverage_pn_lower, but a timed-out "
+                    "variant was treated as contributing a ratio of 1 (as if "
+                    "it matched perfectly) instead of being excluded - the "
+                    "LARGER of the two coverage readings. Equal to "
+                    "alignment_coverage_pn_lower whenever no variant timed "
+                    "out, and fails the extremes criterion the same way.",
+        source='process_voids.voidmass_pn.coverage_by_alignment_pn',
+        scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='alignment_coverage_pn2_upper',
+        scale='coverage',
+        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+    ),
 
     # Product-only ids - computed by process_voids for pvoid's own output,
     # never emitted into a lab results CSV.
@@ -525,6 +599,7 @@ METRICS = {
                     "own column name (with an underscore, unlike skipprob).",
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_voidmass',),
+        scale='void',
         history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
     ),
     'deficit': Metric(
@@ -555,6 +630,7 @@ METRICS = {
                     'ablation sweep.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void',
         history={'v0.4.1': "exp_disco_degrade.py used this same unsuffixed id "
                            "for a DIFFERENT (classical Petri-net alignment) "
                            "quantity through v0.4.1 - the two scripts' CSVs "
@@ -572,6 +648,7 @@ METRICS = {
                     '(coveragemass.voidmass_table) - see voidmass_subprocess.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void_share',
         history={'v0.4.1': "exp_disco_degrade.py used this same unsuffixed id "
                            "for a DIFFERENT (classical Petri-net alignment) "
                            "quantity through v0.4.1 - see voidmass_subprocess's "
@@ -581,17 +658,26 @@ METRICS = {
     'voidage_subprocess': Metric(
         id='voidage_subprocess',
         description='voidmass_subprocess * skip_prob(node) - see '
-                    'coveragemass.voidmass_table.',
+                    'coveragemass.voidmass_table. Fails the extremes '
+                    'criterion: a submodel missing from half the traces reads '
+                    '0.25, not 0.5, since voidmass_subprocess has already '
+                    'counted the absence skip_prob measures.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidage_process': Metric(
         id='voidage_process',
         description='voidmass_process * skip_prob(node) - see '
-                    'coveragemass.voidmass_table.',
+                    'coveragemass.voidmass_table. Fails the extremes '
+                    'criterion: a submodel missing from half the traces reads '
+                    'a quarter of its always-missing value, not half, since '
+                    'voidmass_process has already counted the absence '
+                    'skip_prob measures.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void_share',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidmass_subprocess': Metric(
@@ -600,6 +686,7 @@ METRICS = {
                     'voidmass_subprocess, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void',
         history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidmass_process': Metric(
@@ -608,22 +695,27 @@ METRICS = {
                     'voidmass_process, for the dose-response curve.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void_share',
         history={'v0.4.3': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidage_subprocess': Metric(
         id='target_voidage_subprocess',
         description="Summary-row copy of the ablation target node's own "
-                    'voidage_subprocess, for the dose-response curve.',
+                    'voidage_subprocess, for the dose-response curve. Fails '
+                    'the extremes criterion like voidage_subprocess.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidage_process': Metric(
         id='target_voidage_process',
         description="Summary-row copy of the ablation target node's own "
-                    'voidage_process, for the dose-response curve.',
+                    'voidage_process, for the dose-response curve. Fails the '
+                    'extremes criterion like voidage_process.',
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
+        scale='void_share',
         history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_rank_voidmass_process': Metric(

@@ -1,10 +1,13 @@
 
 import unittest
+from types import SimpleNamespace
 
-from skipalignments import Activity, Tau, Sequence, Xor, And, Loop, Aligner
+from skipalignments import Activity, Tau, Sequence, Xor, And, Loop, Aligner, Skip
 
 from lab.fixtures import build_running_example_tree
-from process_voids.coveragemass import alignment_mass, make_executions_cache
+from process_voids.coveragemass import (
+    alignment_mass, make_executions_cache, observed_alignment_mass,
+)
 
 ACT_COST = 100000
 
@@ -484,4 +487,135 @@ class TimedOutVariantRatioTest(unittest.TestCase):
         self.assertAlmostEqual(
             alignment_mass(self.tree, self.skip_dict, self.variant_probs, 'renormalised',
                             timed_out_ratio=1.0),
+            1.0, places=6)
+
+
+class ObservedAlignmentMassTest(unittest.TestCase):
+    """
+    defn:move-coverage's conditioned mass: an execution with no
+    synchronous move is excluded, and a trace whose alignments hold no
+    observed execution drops out of W rather than contributing a zero to
+    it. Model seq(a,b) with b recorded in half the traces reads 1.0,
+    where the unconditioned mass (what salign_coverage still uses) reads
+    0.5.
+    """
+
+    def setUp(self):
+        self.a = leaf(Activity, 'a', '1')
+        self.b = leaf(Activity, 'b', '2')
+        self.tree = Sequence(None, [self.a, self.b])
+        self.tree.id = '3'
+        self.a.set_parent(self.tree)
+        self.b.set_parent(self.tree)
+
+    def test_half_recorded_submodel_reads_one(self):
+        skip_dict, variant_probs = build(self.tree, {('a', 'b'): 0.5, ('a',): 0.5})
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.b, skip_dict, variant_probs), 1.0, places=6)
+        self.assertAlmostEqual(
+            alignment_mass(self.b, skip_dict, variant_probs, 'zero'), 0.5, places=6)
+
+    def test_never_recorded_submodel_reads_zero(self):
+        skip_dict, variant_probs = build(self.tree, {('a',): 1.0})
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.b, skip_dict, variant_probs), 0.0, places=6)
+
+    def test_fully_recorded_submodel_reads_one(self):
+        skip_dict, variant_probs = build(self.tree, {('a', 'b'): 1.0})
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.b, skip_dict, variant_probs), 1.0, places=6)
+
+    def test_partly_recorded_execution_keeps_its_ratio(self):
+        # At the root, <a> aligns as sync a then skip b: one execution,
+        # matchcount 1 of movecount 2. It was observed, so it counts.
+        skip_dict, variant_probs = build(self.tree, {('a',): 1.0})
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.tree, skip_dict, variant_probs), 0.5, places=6)
+
+
+class ObservedMassWeightsEveryAlignmentTest(unittest.TestCase):
+    """
+    W weights each observing alignment by 1/|Gamma_sigma|, not 1/|O_sigma|:
+    a variant whose tied alignments disagree about whether the submodel
+    was observed contributes only the share of its weight the observing
+    ones carry. Hand-built paths, since this pins the arithmetic of the
+    outer sum rather than anything the aligner decides.
+
+    Variant <a,b> (weight 0.5) gets two tied alignments: one fits (root
+    ratio 1), the other blames the log, skipping both activities with no
+    synchronous move at all, so the root is unobserved there. Variant <a>
+    (weight 0.5) gets one alignment - sync a, skip b - a root ratio of
+    0.5, observed.
+
+        mass = (0.5 * 1/2 * 1 + 0.5 * 1 * 0.5) / (0.5 * 1/2 + 0.5 * 1)
+             = 0.5 / 0.75 = 2/3
+
+    Weighting the observing alignments by 1/|O_sigma| would give 0.75
+    instead, and the unconditioned mass gives 0.5.
+    """
+
+    def setUp(self):
+        self.a = leaf(Activity, 'a', '1')
+        self.b = leaf(Activity, 'b', '2')
+        self.tree = Sequence(None, [self.a, self.b])
+        self.tree.id = '3'
+        self.a.set_parent(self.tree)
+        self.b.set_parent(self.tree)
+
+        fitting = [('a', self.a), ('b', self.b)]
+        unobserved = [('a', '>>'),
+                      ('>>', Skip(self.a, self.a.skip_cost)),
+                      ('>>', Skip(self.b, self.b.skip_cost))]
+        half = [('a', self.a), ('>>', Skip(self.b, self.b.skip_cost))]
+        self.skip_dict = {
+            variant_key(('a', 'b')): [SimpleNamespace(path=fitting),
+                                       SimpleNamespace(path=unobserved)],
+            variant_key(('a',)): [SimpleNamespace(path=half)],
+        }
+        self.variant_probs = {('a', 'b'): 0.5, ('a',): 0.5}
+
+    def test_an_unobserved_tied_alignment_keeps_its_share_out_of_the_average(self):
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.tree, self.skip_dict, self.variant_probs),
+            2 / 3, places=6)
+
+
+class ObservedMassTimedOutVariantTest(unittest.TestCase):
+    """
+    A variant whose alignment search timed out (in skip_dict with zero
+    alignments) counts as a single synthetic observed unit at its full
+    weight when timed_out_ratio is given, so 0.0 and 1.0 bracket the
+    value the cell would otherwise have had. With the default None it is
+    dropped entirely, which under this mass renormalises the remaining
+    weight instead of scoring the variant as a zero.
+    """
+
+    def setUp(self):
+        self.a = leaf(Activity, 'a', '1')
+        self.b = leaf(Activity, 'b', '2')
+        self.tree = Sequence(None, [self.a, self.b])
+        self.tree.id = '3'
+        self.a.set_parent(self.tree)
+        self.b.set_parent(self.tree)
+        self.skip_dict = {
+            variant_key(('a', 'b')): align(self.tree, ('a', 'b')),
+            variant_key(('a',)): [],  # timed out - zero alignments, not absent
+        }
+        self.variant_probs = {('a', 'b'): 0.5, ('a',): 0.5}
+
+    def test_ratio_zero_is_the_lower_bound(self):
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.tree, self.skip_dict, self.variant_probs,
+                                     timed_out_ratio=0.0),
+            0.5, places=6)
+
+    def test_ratio_one_is_the_upper_bound(self):
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.tree, self.skip_dict, self.variant_probs,
+                                     timed_out_ratio=1.0),
+            1.0, places=6)
+
+    def test_default_drops_the_variant_and_renormalises(self):
+        self.assertAlmostEqual(
+            observed_alignment_mass(self.tree, self.skip_dict, self.variant_probs),
             1.0, places=6)

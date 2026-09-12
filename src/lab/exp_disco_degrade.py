@@ -11,7 +11,7 @@ Every metric in ALL_METRICS (process_voids.metric_context.ProcessMetric
 declarations - skip-alignments-based weight_coverage/weight_voidage/
 skipprob/salign_coverage/voidsalign, process_voids.voidmass_pn's classical-
 alignment CLASSICAL_METRIC_KEYS (voidmass deficit/movecount/subprocess/
-process and alignment_coverage_pn - see that constant), and
+process and alignment_coverage_pn2 - see that constant), and
 process_voids.coveragemass's skip-alignment-based, real-elapsed-time
 voidsat) is scored once per node
 in the discovered tree (Activity, Tau, and composite Sequence/Xor/And/Loop
@@ -117,7 +117,7 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
                           'voidmass_movecount', 'voidmass_movecount_bound',
                           'voidmass_subprocess_lower', 'voidmass_subprocess_upper',
                           'voidmass_process_lower', 'voidmass_process_upper',
-                          'alignment_coverage_pn_lower', 'alignment_coverage_pn_upper')
+                          'alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')
 
 # Per-cell bookkeeping, root CSV only (not metrics, so not in
 # lab.metric_registry): how many variants' alignment search timed out,
@@ -215,10 +215,10 @@ ALL_METRICS = [
                   compute=_classical_field('voidmass_process_lower')),
     ProcessMetric(id='voidmass_process_upper', scope='node', needs=('classical',),
                   compute=_classical_field('voidmass_process_upper')),
-    ProcessMetric(id='alignment_coverage_pn_lower', scope='node',
+    ProcessMetric(id='alignment_coverage_pn2_lower', scope='node',
                   needs=('classical', 'dv', 'executions_cache'),
                   compute=_alignment_coverage_pn(0.0)),
-    ProcessMetric(id='alignment_coverage_pn_upper', scope='node',
+    ProcessMetric(id='alignment_coverage_pn2_upper', scope='node',
                   needs=('classical', 'dv', 'executions_cache'),
                   compute=_alignment_coverage_pn(1.0)),
     ProcessMetric(id='voidsat', scope='node', needs=('dv', 'aligned_duration_cache'),

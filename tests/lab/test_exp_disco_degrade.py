@@ -466,8 +466,8 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['voidmass_movecount'], 1.0)
         self.assertEqual(row['voidmass_movecount_bound'], 1.5)
         self.assertEqual(row['salign_coverage'], 0.77)
-        self.assertEqual(row['alignment_coverage_pn_lower'], 0.88)
-        self.assertEqual(row['alignment_coverage_pn_upper'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn2_lower'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn2_upper'], 0.88)
         self.assertEqual(row['voidsat'], 0.33)
         self.assertEqual(row['voidsalign'], 0.66)
         # a's own subtree is just itself, no silent alternative from its

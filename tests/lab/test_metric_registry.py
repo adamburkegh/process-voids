@@ -13,7 +13,7 @@ from lab.exp_surprise import (
 from lab.exp_voidmass import (
     NODE_METRIC_KEYS as VOIDMASS_NODE_METRIC_KEYS, SUMMARY_METRIC_KEYS as VOIDMASS_SUMMARY_METRIC_KEYS,
 )
-from lab.metric_registry import METRICS, STATUSES, format_registry
+from lab.metric_registry import METRICS, SCALES, STATUSES, format_registry
 from lab.metrics import METRIC_KEYS
 from process_voids.coveragemass import TREE_METRIC_KEYS
 
@@ -125,6 +125,11 @@ class DriftTest(unittest.TestCase):
     def test_every_status_is_a_known_status(self):
         for metric_id, metric in METRICS.items():
             self.assertIn(metric.status, STATUSES, metric_id)
+
+    def test_every_scale_is_a_known_scale(self):
+        for metric_id, metric in METRICS.items():
+            if metric.scale is not None:
+                self.assertIn(metric.scale, SCALES, metric_id)
 
     def test_superseded_by_targets_exist(self):
         for metric_id, metric in METRICS.items():

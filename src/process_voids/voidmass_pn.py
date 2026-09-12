@@ -22,12 +22,12 @@ same total regardless of how moves are partitioned into traversals,
 since it's the same set of moves either way. coverage_by_alignment_pn
 (\\covermove, defn:move-coverage) DOES average per traversal, so it
 DOES need that grouping - see _to_alignment_mass_path, which translates
-a classical alignment into coveragemass.alignment_mass's own path
-shape and reuses that machinery (executions()/matchcount/movecount/the
-averaging structure itself) entirely unmodified, verified term-by-term
-against the formal definition. The pooled ratio voidmass_table_pn
-reports (alignment_mass_pooled_lower/_upper) is a different quantity -
-see coverage_by_alignment_pn.
+a classical alignment into coveragemass's own path shape and reuses
+that machinery (executions()/matchcount/movecount and the averaging
+structure) rather than reimplementing it for a second move
+representation. The pooled ratio voidmass_table_pn reports
+(alignment_mass_pooled_lower/_upper) is a different quantity - see
+coverage_by_alignment_pn.
 
 If this approach is adopted, this needs folding into coveragemass.py;
 if not, delete both files.
@@ -48,7 +48,7 @@ from skipalignments import Skip, TauPath
 from skipalignments.probabilities import EbiOccurance
 from skipalignments.alignall import align_pn_all
 
-from process_voids.coveragemass import alignment_mass, _variant_key, min_activity_count
+from process_voids.coveragemass import observed_alignment_mass, _variant_key, min_activity_count
 
 logger = logging.getLogger(__name__)
 
@@ -499,20 +499,23 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
     return VoidmassPnResult(table, skip_dict, timed_out_count, timed_out_weight)
 
 
-def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, convention='zero',
+def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs,
                               executions_cache=None, timed_out_ratio=None):
     '''
     \\covermove (defn:move-coverage), computed on classical (non-lumped)
-    alignments: (1 - skip_prob) * alignment_mass(node, skip_dict,
-    variant_probs, convention). skip_dict is voidmass_table_pn's
-    result.skip_dict (already translated into coveragemass.alignment_mass's
-    expected path shape - see _to_alignment_mass_path) - reuses
-    coveragemass.alignment_mass entirely unmodified, verified term-by-
-    term against the formal definition: no pooling,
-    per-execution match/movecount ratios averaged uniformly within an
-    alignment, alignments averaged uniformly within a variant, both
-    zero-denominator conventions matching the definition's own "treated
-    as zero" clause exactly.
+    alignments: (1 - skip_prob) * coveragemass.observed_alignment_mass(
+    node, skip_dict, variant_probs). skip_dict is voidmass_table_pn's
+    result.skip_dict, already translated into that function's expected
+    path shape - see _to_alignment_mass_path.
+
+    The mass is conditioned on observation: an execution with no
+    synchronous move is excluded, and so is a trace whose alignments
+    hold no observed execution of node. That keeps the two factors
+    independent - the skip probability answers whether node was recorded
+    at all, the mass how completely it was recorded where it was - so
+    coverage falls linearly in a submodel's absence rather than
+    quadratically. See observed_alignment_mass for the definition term
+    by term.
 
     Deliberately reuses skip-alignments' own skip_prob unchanged
     (dv.skip_probs[node]) rather than inventing a classical-alignment
@@ -521,26 +524,26 @@ def coverage_by_alignment_pn(node, skip_prob, skip_dict, variant_probs, conventi
     normal form's lumping that rules skip-alignments out for voidmass's
     deficit doesn't affect it.
 
-    Not the POOLED ratio (matchcount/movecount summed across every
-    execution before dividing once), which \\covermove's own definition
-    doesn't specify. That pooled quantity is 1 - voidmass_subprocess,
-    reported by voidmass_table_pn as table[node]['alignment_mass_pooled_
-    lower'/'alignment_mass_pooled_upper'].
+    The pooled match ratio - matchcount/movecount summed across every
+    execution before dividing once - is a different quantity, reported by
+    voidmass_table_pn as table[node]['alignment_mass_pooled_lower'/
+    'alignment_mass_pooled_upper'] (equivalently 1 - voidmass_subprocess).
 
-    executions_cache: optional, see coveragemass.alignment_mass /
+    executions_cache: optional, see coveragemass.observed_alignment_mass /
     coveragemass.make_executions_cache - pass one shared cache across
     every node's call in a per-node report row (see
     lab.exp_disco_degrade._node_rows) to avoid re-walking each
     alignment's path once per node.
 
-    timed_out_ratio: passed straight through to alignment_mass - a
-    variant whose align_variant_all search timed out to zero
-    alignments (present in skip_dict as an empty list, not absent -
-    see voidmass_table_pn) is excluded entirely by default (None), or
-    treated as contributing this synthetic per-variant ratio instead.
-    See lab.exp_disco_degrade's _lower/_upper wiring for why this
-    exists: align_variant_all returning nothing is a real, latent
-    failure mode on any log with one slow-enough variant.
+    timed_out_ratio: passed straight through - a variant whose
+    align_variant_all search timed out to zero alignments (present in
+    skip_dict as an empty list, not absent - see voidmass_table_pn)
+    counts as one observed unit at this synthetic ratio, so 0.0 and 1.0
+    bracket the value the cell would have had; the default None drops it
+    and renormalises over the variants that are left. See
+    lab.exp_disco_degrade's _lower/_upper wiring for why this exists:
+    align_variant_all returning nothing is a real, latent failure mode
+    on any log with one slow-enough variant.
     '''
-    return (1 - skip_prob) * alignment_mass(node, skip_dict, variant_probs, convention,
-                                             executions_cache, timed_out_ratio)
+    return (1 - skip_prob) * observed_alignment_mass(node, skip_dict, variant_probs,
+                                                      executions_cache, timed_out_ratio)

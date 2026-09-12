@@ -301,7 +301,7 @@ real, unwrapped leaf). movecount(execution) counts every non-silent move
 real cost); TauPath (silent, cost 0) moves are excluded from movecount.
 
 Two conventions for combining ratios across executions/alignments/trace
-variants when a unit has no valid (movecount>0) execution at all:
+variants when a unit has no admissible execution at all:
   'zero'         - such a unit contributes 0 (the literal definition:
                    1/|Gamma| and 1/|P| are treated as zero when the
                    denominator would be zero)
@@ -310,6 +310,16 @@ variants when a unit has no valid (movecount>0) execution at all:
                    but well-corroborated when it is is not conflated with
                    one that is poorly recorded. Defaults to mass=1 if no
                    unit anywhere ever contributes (never exercised at all).
+
+Two mass terms are built on this. alignment_mass admits every execution
+with a non-silent move, and combines them under one of the two
+conventions above; salign_coverage is (1 - skip_prob) times that.
+observed_alignment_mass admits only executions with a synchronous move,
+and averages over the alignments and traces that have one, renormalising
+by their weight (Definition [Coverage by Alignment Correspondence],
+defn:move-coverage), so that an absence is counted once - by the skip
+probability - rather than a second time in the mass. voidmass_pn's
+coverage_by_alignment_pn is (1 - skip_prob) times that one.
 
 Ported from a design worked out against a reference implementation; see
 tests/process_voids/test_coverage_by_alignment.py for the worked
@@ -488,6 +498,43 @@ def _executions_for(path, pt, cache):
     return by_node.get(pt, [])
 
 
+def _alignment_values(pt:ProcessTree, skip_dict:dict, variant_probs:dict, keep,
+                       executions_cache=None, timed_out_ratio=None):
+    '''
+    [(weight, [value per alignment, ...]), ...] over the trace variants
+    that contribute anything, where a value is that alignment's mean
+    matchcount/movecount ratio over the executions `keep` admits, or None
+    where it admits none of them. A variant whose alignment search timed
+    out (skip_dict maps it to an empty list, or has no entry for it at
+    all) contributes the single synthetic value timed_out_ratio, or
+    nothing when that is None.
+
+    The two mass terms below differ in `keep` and in how they combine
+    these values, not in how they arrive at them - see this section's
+    module docstring.
+    '''
+    variant_terms = []
+    for variant, weight in variant_probs.items():
+        states = skip_dict.get(_variant_key(variant), [])
+        if not states:
+            if timed_out_ratio is not None:
+                variant_terms.append((weight, [timed_out_ratio]))
+            continue
+        alignment_values = []
+        for state in states:
+            execs_all = (_executions_for(state.path, pt, executions_cache)
+                         if executions_cache is not None
+                         else executions(state.path, pt))
+            execs = [e for e in execs_all if keep(e)]
+            if not execs:
+                alignment_values.append(None)
+                continue
+            ratios = [matchcount(e) / movecount(e) for e in execs]
+            alignment_values.append(sum(ratios) / len(ratios))
+        variant_terms.append((weight, alignment_values))
+    return variant_terms
+
+
 def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
                     convention='zero', executions_cache=None, timed_out_ratio=None):
     '''
@@ -523,25 +570,9 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     if convention not in ('zero', 'renormalised'):
         raise ValueError("convention must be 'zero' or 'renormalised'")
 
-    variant_terms = []
-    for variant, weight in variant_probs.items():
-        states = skip_dict.get(_variant_key(variant), [])
-        if not states:
-            if timed_out_ratio is not None:
-                variant_terms.append((weight, [timed_out_ratio]))
-            continue
-        alignment_values = []
-        for state in states:
-            execs_all = (_executions_for(state.path, pt, executions_cache)
-                         if executions_cache is not None
-                         else executions(state.path, pt))
-            execs = [e for e in execs_all if movecount(e) > 0]
-            if not execs:
-                alignment_values.append(None)
-                continue
-            ratios = [matchcount(e) / movecount(e) for e in execs]
-            alignment_values.append(sum(ratios) / len(ratios))
-        variant_terms.append((weight, alignment_values))
+    variant_terms = _alignment_values(pt, skip_dict, variant_probs,
+                                       lambda e: movecount(e) > 0,
+                                       executions_cache, timed_out_ratio)
 
     if convention == 'zero':
         total = 0.0
@@ -564,6 +595,56 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     if weight_total == 0:
         return 1.0
     return weighted_sum / weight_total
+
+
+def observed_alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
+                             executions_cache=None, timed_out_ratio=None):
+    '''
+    The mass term of Definition [Coverage by Alignment Correspondence]
+    (defn:move-coverage), conditioned on observation:
+
+        (1/W) * sum_sigma L[sigma] * sum_{gamma in O_sigma} (1/|Gamma_sigma|)
+                * (1/|P|) * sum_{chi in P} matchcount(chi)/movecount(chi)
+
+    where P is pt's executions in gamma that have a synchronous move,
+    O_sigma is the set of sigma's alignments with at least one such
+    execution, and W = sum_sigma L[sigma] * |O_sigma|/|Gamma_sigma|.
+    Zero where W is zero - a submodel observed nowhere.
+
+    Both levels of the conditioning carry their weight. An execution with
+    no synchronous move says nothing about how completely pt is recorded,
+    and its absence is already carried by the (1 - skip_prob) factor that
+    voidmass_pn.coverage_by_alignment_pn multiplies this by; scoring it
+    zero would count that absence twice and bend coverage to (1 - p)^2
+    rather than 1 - p. A trace whose alignments never observe pt is
+    dropped from the average for the same reason, rather than scored
+    zero: keeping it at full weight would let the absence back in through
+    W.
+
+    Each observing alignment carries 1/|Gamma_sigma| of its trace's
+    weight, not 1/|O_sigma|, so a variant whose tied alignments disagree
+    about whether pt was observed contributes only the share its
+    observing alignments carry.
+
+    See alignment_mass for the unconditioned mass salign_coverage is
+    built on, and for executions_cache and timed_out_ratio, which mean
+    the same here: a timed-out variant counts as one observed unit at its
+    full weight, so ratios of 0.0 and 1.0 bracket the value it would have
+    had, while the default None drops it and renormalises over what is
+    left.
+    '''
+    weighted_sum = 0.0
+    observed_weight = 0.0
+    for weight, values in _alignment_values(pt, skip_dict, variant_probs,
+                                             lambda e: matchcount(e) > 0,
+                                             executions_cache, timed_out_ratio):
+        observed = [value for value in values if value is not None]
+        if not observed:
+            continue
+        share = weight / len(values)
+        weighted_sum += share * sum(observed)
+        observed_weight += share * len(observed)
+    return weighted_sum / observed_weight if observed_weight else 0.0
 
 
 def coverage_by_alignment(pt:ProcessTree, dv, convention='zero', executions_cache=None):

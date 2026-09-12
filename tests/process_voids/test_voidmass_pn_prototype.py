@@ -446,8 +446,8 @@ class PooledVsNonPooledDivergenceTest(unittest.TestCase):
 
 class CoverageByAlignmentPnTimedOutRatioTest(unittest.TestCase):
     '''coverage_by_alignment_pn threads timed_out_ratio straight through
-    to coveragemass.alignment_mass (see that function's own tests for the
-    underlying mechanics) - hand-built skip_dict/variant_probs here, no
+    to coveragemass.observed_alignment_mass (see that function's own
+    tests for the underlying mechanics) - hand-built skip_dict/variant_probs here, no
     real alignment search needed, since this is only checking the
     wiring: one variant with a real (perfect-fit) alignment, one variant
     mapped to an empty list standing in for a timed-out search.'''
@@ -462,9 +462,11 @@ class CoverageByAlignmentPnTimedOutRatioTest(unittest.TestCase):
         self.variant_probs = {('a', 'b'): 0.5, ('a',): 0.5}
 
     def test_default_excludes_the_timed_out_variant(self):
+        # Excluding it renormalises over what is left, so the fitting
+        # variant's own ratio of 1.0 stands alone.
         self.assertAlmostEqual(
             coverage_by_alignment_pn(self.tree, 0.0, self.skip_dict, self.variant_probs),
-            0.5, places=6)
+            1.0, places=6)
 
     def test_upper_bound_treats_it_as_perfectly_matched(self):
         self.assertAlmostEqual(

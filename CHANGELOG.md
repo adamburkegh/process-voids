@@ -39,6 +39,14 @@ All notable changes to this project will be documented in this file.
   `ProcessMetric` itself a single declared quantity rather than a bundle.
 * `release_check` fails on leftover merge conflict markers (`<<<<<<<`/
   `>>>>>>>` at the start of a line) in tracked files.
+* `lab.metric_registry`'s `Metric` carries a `scale` (`coverage`, `void`
+  or `void_share`): what a metric promises to read at the node it's
+  scored at when that submodel is never missing, always missing, or
+  missing from half the traces. `tests/lab/test_metric_extremes.py`
+  holds every live metric with a scale to that promise on `seq(a, b)`,
+  computing each through the experiment's own `ProcessMetric`
+  declarations and the real skip-probability pipeline (the extremes
+  criterion in `docs/DESIGN.md`).
 * `voidsalign` (Voidage by Skip-Weighted Alignment Moves,
   `process_voids.voidsalign`): like `salign_coverage`, it works over
   skip alignments, but each skip move is weighted by the minimum
@@ -65,6 +73,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `\covermove`'s mass is conditioned on observation (Definition
+  [Coverage by Alignment Correspondence]): executions with no
+  synchronous move are excluded, and so are traces whose alignments hold
+  no observed execution of the submodel, with the remaining weights
+  renormalised. Absence is then counted once, by the skip probability,
+  instead of twice, so coverage falls linearly in a submodel's absence
+  rather than as `(1 - p)²` — a submodel missing from half the traces
+  reads 0.5 where it read 0.25. The ids change with the definition:
+  `alignment_coverage_pn2_lower`/`_upper` replace
+  `alignment_coverage_pn_lower`/`_upper`, now retired, so results
+  written under the two definitions can't be confused.
+  `coveragemass.observed_alignment_mass` is the new mass term;
+  `alignment_mass` is unchanged and still backs `salign_coverage`.
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
 * `lab.metric_registry` records the skip-probability correction below as a
@@ -125,6 +146,18 @@ All notable changes to this project will be documented in this file.
   every `exp_voidmass` column except `skip_prob` and
   `n_optimal_alignments`. Root values, and the classical-alignment
   metrics' mass terms, are unchanged.
+
+### Known issues
+
+* The extremes test pins the live metrics that fail it.
+  `salign_coverage` and `lab.exp_voidmass`'s `voidage_subprocess`/
+  `voidage_process`, with their `target_` copies, read a submodel
+  missing from half the traces at half the value their scale promises
+  (0.25 rather than 0.5 for the coverage): the mass term and the skip
+  probability both count the absence, which is what conditioning fixed
+  for `\covermove`. `voidsat` reads 0 for an always-missing submodel
+  that is the last activity, since a skip move with no following event
+  gets no duration.
 
 ## [0.4.2] - 2026-09-11
 
