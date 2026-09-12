@@ -6,7 +6,7 @@ computation itself (see tests/process_voids/test_voidmass.py for that).
 
 Mirrors tests/lab/test_exp_disco_degrade.py's mocking style: fake
 combos, and here also a fake pvoid.skipprob/voidmass_table so no real
-alignment computation runs. _discover_cached is also patched to bypass
+alignment computation runs. discover_cached is also patched to bypass
 its disk cache (var/lab/tree_cache/) - every test class here reuses the
 same fake log path/combo name, so without this they'd collide on the
 same cache file and pollute each other with a stale tree from whichever
@@ -63,7 +63,8 @@ def degrade_stub(log, target_activities, n_drop_cases):
 
 
 def _uncached_discover(log_name, combo_name, combo, base_log):
-    return combo.discover(base_log).tree
+    result = combo.discover(base_log)
+    return result.tree, result.ppt_weights
 
 
 class BasicSweepTest(unittest.TestCase):
@@ -75,7 +76,7 @@ class BasicSweepTest(unittest.TestCase):
         self.fake_table = {self.tree: dict(FAKE_ROW), self.a: dict(FAKE_ROW), self.b: dict(FAKE_ROW)}
 
     def _run(self, **kwargs):
-        with patch('lab.exp_voidmass._discover_cached', side_effect=_uncached_discover), \
+        with patch('lab.exp_voidmass.discover_cached', side_effect=_uncached_discover), \
              patch('lab.exp_voidmass.pm4py.read_xes', return_value=fake_log()), \
              patch('lab.exp_voidmass.degrade_target_subprocess', side_effect=degrade_stub), \
              patch('lab.exp_voidmass.pvoid.skipprob',
@@ -120,7 +121,7 @@ class TargetNotFoundTest(unittest.TestCase):
         tree, a, b = make_tree()
         combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(tree))}
 
-        with patch('lab.exp_voidmass._discover_cached', side_effect=_uncached_discover), \
+        with patch('lab.exp_voidmass.discover_cached', side_effect=_uncached_discover), \
              patch('lab.exp_voidmass.pm4py.read_xes', return_value=fake_log()):
             node_df, summary_df = run_voidmass_doseresponse(
                 ['fake_log.xes'], ['nonexistent_activity'], combos=combos, n_drops=[0],
@@ -149,7 +150,7 @@ class ComputeErrorTest(unittest.TestCase):
         def degrade(log, target_activities, n_drop_cases):
             return (FAILING_LOG if n_drop_cases == 1 else log), set()
 
-        with patch('lab.exp_voidmass._discover_cached', side_effect=_uncached_discover), \
+        with patch('lab.exp_voidmass.discover_cached', side_effect=_uncached_discover), \
              patch('lab.exp_voidmass.pm4py.read_xes', return_value=fake_log()), \
              patch('lab.exp_voidmass.degrade_target_subprocess', side_effect=degrade), \
              patch('lab.exp_voidmass.pvoid.skipprob', side_effect=flaky_skipprob), \
@@ -179,7 +180,7 @@ class MergeWriteTargetDimensionTest(unittest.TestCase):
         combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(tree))}
         fake_table = {tree: dict(FAKE_ROW), a: dict(FAKE_ROW), b: dict(FAKE_ROW)}
 
-        with patch('lab.exp_voidmass._discover_cached', side_effect=_uncached_discover), \
+        with patch('lab.exp_voidmass.discover_cached', side_effect=_uncached_discover), \
              patch('lab.exp_voidmass.pm4py.read_xes', return_value=fake_log()), \
              patch('lab.exp_voidmass.degrade_target_subprocess', side_effect=degrade_stub), \
              patch('lab.exp_voidmass.pvoid.skipprob',

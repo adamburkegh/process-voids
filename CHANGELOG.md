@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+* The discovered-tree cache is one shared `lab.discovery.discover_cached`,
+  used by `exp_disco_degrade`, `exp_surprise` and `exp_voidmass`, instead
+  of a copy in each of the latter two. `exp_disco_degrade` now caches its
+  discovery too, so a tree is discovered once per `(log, combo)` across
+  every script and every process. That also fixes which tree a rerun
+  scores: pm4py's Inductive cut selection is hash-seed dependent where a
+  `noise_threshold` cut sits near a tie, so rtfm's `inductive_noise20`
+  draws a 12- or 13-node tree from the same log depending on the process,
+  and two runs of nominally the same experiment could score different
+  models with no warning. Caching freezes that tie-break rather than
+  resolving it: the cached tree records which model a result was scored
+  against, and is arbitrary, not authoritative.
+* Cache files now hold a `(tree, ppt_weights)` pair, since
+  `exp_disco_degrade` threads toothpaste's fixed PPT weights into
+  `pvoid.skipprob`, and all three scripts share these files. They are
+  written under a new `<log>__<combo>__pair.pkl` name: a file written
+  when the cache held a bare tree unpickles without error but unpacks
+  into the wrong shape, so the old files are ignored rather than
+  misread. Delete `var/lab/tree_cache/*.pkl` without the suffix at
+  leisure; nothing reads them any more.
+
 ## [0.5.0] - 2026-09-12
 
 ### Added

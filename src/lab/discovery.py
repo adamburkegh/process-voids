@@ -4,7 +4,9 @@ package - each combo pairs a name with a discovery method
 (log -> DiscoveryResult).
 """
 
+import pickle
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import pm4py_config as pm4py
@@ -22,6 +24,51 @@ class DiscoveryResult:
 class DiscoveryCombo:
     name: str
     discover: Callable  # (log, **kwargs) -> DiscoveryResult
+
+
+TREE_CACHE_DIR = Path('var/lab/tree_cache')
+
+# Cache files hold a (tree, ppt_weights) pair. The suffix distinguishes
+# them from files written when they held a bare tree, which unpickle
+# without error but unpack into the wrong shape.
+_CACHE_SUFFIX = 'pair'
+
+
+def discover_cached(log_name, combo_name, combo, base_log):
+    """
+    (tree, ppt_weights) for a (log, combo) pair, from
+    var/lab/tree_cache/ if it has been discovered before, otherwise
+    discovered now and cached.
+
+    Shared by every experiment script: discovery depends only on the log
+    and the combo, never on degradation dim/level, so it is paid once -
+    which matters most for toothpaste's external-subprocess path. It
+    also fixes the tree across processes, where pm4py's Inductive cut
+    selection is otherwise hash-seed dependent near a tie (rtfm draws a
+    12- or 13-node tree from the same log), so two runs of nominally the
+    same experiment can score different models. The cached tree is an
+    artefact of a run's provenance: the tie-break it froze is arbitrary,
+    not authoritative.
+
+    ppt_weights is toothpaste's fixed PPT weights, which only
+    exp_disco_degrade consumes (threaded into pvoid.skipprob); callers
+    on the occurrence-weighted combos unpack and discard it. Keyed by
+    log NAME, not log content - delete the cache file (or the whole
+    var/lab/tree_cache/ dir) if the underlying log changes.
+
+    A failing discovery raises and caches nothing, leaving the caller's
+    own status handling (exp_disco_degrade's discover_status) intact.
+    """
+    cache_path = TREE_CACHE_DIR / f'{log_name}__{combo_name}__{_CACHE_SUFFIX}.pkl'
+    if cache_path.exists():
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    result = combo.discover(base_log)
+    pair = (result.tree, result.ppt_weights)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, 'wb') as f:
+        pickle.dump(pair, f)
+    return pair
 
 
 def discover_inductive(log, noise_threshold=0.0):

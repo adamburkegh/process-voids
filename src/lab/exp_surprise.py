@@ -26,7 +26,6 @@ Usage:
 
 import argparse
 import logging
-import pickle
 import time
 from pathlib import Path
 
@@ -34,7 +33,7 @@ import pandas as pd
 import pm4py_config as pm4py
 
 from lab.degradation import DEGRADATIONS
-from lab.discovery import COMBOS
+from lab.discovery import COMBOS, discover_cached
 from lab.logconfig import configure
 from lab.timing import Timer
 from process_voids.coveragemass import log_to_traces
@@ -109,29 +108,6 @@ def _merge_write(df, path, cell_cols=CELL_COLS):
     path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_csv(path, index=False)
     return combined
-
-
-TREE_CACHE_DIR = Path('var/lab/tree_cache')
-
-
-def _discover_cached(log_name, combo_name, combo, base_log):
-    """
-    The discovered tree depends only on (log, combo), never on
-    degradation dim/level - cache it to disk so a separate run against
-    the same log doesn't pay discovery's cost again (toothpaste's
-    external-subprocess discovery in particular can be slow). Keyed by
-    filename only, not log content - delete the cache file (or the
-    whole var/lab/tree_cache/ dir) if the underlying log changes.
-    """
-    cache_path = TREE_CACHE_DIR / f'{log_name}__{combo_name}.pkl'
-    if cache_path.exists():
-        with open(cache_path, 'rb') as f:
-            return pickle.load(f)
-    tree = combo.discover(base_log).tree
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cache_path, 'wb') as f:
-        pickle.dump(tree, f)
-    return tree
 
 
 def _node_rows(log_name, combo_name, dim, level, self_totals, baseline_totals):
@@ -215,7 +191,7 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
             cell = f'{log_name} / {combo_name}'
             started = time.monotonic()
             try:
-                tree = _discover_cached(log_name, combo_name, combo, base_log)
+                tree, _ = discover_cached(log_name, combo_name, combo, base_log)
             except NotImplementedError:
                 for dim in degradations:
                     for level in levels:

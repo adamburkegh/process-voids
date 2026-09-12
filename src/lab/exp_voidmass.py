@@ -21,7 +21,6 @@ Usage:
 
 import argparse
 import logging
-import pickle
 import time
 from pathlib import Path
 
@@ -29,7 +28,7 @@ import pandas as pd
 import pm4py_config as pm4py
 
 from lab.degradation import degrade_target_subprocess
-from lab.discovery import COMBOS
+from lab.discovery import COMBOS, discover_cached
 from lab.logconfig import configure
 from process_voids import pvoid
 from process_voids.coveragemass import voidmass_table
@@ -37,7 +36,6 @@ from process_voids.coveragemass import voidmass_table
 logger = logging.getLogger(__name__)
 
 CELL_COLS = ['log', 'combo', 'target', 'n_drop_cases']
-TREE_CACHE_DIR = Path('var/lab/tree_cache')
 
 # Metric ids this script's per-node rows carry, in the order
 # run_voidmass_doseresponse actually writes them - see lab.metric_registry,
@@ -72,19 +70,6 @@ def _merge_write(df, path, cell_cols=CELL_COLS):
     path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_csv(path, index=False)
     return combined
-
-
-def _discover_cached(log_name, combo_name, combo, base_log):
-    """See lab.exp_surprise._discover_cached - same cache dir, same convention."""
-    cache_path = TREE_CACHE_DIR / f'{log_name}__{combo_name}.pkl'
-    if cache_path.exists():
-        with open(cache_path, 'rb') as f:
-            return pickle.load(f)
-    tree = combo.discover(base_log).tree
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cache_path, 'wb') as f:
-        pickle.dump(tree, f)
-    return tree
 
 
 def _target_nodes(tree, target_activities):
@@ -124,7 +109,7 @@ def run_voidmass_doseresponse(log_paths, target_activities, combos=COMBOS, n_dro
             cell = f'{log_name} / {combo_name}'
             started = time.monotonic()
             try:
-                tree = _discover_cached(log_name, combo_name, combo, base_log)
+                tree, _ = discover_cached(log_name, combo_name, combo, base_log)
             except Exception as e:
                 logger.warning('%s - discovery error: %s', cell, e)
                 continue

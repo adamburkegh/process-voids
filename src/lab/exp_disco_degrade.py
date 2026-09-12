@@ -65,6 +65,7 @@ import pandas as pd
 import pm4py_config as pm4py
 
 from lab.claims_fixture import CLAIMS_COMBOS, CLAIMS_DEGRADATIONS
+from lab.discovery import discover_cached
 from lab.logconfig import configure, enable_skipalignments_debug
 from lab.metrics import mean_leaf_skipprob
 from lab.params import ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS
@@ -360,8 +361,8 @@ def run_disco_degrade(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATION
         for combo_name, combo in combos.items():
             started_discover = time.monotonic()
             try:
-                result = combo.discover(base_log)
-                tree, ppt_weights = result.tree, result.ppt_weights
+                tree, ppt_weights = discover_cached(
+                    log_name, combo_name, combo, base_log)
                 discover_status = 'ok'
             except NotImplementedError:
                 tree, ppt_weights = None, None
