@@ -103,14 +103,15 @@ copied here.
 ## 4. What a void metric must do
 
 These are the criteria the experiments and tests apply. A candidate that fails
-one should say so in its registry description.
+one should say so in its registry description; the extremes test enforces
+that rule for its own criterion.
 
 | Criterion | Meaning | Where it's exercised |
 |---|---|---|
 | Responsiveness | Rises monotonically as a mandatory subprocess is degraded | Dose-response runs of `exp_disco_degrade` |
 | Specificity | No response to ablating an optional subprocess, or to thinning the log (fewer cases, same proportions) | Claims fixture `appeal_seq`; trace-wise degradation |
 | Size sensitivity | A missing subprocess of eight activities outweighs one of two | `SizeSensitivityTest` in `test_voidmass.py` |
-| Extremes (proposed) | Zero when nothing is missing, maximal when the subprocess is always missing | Not yet pinned for every metric |
+| Extremes | Zero when nothing is missing, maximal when the subprocess is always missing; each metric declares its promise as a registry `scale` | `tests/lab/test_metric_extremes.py`, with today's exceptions pinned in `KNOWN_FAILURES` |
 | Decomposability (desirable) | The root value can be explained from its parts: a sum over any antichain cut, or a stated weighted average | `test_variant2_root_equals_sum_of_children` |
 | Honesty under failure | Timeouts produce provable bounds, not guesses or crashes | `_lower`/`_upper` columns, `timed_out_weight` |
 | Interpretable units | A reader can say what 0.25 means (a share of expected moves, of elapsed time, ...) | Registry descriptions |
@@ -133,8 +134,11 @@ one should say so in its registry description.
   via ebi. Bugs in it are reported upstream, with regression tests written
   there; process-voids neither patches nor duplicates it.
 - **Two alignment representations coexist.** Skip alignments (the lumped
-  normal form) feed skip probability and the skip-alignment metrics.
-  Classical Petri-net alignments feed voidmass and `alignment_coverage_pn`,
+  normal form) feed skip probability and the skip-alignment metrics. A lumped
+  skip is an execution of the lumped node and its ancestors only, per
+  Definition [Executions]: a descendant beneath it has no execution there, so
+  both factors of a skip probability times mass metric count the same traces.
+  Classical Petri-net alignments feed voidmass and `alignment_coverage_pn2`,
   because they name every missing activity. Classical alignments are
   translated into the skip-alignment path shape, so a single execution and
   averaging implementation serves both.
@@ -166,6 +170,11 @@ one should say so in its registry description.
 - **Reference models are read-only during a sweep.** Per-cell quantities
   (weights, skip probabilities) belong in maps keyed by node, not in
   attributes written onto a shared tree.
+- **Pin the reference model across runs.** Discovery isn't reproducible
+  between processes by default: a hash-seeded tie-break in pm4py's cut
+  selection can change the discovered tree. Any comparison spanning runs
+  needs the same tree, either cached as `exp_surprise` and `exp_voidmass` do
+  under `var/lab/tree_cache/`, or written to ptml and reloaded.
 - **Bound what you can't compute.** When a search times out, report provable
   bounds, and say how much of the log is affected (`timed_out_weight`).
 - **Cache per report row, not per node.** Structural maps and per-path
@@ -187,23 +196,23 @@ for a decision.
    (decomposable, interpretable units, expensive to compute), `voidsat`
    (time-based, unaffected by lumping), and a skip-weighted count. This waits
    on the experiments.
-2. **Product forms may count the skip twice.** Masses built from match/move
-   ratios already score a skipped execution as zero, so multiplying by
-   P(skip) counts the skip again. As defined, `voidsalign` scores an
-   always-missing subprocess as zero.
-3. **Do skip probability and the mass terms condition on the same
-   executions?** `coveragemass.executions` lets mandatorily-implied
-   descendants inherit an ancestor's lumped skip. The published
-   skip-probability definition gives such descendants no execution at all.
-4. **How should a skip move share a time gap?** The definition and the tests
+2. **Where the product-form double count remains.** Coverage by Alignment
+   Correspondence now conditions its mass on observation
+   (`alignment_coverage_pn2`), so absence is counted once, by the skip
+   probability. `salign_coverage` and `exp_voidmass`'s `voidage_*` family
+   still count it twice, and are pinned in the extremes test's
+   `KNOWN_FAILURES`. Condition them the same way, or retire them.
+3. **How should a skip move share a time gap?** The definition and the tests
    split the gap with the following event, but the Coverage By Aligned
    Duration docstring in `coveragemass` says the skip takes the whole gap. In
    concurrent regions, the normal form's ordering convention, not evidence,
-   decides which gap a skip lands in.
-5. **Model provenance.** By principle 2, voids are meaningful only against
+   decides which gap a skip lands in. A move also gets no duration where
+   nothing follows it to consume, so an always-missing submodel at the end of
+   a process reads 0, exactly as a fully observed one does.
+4. **Model provenance.** By principle 2, voids are meaningful only against
    external obligations, yet nothing records which nodes of a hybrid model a
    person asserted and which were discovered.
-6. **What does the product show?** pvoid prints weight coverage and coverage
+5. **What does the product show?** pvoid prints weight coverage and coverage
    by duration, and `bpmn_colour` paints skip probabilities onto tasks.
    Neither is yet a subprocess-level void metric.
 
