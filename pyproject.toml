@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "process-voids"
-version = "0.4.3"
+version = "0.5.0"
 description = "Characterising unobserved activities in process event data."
 requires-python = ">=3.10"
 dependencies = [

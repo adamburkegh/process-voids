@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [0.5.0] - 2026-09-12
 
 ### Added
 
@@ -99,9 +99,9 @@ All notable changes to this project will be documented in this file.
 * Tests call skip-alignments' `Aligner.align_normal_form` instead of the
   deprecated `align2`, clearing its deprecation warnings from the suite.
 * `lab.metric_registry` records the skip-probability correction below as a
-  `v0.4.3` history entry on every id built on `dv.skip_probs`, alongside
+  `v0.5.0` history entry on every id built on `dv.skip_probs`, alongside
   the executions entry the ids computed from `coveragemass.executions`
-  already carry, so a pre-0.4.3 result CSV's columns are still readable
+  already carry, so a pre-0.5.0 result CSV's columns are still readable
   from the registry alone.
 * The `smoke` run uses `payment_approval` instead of `rtfm`.
 * `coveragemass.make_aligned_duration_cache` takes an optional `traces=`

@@ -75,7 +75,7 @@ STATUSES = {'live', 'evaluation', 'product-only', 'retired'}
 SCALES = {'coverage', 'void', 'void_share'}
 
 # Prior meaning of every id computed from coveragemass.executions over
-# skip alignments, before v0.4.3.
+# skip alignments, before v0.5.0.
 _INHERITED_LUMP_HISTORY = (
     "Counted a lumped skip (the single Skip move for an entirely "
     "unwitnessed subtree) as an execution of every node beneath the "
@@ -85,7 +85,7 @@ _INHERITED_LUMP_HISTORY = (
     "subtree differ; root values do not.")
 
 # Prior meaning of every id built on skip-alignments' skip probabilities,
-# before v0.4.3 (skip-alignments v0.2.3+p4).
+# before v0.5.0 (skip-alignments v0.2.3+p4).
 _MASKED_SKIP_PROB_HISTORY = (
     "Used skip probabilities from skip-alignments before v0.2.3+p4, "
     "which counted a node nested inside an ancestor's lumped move as "
@@ -96,7 +96,7 @@ _MASKED_SKIP_PROB_HISTORY = (
     "unchanged.")
 
 # The subset of those ids whose mass term is also computed from
-# coveragemass.executions - both factors changed in v0.4.3.
+# coveragemass.executions - both factors changed in v0.5.0.
 _LUMPED_SKIP_BOTH_FACTORS_HISTORY = (
     _INHERITED_LUMP_HISTORY + ' ' + _MASKED_SKIP_PROB_HISTORY)
 
@@ -132,7 +132,7 @@ METRICS = {
         source='process_voids.coveragemass.mass_by_weight',
         scripts=('exp_disco_degrade',),
         scale='coverage',
-        history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'weight_voidage': Metric(
         id='weight_voidage',
@@ -142,7 +142,7 @@ METRICS = {
         source='process_voids.coveragemass.voidage_by_weight',
         scripts=('exp_disco_degrade',),
         scale='void',
-        history={'v0.4.3': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'skipprob': Metric(
         id='skipprob',
@@ -161,7 +161,7 @@ METRICS = {
                             "dv.skip_probs[node] itself - the id was wired to the "
                             "wrong quantity. Renamed to mean_leaf_skipprob and "
                             "skipprob repointed to the correct lookup.",
-                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+                 'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
     'mean_leaf_skipprob': Metric(
         id='mean_leaf_skipprob',
@@ -178,7 +178,7 @@ METRICS = {
                     'argument.',
         source='lab.metrics.mean_leaf_skipprob',
         scripts=('exp_disco_degrade',),
-        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
     'salign_coverage': Metric(
         id='salign_coverage',
@@ -192,7 +192,7 @@ METRICS = {
         source='process_voids.coveragemass.coverage_by_alignment',
         scripts=('exp_disco_degrade',),
         scale='coverage',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidsalign': Metric(
         id='voidsalign',
@@ -393,7 +393,7 @@ METRICS = {
         source='process_voids.coveragemass.voidsat',
         scripts=('exp_disco_degrade',),
         scale='void_share',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'containment_bits': Metric(
         id='containment_bits',
@@ -517,7 +517,7 @@ METRICS = {
                             "and skipprob became the same id/computation at "
                             "the root and at every node alike, so the split "
                             "was no longer needed.",
-                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+                 'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
     'alignment_coverage': Metric(
         id='alignment_coverage',
@@ -533,7 +533,7 @@ METRICS = {
                             'alignment_coverage_pn (classical-alignment) was '
                             'added, freeing the unqualified name for the '
                             'eventual classical-alignment replacement.',
-                 'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+                 'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'alignment_coverage_pn_lower': Metric(
         id='alignment_coverage_pn_lower',
@@ -563,7 +563,7 @@ METRICS = {
                             'per-execution average the definition specifies - '
                             'computed from voidmass_process by mistake, since '
                             'that table was already built.',
-                 'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+                 'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
     'alignment_coverage_pn_upper': Metric(
         id='alignment_coverage_pn_upper',
@@ -578,7 +578,7 @@ METRICS = {
         status='retired',
         superseded_by='alignment_coverage_pn2_upper',
         scale='coverage',
-        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
 
     # Product-only ids - computed by process_voids for pvoid's own output,
@@ -592,7 +592,7 @@ METRICS = {
         source='process_voids.coveragemass.coverage_by_duration',
         scripts=(),
         status='product-only',
-        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
 
     # exp_voidmass.py's own ids - a target-subprocess dose-response sweep
@@ -610,7 +610,7 @@ METRICS = {
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_voidmass',),
         scale='void',
-        history={'v0.4.3': _MASKED_SKIP_PROB_HISTORY},
+        history={'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
     'deficit': Metric(
         id='deficit',
@@ -620,7 +620,7 @@ METRICS = {
                     "respective denominators.",
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'movecount': Metric(
         id='movecount',
@@ -629,7 +629,7 @@ METRICS = {
                     "voidmass_subprocess's own denominator.",
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'voidmass_subprocess': Metric(
         id='voidmass_subprocess',
@@ -649,7 +649,7 @@ METRICS = {
                            "into voidmass_subprocess_lower/_upper; "
                            "exp_voidmass.py's lumped use of the plain id is "
                            "unaffected and continues unchanged.",
-                 'v0.4.3': _INHERITED_LUMP_HISTORY},
+                 'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'voidmass_process': Metric(
         id='voidmass_process',
@@ -663,7 +663,7 @@ METRICS = {
                            "for a DIFFERENT (classical Petri-net alignment) "
                            "quantity through v0.4.1 - see voidmass_subprocess's "
                            "history entry.",
-                 'v0.4.3': _INHERITED_LUMP_HISTORY},
+                 'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'voidage_subprocess': Metric(
         id='voidage_subprocess',
@@ -675,7 +675,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidage_process': Metric(
         id='voidage_process',
@@ -688,7 +688,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void_share',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidmass_subprocess': Metric(
         id='target_voidmass_subprocess',
@@ -697,7 +697,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void',
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidmass_process': Metric(
         id='target_voidmass_process',
@@ -706,7 +706,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void_share',
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'target_voidage_subprocess': Metric(
         id='target_voidage_subprocess',
@@ -716,7 +716,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_voidage_process': Metric(
         id='target_voidage_process',
@@ -726,7 +726,7 @@ METRICS = {
         source='process_voids.coveragemass.voidmass_table',
         scripts=('exp_voidmass',),
         scale='void_share',
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'target_rank_voidmass_process': Metric(
         id='target_rank_voidmass_process',
@@ -735,7 +735,7 @@ METRICS = {
                     'the ablated subprocess actually the biggest void?',
         source='lab.exp_voidmass._rank_descending',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _INHERITED_LUMP_HISTORY},
+        history={'v0.5.0': _INHERITED_LUMP_HISTORY},
     ),
     'target_rank_voidage_process': Metric(
         id='target_rank_voidage_process',
@@ -743,7 +743,7 @@ METRICS = {
                     'voidage_process instead.',
         source='lab.exp_voidmass._rank_descending',
         scripts=('exp_voidmass',),
-        history={'v0.4.3': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'n_optimal_alignments': Metric(
         id='n_optimal_alignments',
