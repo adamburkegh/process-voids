@@ -343,11 +343,21 @@ METRICS = {
                     "zero, so the absence is counted once - by skip_prob - and "
                     "coverage falls linearly rather than as (1 - p)^2. Reuses "
                     "skip-alignments' own skip_probs unchanged rather than "
-                    "deriving a separate estimate. LOWER bound: a variant "
-                    "whose alignment search timed out (no alignments at all) "
-                    "counts as one observed unit at a ratio of 0 (as if it "
-                    "matched nothing), the SMALLER of the two coverage "
-                    "readings.",
+                    "deriving a separate estimate. Reads coverage GIVEN the "
+                    "submodel was reached, which bounds where it is "
+                    "informative: at a node beneath a lumped skip, skip_prob "
+                    "is 0 (such a node has no execution inside an ancestor's "
+                    "lumped move) and the conditioned mass excludes those "
+                    "traces too, so it reads 1 however much of that subtree "
+                    "is missing, falling to 0 only where the submodel is "
+                    "recorded nowhere at all (W = 0). The absence is reported "
+                    "at the node carrying the lump, and a per-node "
+                    "completeness ratio does not aggregate, so the ancestor's "
+                    "reading does not recover it - see voidsalign for a size "
+                    "share that does. LOWER bound: a variant whose alignment "
+                    "search timed out (no alignments at all) counts as one "
+                    "observed unit at a ratio of 0 (as if it matched "
+                    "nothing), the SMALLER of the two coverage readings.",
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
         scale='coverage',
