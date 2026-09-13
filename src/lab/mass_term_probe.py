@@ -45,7 +45,7 @@ import pandas as pd
 import pm4py_config as pm4py
 
 from lab.discovery import COMBOS
-from lab.exp_disco_degrade import CLASSICAL_ALIGNMENT_TIMEOUT
+from lab.run import CLASSICAL_ALIGNMENT_TIMEOUT
 from lab.params import ALL_LOGS
 from lab.timing import TimingListener
 from process_voids.coveragemass import total_node_count

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+* `lab.run`: a consolidated experiment entry point (`cells = log x combo x
+  degradation dim x level`), with `--metrics` selection (by id or group -
+  `skip_alignment`/`classical`/`aligned_duration`) and `--no-degradation`
+  (one row per `(log, combo)`, no dim/level loop at all - the "fixed model,
+  as-is log" case). Only the stages a selected metric actually needs are
+  triggered per cell, so a selection that needs no classical alignment
+  genuinely skips that search rather than computing and discarding it.
+  `lab.exp_disco_degrade`'s metric roster and cell loop now live here -
+  `run_disco_degrade` is a thin wrapper over `lab.run.run`, keeping its own
+  stable CLI/signature and default filenames, not a second copy. The
+  wrapper's `--exclude-metric` maps onto `metrics=`, which accepts either a
+  list of `ProcessMetric`s (that case) or the CLI's inclusive id/group-name
+  shape. Discovery goes through
+  `lab.discovery.discover_cached`, so every experiment entering through this
+  runner gets the same cached, process-stable tree.
+
 ### Changed
 
 * The discovered-tree cache is one shared `lab.discovery.discover_cached`,
@@ -26,6 +44,23 @@ All notable changes to this project will be documented in this file.
   into the wrong shape, so the old files are ignored rather than
   misread. Delete `var/lab/tree_cache/*.pkl` without the suffix at
   leisure; nothing reads them any more.
+
+* `lab/metrics.py`'s module and `mean_leaf_skipprob` docstrings trimmed -
+  they re-explained what each metric means, duplicating
+  `lab.metric_registry`, which now owns that.
+
+### Fixed
+
+* `lab.run`'s root-level row always included every `ALL_METRICS` id
+  regardless of a restricted `metrics=` selection - `_compute_cell` built it
+  from `ALL_METRICS` instead of the `metrics` it was actually passed, so an
+  excluded metric's column stayed present (though unpopulated) instead of
+  being absent, the one thing `--exclude-metric` is for.
+
+* `lab.run`'s `_null_metric_values` derives its null fallback from the
+  metrics actually scored, so an error row can't carry a key no successful
+  row has. Previously a second copy of this lived in
+  `lab.exp_disco_degrade`.
 
 ## [0.5.0] - 2026-09-12
 
