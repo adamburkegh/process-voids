@@ -49,6 +49,15 @@ All notable changes to this project will be documented in this file.
   separator, so a result set stays legible - and joinable against a path
   typed by hand - away from Windows.
 
+* `activity_frequency_gradual`, a third degradation dimension, on the
+  default roster alongside `activity_gradual` and `trace`: activities
+  drop rarest-first by event count, and the level is the fraction of the
+  log's total event volume removed rather than a count of distinct
+  labels. `activity_gradual`'s drop order is a seeded shuffle, so its
+  dose is one confounded sample - which activities were hit does more
+  work than how much was removed, and a structural response can't be
+  told from an unlucky draw without repeating across seeds. This one is
+  deterministic. Both are kept, so earlier result CSVs stay comparable.
 * `lab.collection_report`: which `lab.metric_registry` ids have real
   (non-null) values recorded for which logs, across every root-level
   result CSV in `var/lab/results`, as a Markdown table. Answers "has this
