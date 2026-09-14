@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
   was retired. Rows are attributed by a CSV's own `log` column rather
   than its filename, so ad hoc and probe runs count like a named sweep.
 * `bpic2020_rfp` joins the log catalogue and gains a named run.
+* `lab.print_tree`: prints what a combo discovered on a log, in
+  skip-alignments' own process-tree notation, without recomputing skip
+  probabilities. It reads through `lab.discovery.discover_cached`, so the
+  tree shown is the one an experiment against the same `(log, combo)`
+  would score.
 
 * Three squash-review reports in `process_voids.util`, beside
   `release_check`, each runnable as a single command and each defaulting
