@@ -39,7 +39,8 @@ from lab.claims_fixture import CLAIMS_COMBOS, CLAIMS_DEGRADATIONS
 from lab.discovery import discover_cached
 from lab.logconfig import configure, enable_skipalignments_debug
 from lab.metrics import mean_leaf_skipprob
-from lab.params import ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS
+from lab.params import (
+    ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS, CLASSICAL_ALIGNMENT_TIMEOUT)
 from lab.runs import Experiment, RUNS
 from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
@@ -51,8 +52,6 @@ from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
 from process_voids.voidsalign import voidsalign
 
 logger = logging.getLogger(__name__)
-
-CLASSICAL_ALIGNMENT_TIMEOUT = 100
 
 
 def _format_dropped(dropped, limit=50):
@@ -75,7 +74,6 @@ def _log_stats(log):
 
 CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
                           'voidmass_movecount', 'voidmass_movecount_bound',
-                          'voidmass_subprocess_lower', 'voidmass_subprocess_upper',
                           'voidmass_process_lower', 'voidmass_process_upper',
                           'alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')
 
@@ -95,11 +93,19 @@ GROUPS = {
     'aligned_duration': ALIGNED_DURATION_METRIC_KEYS,
 }
 
+# Which tree the row was scored against. Run-level bookkeeping, not
+# metrics, so deliberately absent from lab.metric_registry - but carried
+# per row, at the same (log, combo) grain as TREE_METRIC_KEYS, because
+# the shared discovery cache is what makes tree identity ambiguous and a
+# result file has to answer that on its own.
+TREE_PROVENANCE_KEYS = ('tree_source', 'tree_cache_file')
+
 NODE_ROW_COLUMNS = (
     ['log', 'combo', 'degradation_dim', 'degradation_level',
      'node_id', 'node_type', 'alphabet']
     + list(PER_NODE_METRIC_KEYS) + list(CLASSICAL_METRIC_KEYS)
     + list(ALIGNED_DURATION_METRIC_KEYS) + list(TREE_METRIC_KEYS)
+    + list(TREE_PROVENANCE_KEYS)
 )
 
 
@@ -144,10 +150,6 @@ ALL_METRICS = [
                   compute=_classical_field('movecount')),
     ProcessMetric(id='voidmass_movecount_bound', scope='node', needs=('classical',),
                   compute=_classical_field('movecount_bound')),
-    ProcessMetric(id='voidmass_subprocess_lower', scope='node', needs=('classical',),
-                  compute=_classical_field('voidmass_subprocess_lower')),
-    ProcessMetric(id='voidmass_subprocess_upper', scope='node', needs=('classical',),
-                  compute=_classical_field('voidmass_subprocess_upper')),
     ProcessMetric(id='voidmass_process_lower', scope='node', needs=('classical',),
                   compute=_classical_field('voidmass_process_lower')),
     ProcessMetric(id='voidmass_process_upper', scope='node', needs=('classical',),
@@ -346,15 +348,19 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
         for combo_name, combo in combos.items():
             started_discover = time.monotonic()
             try:
-                tree, ppt_weights = discover_cached(
-                    log_name, combo_name, combo, base_log)
+                found = discover_cached(log_name, combo_name, combo, base_log)
+                tree, ppt_weights = found.tree, found.ppt_weights
+                tree_provenance = {'tree_source': found.source,
+                                   'tree_cache_file': str(found.cache_path)}
                 discover_status = 'ok'
             except NotImplementedError:
                 tree, ppt_weights = None, None
+                tree_provenance = {k: None for k in TREE_PROVENANCE_KEYS}
                 discover_status = 'not_implemented'
             except Exception as e:
                 logger.exception('Discovery: log=%s combo=%s - exception', log_name, combo_name)
                 tree, ppt_weights = None, None
+                tree_provenance = {k: None for k in TREE_PROVENANCE_KEYS}
                 discover_status = f'discovery error: {type(e).__name__}: {e}'
             logger.info('Discovery: log=%s combo=%s -> %s (%.1fs)',
                         log_name, combo_name, discover_status,
@@ -364,6 +370,7 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
             tree_metrics = (dict(zip(TREE_METRIC_KEYS,
                                       (mandatory_node_count(tree), total_node_count(tree))))
                             if tree is not None else {k: None for k in TREE_METRIC_KEYS})
+            tree_facts = {**tree_metrics, **tree_provenance}
 
             if not degradations:
                 cell = f'{log_name} / {combo_name} / (no degradation)'
@@ -372,14 +379,14 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                         'log': log_name, 'combo': combo_name,
                         'degradation_dim': None, 'degradation_level': None,
                         'dropped': '', 'dropped_count': 0, 'status': discover_status,
-                        'elapsed_s': None, **null_metric_values, **tree_metrics,
+                        'elapsed_s': None, **null_metric_values, **tree_facts,
                     })
                     logger.info('%s - skipped (%s)', cell, discover_status)
                     continue
                 slpn_path = f'var/lab/run_{log_name}_{combo_name}.slpn'
                 row = {'log': log_name, 'combo': combo_name,
                        'degradation_dim': None, 'degradation_level': None,
-                       'dropped': '', 'dropped_count': 0, **tree_metrics}
+                       'dropped': '', 'dropped_count': 0, **tree_facts}
                 with Timer() as t:
                     try:
                         cell_metrics, cell_node_rows = _compute_no_degradation_cell(
@@ -387,7 +394,8 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                             slpn_path, timing_rows, selected_metrics)
                         row['status'] = 'ok'
                         row.update(cell_metrics)
-                        node_rows.extend(cell_node_rows)
+                        node_rows.extend({**r, **tree_provenance}
+                                         for r in cell_node_rows)
                     except Exception as e:
                         logger.exception('%s - exception', cell)
                         row.update(status=f'error: {type(e).__name__}: {e}', **null_metric_values)
@@ -445,7 +453,7 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                             'log': log_name, 'combo': combo_name,
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': discover_status,
-                            'elapsed_s': None, **null_metric_values, **tree_metrics,
+                            'elapsed_s': None, **null_metric_values, **tree_facts,
                         })
                         logger.info('%s - skipped (%s)', cell, discover_status)
                         continue
@@ -455,11 +463,12 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                             'log': log_name, 'combo': combo_name,
                             'degradation_dim': dim, 'degradation_level': level,
                             'dropped': '', 'dropped_count': 0, 'status': zero_level_status,
-                            'elapsed_s': zero_level_elapsed_s, **tree_metrics,
+                            'elapsed_s': zero_level_elapsed_s, **tree_facts,
                         }
                         if zero_level_status == 'ok':
                             row.update(zero_level_metrics)
-                            node_rows.extend({**r, 'degradation_dim': dim}
+                            node_rows.extend({**r, 'degradation_dim': dim,
+                                              **tree_provenance}
                                              for r in zero_level_node_rows)
                         else:
                             row.update(null_metric_values)
@@ -473,7 +482,7 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                     row = {
                         'log': log_name, 'combo': combo_name,
                         'degradation_dim': dim, 'degradation_level': level,
-                        'dropped': dropped_str, 'dropped_count': dropped_count, **tree_metrics,
+                        'dropped': dropped_str, 'dropped_count': dropped_count, **tree_facts,
                     }
                     slpn_path = (f'var/lab/run_{log_name}_{combo_name}_{dim}_{level}.slpn')
                     with Timer() as t:
@@ -483,7 +492,8 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                                 classical_net, slpn_path, timing_rows, metrics=selected_metrics)
                             row['status'] = 'ok'
                             row.update(cell_metrics)
-                            node_rows.extend(cell_node_rows)
+                            node_rows.extend({**r, **tree_provenance}
+                                         for r in cell_node_rows)
                         except Exception as e:
                             logger.exception('%s - exception', cell)
                             row.update(status=f'error: {type(e).__name__}: {e}', **null_metric_values)

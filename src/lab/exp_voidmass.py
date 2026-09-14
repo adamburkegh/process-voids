@@ -109,7 +109,7 @@ def run_voidmass_doseresponse(log_paths, target_activities, combos=COMBOS, n_dro
             cell = f'{log_name} / {combo_name}'
             started = time.monotonic()
             try:
-                tree, _ = discover_cached(log_name, combo_name, combo, base_log)
+                tree = discover_cached(log_name, combo_name, combo, base_log).tree
             except Exception as e:
                 logger.warning('%s - discovery error: %s', cell, e)
                 continue

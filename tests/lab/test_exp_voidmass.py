@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pandas as pd
 from skipalignments import Activity, Sequence
 
-from lab.discovery import DiscoveryCombo, DiscoveryResult
+from lab.discovery import CachedDiscovery, DiscoveryCombo, DiscoveryResult
 from lab.exp_voidmass import run_voidmass_doseresponse
 
 FAKE_ROW = {'deficit': 1.0, 'movecount': 2.0, 'voidmass_subprocess': 0.5,
@@ -64,7 +64,8 @@ def degrade_stub(log, target_activities, n_drop_cases):
 
 def _uncached_discover(log_name, combo_name, combo, base_log):
     result = combo.discover(base_log)
-    return result.tree, result.ppt_weights
+    return CachedDiscovery(result.tree, result.ppt_weights, 'discovered',
+                            Path('var/lab/tree_cache/fake__fake__pair.pkl'))
 
 
 class BasicSweepTest(unittest.TestCase):

@@ -25,7 +25,6 @@ def fake_disco_df():
             'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
             'voidsalign': 0.05,
             'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
-            'voidmass_subprocess_lower': 0.08, 'voidmass_subprocess_upper': 0.1,
             'voidmass_process_lower': 0.04, 'voidmass_process_upper': 0.05,
         })
     return pd.DataFrame(rows)
@@ -46,7 +45,6 @@ def fake_claims_shaped_df():
                 'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
                 'voidsalign': 0.05,
                 'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
-                'voidmass_subprocess_lower': 0.05 * level, 'voidmass_subprocess_upper': 0.05 * level,
                 'voidmass_process_lower': 0.01 * level, 'voidmass_process_upper': 0.01 * level,
             })
     rows.append({'log': 'claims', 'combo': 'claims_known', 'degradation_dim': 'assess',
@@ -59,11 +57,11 @@ def fake_node_df():
     _node_rows/PER_NODE_METRIC_KEYS): one row per (log, combo,
     degradation_dim, degradation_level, node_id), no status column at
     all (a node CSV only ever holds successful cells - see
-    run_disco_degrade). voidmass_subprocess/process and
+    run_disco_degrade). voidmass_process and
     alignment_coverage_pn2 carry _lower/_upper bound columns rather than
-    a single column - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS.'''
+    a single column - see lab.run.CLASSICAL_METRIC_KEYS.'''
     def row(node_id, node_type, weight_coverage, skipprob,
-             voidmass_subprocess, voidmass_process, level=0.0):
+             voidmass_process, level=0.0):
         return {
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
@@ -72,19 +70,18 @@ def fake_node_df():
             'salign_coverage': 0.9, 'voidsalign': 0.05,
             'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
             'voidmass_movecount': 1.0, 'voidmass_movecount_bound': 1.0,
-            'voidmass_subprocess_lower': voidmass_subprocess, 'voidmass_subprocess_upper': voidmass_subprocess,
             'voidmass_process_lower': voidmass_process, 'voidmass_process_upper': voidmass_process,
             'alignment_coverage_pn2_lower': 0.85, 'alignment_coverage_pn2_upper': 0.9,
             'voidsat': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
         }
     return pd.DataFrame([
-        row('1', 'Activity', 1.0, 0.0, 0.0, 1.0),
-        row('2', 'Activity', 0.5, 0.5, 0.5, 0.5),
+        row('1', 'Activity', 1.0, 0.0, 1.0),
+        row('2', 'Activity', 0.5, 0.5, 0.5),
         # a Tau row at the same cell, with values far outside the two
         # Activity rows' range - must not pull the average toward it
-        row('3', 'Tau', 0.0, 1.0, 1.0, 0.0),
+        row('3', 'Tau', 0.0, 1.0, 0.0),
         # a second cell (level=1.0) that must be dropped entirely
-        row('1', 'Activity', 0.0, 1.0, 1.0, 0.0, level=1.0),
+        row('1', 'Activity', 0.0, 1.0, 0.0, level=1.0),
     ])
 
 
@@ -102,8 +99,8 @@ class AverageOverNodesTest(unittest.TestCase):
         averaged = average_over_nodes(fake_node_df())
         row = averaged[(averaged['degradation_dim'] == 'activity')
                         & (averaged['degradation_level'] == 0.0)].iloc[0]
-        self.assertAlmostEqual(row['voidmass_subprocess_lower'], 0.25)
-        self.assertAlmostEqual(row['voidmass_subprocess_upper'], 0.25)
+        self.assertAlmostEqual(row['voidmass_process_lower'], 0.75)
+        self.assertAlmostEqual(row['voidmass_process_upper'], 0.75)
 
     def test_adds_an_ok_status_column(self):
         averaged = average_over_nodes(fake_node_df())
@@ -184,10 +181,10 @@ class PlotDoseResponseTest(unittest.TestCase):
         # (an exception, not just a wrong plot), _exclude_degenerate has
         # stopped being applied inside plot_dose_response
         df = fake_disco_df()
-        df['voidmass_subprocess_lower'] = df['voidmass_subprocess_lower'].astype(object)
-        df['voidmass_subprocess_upper'] = df['voidmass_subprocess_upper'].astype(object)
+        df['voidmass_process_lower'] = df['voidmass_process_lower'].astype(object)
+        df['voidmass_process_upper'] = df['voidmass_process_upper'].astype(object)
         df.loc[df['degradation_level'] == 1.0,
-               ['voidmass_subprocess_lower', 'voidmass_subprocess_upper']] = 'not a number'
+               ['voidmass_process_lower', 'voidmass_process_upper']] = 'not a number'
         out_dir = tempfile.mkdtemp()
         written = plot_dose_response(df, out_dir=out_dir)
         self.assertTrue(Path(written[0]).exists())

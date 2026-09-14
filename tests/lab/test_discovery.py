@@ -20,7 +20,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from lab.discovery import DiscoveryCombo, DiscoveryResult, discover_cached
+from lab.discovery import (
+    CachedDiscovery, DiscoveryCombo, DiscoveryResult, discover_cached)
 
 
 class DiscoverCachedTest(unittest.TestCase):
@@ -36,29 +37,30 @@ class DiscoverCachedTest(unittest.TestCase):
         self.combo = DiscoveryCombo('combo', self.discover)
 
     def test_miss_discovers_and_returns_tree_and_weights(self):
-        self.assertEqual(discover_cached('log', 'combo', self.combo, 'LOG'),
-                         ('TREE', 'WEIGHTS'))
+        found = discover_cached('log', 'combo', self.combo, 'LOG')
+        self.assertEqual((found.tree, found.ppt_weights), ('TREE', 'WEIGHTS'))
         self.discover.assert_called_once_with('LOG')
 
     def test_hit_returns_the_cached_pair_without_rediscovering(self):
         first = discover_cached('log', 'combo', self.combo, 'LOG')
         self.discover.return_value = DiscoveryResult('OTHER_TREE', 'OTHER_WEIGHTS')
         second = discover_cached('log', 'combo', self.combo, 'LOG')
-        self.assertEqual(second, first)
+        self.assertEqual((second.tree, second.ppt_weights),
+                         (first.tree, first.ppt_weights))
         self.discover.assert_called_once()
 
     def test_cache_is_keyed_by_log_and_combo(self):
         discover_cached('log_a', 'combo', self.combo, 'LOG')
         self.discover.return_value = DiscoveryResult('TREE_B', 'WEIGHTS_B')
-        self.assertEqual(discover_cached('log_b', 'combo', self.combo, 'LOG'),
-                         ('TREE_B', 'WEIGHTS_B'))
-        self.assertEqual(discover_cached('log_a', 'combo', self.combo, 'LOG'),
-                         ('TREE', 'WEIGHTS'))
+        b = discover_cached('log_b', 'combo', self.combo, 'LOG')
+        self.assertEqual((b.tree, b.ppt_weights), ('TREE_B', 'WEIGHTS_B'))
+        a = discover_cached('log_a', 'combo', self.combo, 'LOG')
+        self.assertEqual((a.tree, a.ppt_weights), ('TREE', 'WEIGHTS'))
 
     def test_combo_without_ppt_weights_caches_none(self):
         self.discover.return_value = DiscoveryResult('TREE')
-        self.assertEqual(discover_cached('log', 'combo', self.combo, 'LOG'),
-                         ('TREE', None))
+        found = discover_cached('log', 'combo', self.combo, 'LOG')
+        self.assertEqual((found.tree, found.ppt_weights), ('TREE', None))
 
     def test_a_bare_tree_cache_file_is_not_read_as_a_pair(self):
         """
@@ -70,8 +72,8 @@ class DiscoverCachedTest(unittest.TestCase):
         legacy = self.cache_dir / 'log__combo.pkl'
         with open(legacy, 'wb') as f:
             pickle.dump('LEGACY_TREE', f)
-        self.assertEqual(discover_cached('log', 'combo', self.combo, 'LOG'),
-                         ('TREE', 'WEIGHTS'))
+        found = discover_cached('log', 'combo', self.combo, 'LOG')
+        self.assertEqual((found.tree, found.ppt_weights), ('TREE', 'WEIGHTS'))
 
     def test_discovery_failure_propagates_and_caches_nothing(self):
         """
@@ -84,6 +86,28 @@ class DiscoverCachedTest(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             discover_cached('log', 'combo', self.combo, 'LOG')
         self.assertEqual(list(self.cache_dir.glob('*.pkl')), [])
+
+    def test_a_miss_reports_it_discovered_now_and_which_file_it_wrote(self):
+        """Which tree a result was scored against is the point of the
+        cache, so the caller is told rather than left to infer it from
+        whether the file happened to exist beforehand."""
+        found = discover_cached('log', 'combo', self.combo, 'LOG')
+        self.assertEqual(found.source, 'discovered')
+        self.assertEqual(found.cache_path, self.cache_dir / 'log__combo__pair.pkl')
+
+    def test_a_hit_reports_it_came_from_the_cache(self):
+        discover_cached('log', 'combo', self.combo, 'LOG')
+        found = discover_cached('log', 'combo', self.combo, 'LOG')
+        self.assertEqual(found.source, 'cached')
+        self.assertEqual(found.cache_path, self.cache_dir / 'log__combo__pair.pkl')
+
+    def test_a_legacy_bare_tree_file_counts_as_a_miss(self):
+        """The legacy file is ignored, so this run really did discover
+        the tree - reporting 'cached' would name a file it did not read."""
+        with open(self.cache_dir / 'log__combo.pkl', 'wb') as f:
+            pickle.dump('LEGACY_TREE', f)
+        self.assertEqual(discover_cached('log', 'combo', self.combo, 'LOG').source,
+                         'discovered')
 
 
 if __name__ == '__main__':

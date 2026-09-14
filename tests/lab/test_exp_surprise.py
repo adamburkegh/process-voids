@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lab.discovery import DiscoveryCombo, DiscoveryResult
+from lab.discovery import CachedDiscovery, DiscoveryCombo, DiscoveryResult
 from lab.exp_surprise import _node_rows, run_surprise
 
 
@@ -79,7 +79,9 @@ class RunSurpriseColumnsTest(unittest.TestCase):
     def test_summary_row_has_baseline_columns_not_a_distribution_column(self):
         with patch('lab.exp_surprise.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_surprise.observed_intervals', return_value={}), \
-             patch('lab.exp_surprise.discover_cached', return_value=('FAKE_TREE', None)), \
+             patch('lab.exp_surprise.discover_cached',
+                   return_value=CachedDiscovery('FAKE_TREE', None, 'discovered',
+                                                Path('fake__fake__pair.pkl'))), \
              patch('lab.exp_surprise.compute_predecessors', return_value={}), \
              patch('lab.exp_surprise._compute_cell', return_value=FAKE_CELL):
             node_df, summary_df = run_surprise(
@@ -103,7 +105,9 @@ class RunSurpriseColumnsTest(unittest.TestCase):
         columns - not one row per distribution."""
         with patch('lab.exp_surprise.pm4py.read_xes', return_value='FAKE_LOG'), \
              patch('lab.exp_surprise.observed_intervals', return_value={}), \
-             patch('lab.exp_surprise.discover_cached', return_value=('FAKE_TREE', None)), \
+             patch('lab.exp_surprise.discover_cached',
+                   return_value=CachedDiscovery('FAKE_TREE', None, 'discovered',
+                                                Path('fake__fake__pair.pkl'))), \
              patch('lab.exp_surprise.compute_predecessors', return_value={}), \
              patch('lab.exp_surprise._compute_cell', return_value=FAKE_CELL):
             _, summary_df = run_surprise(

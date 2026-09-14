@@ -297,6 +297,7 @@ METRICS = {
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
         scale='void',
+        status='retired',
     ),
     'voidmass_subprocess_upper': Metric(
         id='voidmass_subprocess_upper',
@@ -306,6 +307,7 @@ METRICS = {
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
         scale='void',
+        status='retired',
     ),
     'voidmass_process_lower': Metric(
         id='voidmass_process_lower',

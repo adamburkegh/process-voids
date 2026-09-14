@@ -259,6 +259,54 @@ class NoDegradationCellShapeTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['skipprob'], 0.1)
 
 
+class TreeProvenanceColumnsTest(FakePipelineMixin, unittest.TestCase):
+    """Which tree a row was scored against is what the shared cache
+    makes ambiguous, so it rides on the result rows themselves at the
+    same (log, combo) grain as mandatory_node_count/total_node_count -
+    no join against a separate file to find out."""
+
+    def setUp(self):
+        self.tree = _single_activity_tree()
+        self.combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(self.tree))}
+        self.vm_table = {self.tree: _fake_classical_row()}
+
+    def _run(self):
+        return run(['fake_log.xes'], combos=self.combos, degradations={},
+                   out_csv=str(Path(tempfile.mkdtemp()) / 'out.csv'))
+
+    def test_a_first_run_records_the_tree_as_discovered_now(self):
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        df, node_df, _timings = self._run()
+        self.assertEqual(df.iloc[0]['tree_source'], 'discovered')
+        self.assertEqual(set(node_df['tree_source']), {'discovered'})
+
+    def test_a_rerun_against_a_warm_cache_records_the_tree_as_cached(self):
+        # one patch_pipeline for both runs, so both share a cache dir
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        self._run()
+        df, node_df, _timings = self._run()
+        self.assertEqual(df.iloc[0]['tree_source'], 'cached')
+        self.assertEqual(set(node_df['tree_source']), {'cached'})
+
+    def test_rows_name_the_cache_file_the_tree_came_from(self):
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        df, node_df, _timings = self._run()
+        expected = 'fake_log__fake__pair.pkl'
+        self.assertTrue(df.iloc[0]['tree_cache_file'].endswith(expected))
+        self.assertTrue(node_df.iloc[0]['tree_cache_file'].endswith(expected))
+
+    def test_a_failed_discovery_leaves_the_provenance_columns_empty(self):
+        def boom(log):
+            raise NotImplementedError('no such miner')
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        df, _node_df, _timings = run(
+            ['fake_log.xes'], combos={'fake': DiscoveryCombo('fake', boom)},
+            degradations={}, out_csv=str(Path(tempfile.mkdtemp()) / 'out.csv'))
+        self.assertEqual(df.iloc[0]['status'], 'not_implemented')
+        self.assertIsNone(df.iloc[0]['tree_source'])
+        self.assertIsNone(df.iloc[0]['tree_cache_file'])
+
+
 class ZeroLevelDedupTest(FakePipelineMixin, unittest.TestCase):
     # Level 0.0 drops nothing regardless of dimension, so it's the same
     # (log, tree) computation under every dim - run should compute it

@@ -26,6 +26,19 @@ class DiscoveryCombo:
     discover: Callable  # (log, **kwargs) -> DiscoveryResult
 
 
+@dataclass
+class CachedDiscovery:
+    """A discovered tree plus where it came from. source is 'cached'
+    when this call read an existing cache file, 'discovered' when it ran
+    the combo and wrote one; cache_path is the file either way. Callers
+    record both against their results, since which tree was scored is
+    what the cache makes ambiguous - see discover_cached."""
+    tree: object
+    ppt_weights: object
+    source: str        # 'cached' or 'discovered'
+    cache_path: Path
+
+
 TREE_CACHE_DIR = Path('var/lab/tree_cache')
 
 # Cache files hold a (tree, ppt_weights) pair. The suffix distinguishes
@@ -36,9 +49,10 @@ _CACHE_SUFFIX = 'pair'
 
 def discover_cached(log_name, combo_name, combo, base_log):
     """
-    (tree, ppt_weights) for a (log, combo) pair, from
-    var/lab/tree_cache/ if it has been discovered before, otherwise
-    discovered now and cached.
+    A CachedDiscovery for a (log, combo) pair - its tree and
+    ppt_weights read from var/lab/tree_cache/ if it has been discovered
+    before, otherwise discovered now and cached, with source/cache_path
+    saying which happened.
 
     Shared by every experiment script: discovery depends only on the log
     and the combo, never on degradation dim/level, so it is paid once -
@@ -57,18 +71,19 @@ def discover_cached(log_name, combo_name, combo, base_log):
     var/lab/tree_cache/ dir) if the underlying log changes.
 
     A failing discovery raises and caches nothing, leaving the caller's
-    own status handling (exp_disco_degrade's discover_status) intact.
+    own status handling (lab.run's discover_status) intact.
     """
     cache_path = TREE_CACHE_DIR / f'{log_name}__{combo_name}__{_CACHE_SUFFIX}.pkl'
     if cache_path.exists():
         with open(cache_path, 'rb') as f:
-            return pickle.load(f)
+            tree, ppt_weights = pickle.load(f)
+        return CachedDiscovery(tree, ppt_weights, 'cached', cache_path)
     result = combo.discover(base_log)
     pair = (result.tree, result.ppt_weights)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_path, 'wb') as f:
         pickle.dump(pair, f)
-    return pair
+    return CachedDiscovery(result.tree, result.ppt_weights, 'discovered', cache_path)
 
 
 def discover_inductive(log, noise_threshold=0.0):

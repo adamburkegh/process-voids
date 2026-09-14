@@ -23,7 +23,8 @@ from pathlib import Path
 
 from skipalignments import Activity, Sequence
 
-from lab.exp_disco_degrade import ALL_METRICS, CLASSICAL_ALIGNMENT_TIMEOUT
+from lab.exp_disco_degrade import ALL_METRICS
+from lab.params import CLASSICAL_ALIGNMENT_TIMEOUT
 from lab.metric_registry import METRICS
 from process_voids import dtlog
 from process_voids.coveragemass import voidmass_table

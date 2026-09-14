@@ -7,13 +7,13 @@ registration, so there's a single plot function rather than one per
 experiment script).
 
 plot_dose_response: weight_coverage / skipprob / salign_coverage /
-alignment_coverage_pn / voidmass_subprocess / voidmass_process vs
+alignment_coverage_pn2 / voidmass_process vs
 degradation_level, one figure per (log, facet value), one line per
 `line_by` value within it. weight_voidage isn't plotted separately -
 it's exactly 1 - weight_coverage, so its own panel would just be a
 mirror image with no new signal.
 
-alignment_coverage_pn/voidmass_subprocess/voidmass_process are each a
+alignment_coverage_pn2/voidmass_process are each a
 _lower/_upper bound pair, not a single column (the timed-out-variant
 bound - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS): plotted as the
 midpoint line with a shaded band between the two. A cell with no
@@ -62,7 +62,6 @@ METRICS = [
     ('salign_coverage', ('salign_coverage',)),
     ('voidsalign', ('voidsalign',)),
     ('alignment_coverage_pn2', ('alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')),
-    ('voidmass_subprocess', ('voidmass_subprocess_lower', 'voidmass_subprocess_upper')),
     ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
 ]
 
@@ -147,7 +146,7 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
     share the exact same title, the only visible difference being which
     numbers are on the axes.
 
-    No fixed y-axis range: voidmass_subprocess/voidmass_process sit in
+    No fixed y-axis range: voidmass_process sits in
     a much smaller range (0-0.05ish on the claims fixture) than the
     coverage-style metrics (near 1), so a shared 0-1 range would
     flatten them to nothing - each panel auto-scales to its own data.

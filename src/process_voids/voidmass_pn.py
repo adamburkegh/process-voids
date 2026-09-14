@@ -52,6 +52,14 @@ from process_voids.coveragemass import observed_alignment_mass, _variant_key, mi
 
 logger = logging.getLogger(__name__)
 
+# Seconds a single variant's optimal-alignment search may run before
+# align_pn_all abandons it and the caller falls back to bounds. The
+# default this module falls back to when a caller states no budget of
+# its own, so that importing it standalone works - not a claim about
+# what any particular experiment should allow, which is the caller's
+# policy to set (lab.params.CLASSICAL_ALIGNMENT_TIMEOUT is the lab's).
+DEFAULT_ALIGNMENT_TIMEOUT = 100
+
 
 def build_id_net(tree):
     '''
@@ -70,7 +78,8 @@ def build_id_net(tree):
     return EbiOccurance().build_petri_net(tree)
 
 
-def align_variant_all(activities, net, im, fm, activity_to_id, tau_id_set, id_loop_list=None, timeout=100):
+def align_variant_all(activities, net, im, fm, activity_to_id, tau_id_set,
+                       id_loop_list=None, timeout=DEFAULT_ALIGNMENT_TIMEOUT):
     '''
     Every tied optimal classical alignment for the trace `activities`
     against net/im/fm. Returns a list of move lists (one per tied
@@ -85,7 +94,8 @@ def align_variant_all(activities, net, im, fm, activity_to_id, tau_id_set, id_lo
     return [agn['alignment'] for agn in opt_agns]
 
 
-def align_variant(activities, net, im, fm, activity_to_id, tau_id_set, id_loop_list=None, timeout=100):
+def align_variant(activities, net, im, fm, activity_to_id, tau_id_set,
+                   id_loop_list=None, timeout=DEFAULT_ALIGNMENT_TIMEOUT):
     '''The first tied optimal alignment only - see align_variant_all.'''
     return align_variant_all(activities, net, im, fm, activity_to_id, tau_id_set,
                               id_loop_list=id_loop_list, timeout=timeout)[0]
@@ -347,7 +357,7 @@ def timed_out_movecount_bound(trace_length, tree):
 
 
 def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_set,
-                       id_loop_list=None, timeout=100):
+                       id_loop_list=None, timeout=DEFAULT_ALIGNMENT_TIMEOUT):
     '''
     VoidmassPnResult whose table is the classical-alignment analogue of
     coveragemass.voidmass_table: one pass over the tree, aggregated

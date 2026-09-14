@@ -10,6 +10,7 @@ module docstring): if the classical path is adopted, these tests move
 with it into coveragemass's; if not, both files get deleted.
 '''
 
+import inspect
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from process_voids.coveragemass import min_activity_count
 from process_voids.voidmass_pn import (
     build_id_net, align_variant, align_variant_all, deficit_by_node, terms_by_node,
     voidmass_table_pn, coverage_by_alignment_pn, timed_out_movecount_bound,
+    DEFAULT_ALIGNMENT_TIMEOUT,
 )
 
 
@@ -719,6 +721,19 @@ class TimedOutBoundsAreSoundTest(unittest.TestCase):
         wc = bounded.timed_out_weight * min_activity_count(self.loop)
         previous_upper = (d0 + wc) / (m0 + wc)
         self.assertGreater(truth, previous_upper)
+
+
+class DefaultAlignmentTimeoutTest(unittest.TestCase):
+    """The fallback budget for a caller that states none - one named
+    constant rather than the same literal repeated across three
+    signatures. What a given experiment should actually allow is the
+    caller's policy (lab.params.CLASSICAL_ALIGNMENT_TIMEOUT), not this."""
+
+    def test_search_entry_points_default_to_the_module_constant(self):
+        for fn in (align_variant_all, align_variant, voidmass_table_pn):
+            with self.subTest(fn=fn.__name__):
+                default = inspect.signature(fn).parameters['timeout'].default
+                self.assertEqual(default, DEFAULT_ALIGNMENT_TIMEOUT)
 
 
 if __name__ == '__main__':

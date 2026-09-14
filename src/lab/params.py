@@ -28,3 +28,14 @@ ALL_DEGRADATIONS = DEGRADATIONS
 # for any CSV that has it anyway (eg from an explicit --levels
 # override).
 ALL_LEVELS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+
+# Seconds this lab allows one variant's alignment search before it is
+# abandoned and the cell falls back to bounds - a budget, chosen for the
+# logs and hardware here, not a property of any search. Applied to the
+# classical Petri-net search (process_voids.voidmass_pn, whose own
+# DEFAULT_ALIGNMENT_TIMEOUT is only the fallback for a caller that
+# states nothing) and to skip-alignments' align_sk_all alike, since the
+# question it answers - how long are we willing to wait - is the same
+# either way.
+CLASSICAL_ALIGNMENT_TIMEOUT = 100

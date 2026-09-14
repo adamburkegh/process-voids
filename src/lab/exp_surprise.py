@@ -191,7 +191,7 @@ def run_surprise(log_paths, combos=COMBOS, degradations=DEGRADATIONS, levels=(0.
             cell = f'{log_name} / {combo_name}'
             started = time.monotonic()
             try:
-                tree, _ = discover_cached(log_name, combo_name, combo, base_log)
+                tree = discover_cached(log_name, combo_name, combo, base_log).tree
             except NotImplementedError:
                 for dim in degradations:
                     for level in levels:

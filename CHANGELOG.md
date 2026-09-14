@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
   was retired. Rows are attributed by a CSV's own `log` column rather
   than its filename, so ad hoc and probe runs count like a named sweep.
 * `bpic2020_rfp` joins the log catalogue and gains a named run.
+* Every per-node result row carries `tree_source` and `tree_cache_file`:
+  whether that cell's tree came from the shared discovery cache or was
+  discovered by this run, and which cache file. `lab.discovery.
+  discover_cached` returns a `CachedDiscovery` (tree, ppt_weights,
+  source, cache_path) rather than a bare pair. Run-level bookkeeping
+  rather than metrics, so no `lab.metric_registry` entries - but the
+  cache is what makes tree identity ambiguous, so a result file has to
+  answer it on its own.
 * `lab.print_tree`: prints what a combo discovered on a log, in
   skip-alignments' own process-tree notation, without recomputing skip
   probabilities. It reads through `lab.discovery.discover_cached`, so the
@@ -81,6 +89,26 @@ All notable changes to this project will be documented in this file.
 * `lab/metrics.py`'s module and `mean_leaf_skipprob` docstrings trimmed -
   they re-explained what each metric means, duplicating
   `lab.metric_registry`, which now owns that.
+
+* The alignment search timeout is now two named constants rather than one
+  `lab.run` constant reached through `lab.exp_disco_degrade` (which would
+  have kept that wrapper alive as an import shim) plus a bare `100`
+  repeated across three `process_voids.voidmass_pn` signatures. They are
+  different decisions: `voidmass_pn.DEFAULT_ALIGNMENT_TIMEOUT` is the
+  fallback that module uses when a caller states no budget, so it imports
+  standalone; `lab.params.CLASSICAL_ALIGNMENT_TIMEOUT` is the budget this
+  lab allows, chosen for these logs and this hardware, and is what
+  `lab.run` and `lab.mass_term_probe` pass. The lab's applies to
+  skip-alignments' `align_sk_all` as well as the classical search, so it
+  was never a property of `voidmass_pn`'s own search.
+
+* `voidmass_subprocess_lower`/`voidmass_subprocess_upper` dropped from
+  `lab.run`'s default roster and retired in `lab.metric_registry` - not a
+  candidate for inclusion, and not informative in the dose-response plots.
+  `lab.plots` loses its `voidmass_subprocess` panel with them.
+  `process_voids.voidmass_pn.voidmass_table_pn` still computes both fields,
+  and the registry entries stay, so old result CSVs carrying those columns
+  remain readable.
 
 ### Fixed
 
