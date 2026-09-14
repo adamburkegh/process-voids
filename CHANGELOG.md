@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* Three squash-review reports in `process_voids.util`, beside
+  `release_check`, each runnable as a single command and each defaulting
+  to `HEAD` against the index (the staged change under review):
+  `registry_diff` (ids added/removed, per-id changes to status,
+  superseded_by, scripts, source or scale, and whether any
+  `lab.metric_registry` history entry was extended, altered or dropped -
+  only the last two break the append-only rule); `test_name_diff` (which
+  `def test_*` names exist at the base ref and not the target, with names
+  that merely changed file reported as moved rather than lost - a count
+  can rise while behaviour tests disappear); and `branch_survey` (every
+  local branch's worktree, whether its content has already landed, and
+  whether it would squash cleanly or in which files it conflicts -
+  "commits ahead" means nothing in a squash workflow, where a landed
+  branch still reads as ahead). They report rather than gate: each exits
+  non-zero only on error, never on findings. `release_check` remains the
+  gate and is unchanged. `process_voids.util.gitread` holds the shared
+  "read this path at that ref" helper, where the index is a ref whose
+  prefix is empty.
+
 * `lab.run`: a consolidated experiment entry point (`cells = log x combo x
   degradation dim x level`), with `--metrics` selection (by id or group -
   `skip_alignment`/`classical`/`aligned_duration`) and `--no-degradation`
