@@ -60,7 +60,8 @@ METRICS = [
     ('weight_coverage', ('weight_coverage',)),
     ('skipprob', ('skipprob',)),
     ('salign_coverage', ('salign_coverage',)),
-    ('alignment_coverage_pn', ('alignment_coverage_pn_lower', 'alignment_coverage_pn_upper')),
+    ('voidsalign', ('voidsalign',)),
+    ('alignment_coverage_pn2', ('alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')),
     ('voidmass_subprocess', ('voidmass_subprocess_lower', 'voidmass_subprocess_upper')),
     ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
 ]
@@ -132,7 +133,7 @@ def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
-                        fmt: str = 'png', line_by: str = 'combo'):
+                        fmt: str = 'png', line_by: str = 'combo', title_suffix: str = ''):
     """
     Writes one figure per (log, facet value), each with a subplot per
     metric in METRICS, one line per `line_by` value within it - see
@@ -140,6 +141,11 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
     Pass fmt='pdf' for vector output that drops straight into a LaTeX
     build. Returns the list of paths written. See _exclude_degenerate
     for what's dropped before plotting.
+
+    title_suffix: appended to each figure's title (eg ' (per-node
+    average)') - root-level and average_over_nodes output otherwise
+    share the exact same title, the only visible difference being which
+    numbers are on the axes.
 
     No fixed y-axis range: voidmass_subprocess/voidmass_process sit in
     a much smaller range (0-0.05ish on the claims fixture) than the
@@ -195,7 +201,7 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
             ax.set_ylabel(label)
             ax.legend()
 
-        fig.suptitle(f'{log} - {facet_val}')
+        fig.suptitle(f'{log} - {facet_val}{title_suffix}')
         fig.tight_layout()
 
         out_path = out_dir / f'{log}_{facet_val}.{fmt}'
@@ -231,9 +237,12 @@ def main():
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv)
+    title_suffix = ''
     if args.average_nodes:
         df = average_over_nodes(df)
-    written = plot_dose_response(df, out_dir=args.out_dir, fmt=args.format, line_by=args.line_by)
+        title_suffix = ' (per-node average)'
+    written = plot_dose_response(df, out_dir=args.out_dir, fmt=args.format, line_by=args.line_by,
+                                  title_suffix=title_suffix)
     for path in written:
         print(f'Wrote {path}')
 

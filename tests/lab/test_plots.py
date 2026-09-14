@@ -9,6 +9,7 @@ plotted.
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -22,7 +23,8 @@ def fake_disco_df():
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'status': 'ok',
             'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-            'alignment_coverage_pn_lower': 0.90, 'alignment_coverage_pn_upper': 0.95,
+            'voidsalign': 0.05,
+            'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
             'voidmass_subprocess_lower': 0.08, 'voidmass_subprocess_upper': 0.1,
             'voidmass_process_lower': 0.04, 'voidmass_process_upper': 0.05,
         })
@@ -42,7 +44,8 @@ def fake_claims_shaped_df():
                 'log': 'claims', 'combo': 'claims_known', 'degradation_dim': target,
                 'degradation_level': level, 'status': 'ok',
                 'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-                'alignment_coverage_pn_lower': 0.90, 'alignment_coverage_pn_upper': 0.95,
+                'voidsalign': 0.05,
+                'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
                 'voidmass_subprocess_lower': 0.05 * level, 'voidmass_subprocess_upper': 0.05 * level,
                 'voidmass_process_lower': 0.01 * level, 'voidmass_process_upper': 0.01 * level,
             })
@@ -57,7 +60,7 @@ def fake_node_df():
     degradation_dim, degradation_level, node_id), no status column at
     all (a node CSV only ever holds successful cells - see
     run_disco_degrade). voidmass_subprocess/process and
-    alignment_coverage_pn carry _lower/_upper bound columns rather than
+    alignment_coverage_pn2 carry _lower/_upper bound columns rather than
     a single column - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS.'''
     def row(node_id, node_type, weight_coverage, skipprob,
              voidmass_subprocess, voidmass_process, level=0.0):
@@ -66,11 +69,12 @@ def fake_node_df():
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
             'alphabet': 'a', 'weight_coverage': weight_coverage,
             'weight_voidage': 1 - weight_coverage, 'skipprob': skipprob,
-            'salign_coverage': 0.9, 'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
+            'salign_coverage': 0.9, 'voidsalign': 0.05,
+            'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
             'voidmass_movecount': 1.0, 'voidmass_movecount_bound': 1.0,
             'voidmass_subprocess_lower': voidmass_subprocess, 'voidmass_subprocess_upper': voidmass_subprocess,
             'voidmass_process_lower': voidmass_process, 'voidmass_process_upper': voidmass_process,
-            'alignment_coverage_pn_lower': 0.85, 'alignment_coverage_pn_upper': 0.9,
+            'alignment_coverage_pn2_lower': 0.85, 'alignment_coverage_pn2_upper': 0.9,
             'voidsat': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
         }
     return pd.DataFrame([
@@ -187,6 +191,18 @@ class PlotDoseResponseTest(unittest.TestCase):
         out_dir = tempfile.mkdtemp()
         written = plot_dose_response(df, out_dir=out_dir)
         self.assertTrue(Path(written[0]).exists())
+
+    def test_title_suffix_is_appended_to_the_figure_title(self):
+        out_dir = tempfile.mkdtemp()
+        with patch('matplotlib.figure.Figure.suptitle') as mock_suptitle:
+            plot_dose_response(fake_disco_df(), out_dir=out_dir, title_suffix=' (per-node average)')
+        mock_suptitle.assert_called_once_with('fake_log - activity (per-node average)')
+
+    def test_title_suffix_defaults_to_empty(self):
+        out_dir = tempfile.mkdtemp()
+        with patch('matplotlib.figure.Figure.suptitle') as mock_suptitle:
+            plot_dose_response(fake_disco_df(), out_dir=out_dir)
+        mock_suptitle.assert_called_once_with('fake_log - activity')
 
     def test_a_bound_pair_with_no_divergence_still_plots(self):
         # the common case (no timed-out variants, lower == upper

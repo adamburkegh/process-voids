@@ -90,6 +90,13 @@ RUNS = {
         degradations=ALL_DEGRADATIONS,
         levels=ALL_LEVELS,
     ),
+    'bpic2020_rfp': Experiment(
+        name='bpic2020_rfp',
+        log_paths=[ALL_LOGS['bpic2020_rfp']],
+        combos=ALL_COMBOS,
+        degradations=ALL_DEGRADATIONS,
+        levels=ALL_LEVELS,
+    ),
     'full': Experiment(
         name='full',
         log_paths=list(ALL_LOGS.values()),
