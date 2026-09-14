@@ -498,21 +498,34 @@ def _executions_for(path, pt, cache):
     return by_node.get(pt, [])
 
 
+def _execution_ratio(execution):
+    '''matchcount/movecount, the ratio the move-coverage definitions
+    average over executions.'''
+    return matchcount(execution) / movecount(execution)
+
+
 def _alignment_values(pt:ProcessTree, skip_dict:dict, variant_probs:dict, keep,
-                       executions_cache=None, timed_out_ratio=None):
+                       executions_cache=None, timed_out_ratio=None, ratio=None):
     '''
     [(weight, [value per alignment, ...]), ...] over the trace variants
     that contribute anything, where a value is that alignment's mean
-    matchcount/movecount ratio over the executions `keep` admits, or None
-    where it admits none of them. A variant whose alignment search timed
-    out (skip_dict maps it to an empty list, or has no entry for it at
-    all) contributes the single synthetic value timed_out_ratio, or
-    nothing when that is None.
+    `ratio` over the executions `keep` admits, or None where it admits
+    none of them. A variant whose alignment search timed out (skip_dict
+    maps it to an empty list, or has no entry for it at all) contributes
+    the single synthetic value timed_out_ratio, or nothing when that is
+    None.
 
-    The two mass terms below differ in `keep` and in how they combine
-    these values, not in how they arrive at them - see this section's
-    module docstring.
+    `ratio` defaults to matchcount/movecount (_execution_ratio);
+    process_voids.voidsalign2 passes the skip-weighted
+    smatchcount/smovecount instead, which is the only thing that differs
+    between its mass term and observed_alignment_mass's.
+
+    The mass terms below differ in `keep`, in `ratio`, and in how they
+    combine these values, not in how they arrive at them - see this
+    section's module docstring.
     '''
+    if ratio is None:
+        ratio = _execution_ratio
     variant_terms = []
     for variant, weight in variant_probs.items():
         states = skip_dict.get(_variant_key(variant), [])
@@ -529,7 +542,7 @@ def _alignment_values(pt:ProcessTree, skip_dict:dict, variant_probs:dict, keep,
             if not execs:
                 alignment_values.append(None)
                 continue
-            ratios = [matchcount(e) / movecount(e) for e in execs]
+            ratios = [ratio(e) for e in execs]
             alignment_values.append(sum(ratios) / len(ratios))
         variant_terms.append((weight, alignment_values))
     return variant_terms
@@ -598,7 +611,7 @@ def alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
 
 
 def observed_alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
-                             executions_cache=None, timed_out_ratio=None):
+                             executions_cache=None, timed_out_ratio=None, ratio=None):
     '''
     The mass term of Definition [Coverage by Alignment Correspondence]
     (defn:move-coverage), conditioned on observation:
@@ -637,7 +650,8 @@ def observed_alignment_mass(pt:ProcessTree, skip_dict:dict, variant_probs:dict,
     observed_weight = 0.0
     for weight, values in _alignment_values(pt, skip_dict, variant_probs,
                                              lambda e: matchcount(e) > 0,
-                                             executions_cache, timed_out_ratio):
+                                             executions_cache, timed_out_ratio,
+                                             ratio=ratio):
         observed = [value for value in values if value is not None]
         if not observed:
             continue

@@ -49,7 +49,7 @@ from process_voids.coveragemass import (
 )
 from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
 from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
-from process_voids.voidsalign import voidsalign
+from process_voids.voidsalign2 import voidsalign2
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
 TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
 PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage',
-                         'voidsalign')
+                         'voidsalign2')
 
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat',)
 
@@ -138,9 +138,9 @@ ALL_METRICS = [
     ProcessMetric(id='salign_coverage', scope='node', needs=('dv', 'executions_cache'),
                   compute=lambda ctx, node: coverage_by_alignment(
                       node, ctx.stage('dv'), executions_cache=ctx.stage('executions_cache'))),
-    ProcessMetric(id='voidsalign', scope='node', needs=('dv', 'executions_cache'),
-                  compute=lambda ctx, node: voidsalign(
-                      node, ctx.tree, ctx.stage('dv').skip_dict_backup, ctx.stage('dv').pl,
+    ProcessMetric(id='voidsalign2', scope='node', needs=('dv', 'executions_cache'),
+                  compute=lambda ctx, node: voidsalign2(
+                      node, ctx.stage('dv').skip_dict_backup, ctx.stage('dv').pl,
                       ctx.stage('dv').skip_probs, executions_cache=ctx.stage('executions_cache'))),
     ProcessMetric(id='voidmass_deficit_lower', scope='node', needs=('classical',),
                   compute=_classical_field('deficit_lower')),

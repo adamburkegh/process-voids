@@ -6,6 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `voidsalign2` (`process_voids.voidsalign2`), Definitions [Coverage by
+  Skip-Weighted Alignment Correspondence] and [Void by Skip-Weighted
+  Alignment Correspondence]: `1 - (1 - skip_prob) * mass`, where the mass
+  averages `smatchcount/smovecount` over skip alignments, counting each
+  skip move as `aligncost(<>, msub)` - the least number of labelled
+  activities any traversal of the skipped subprocess performs - so a
+  lumped skip over a large subtree is not underweighted, and a skip over
+  a wholly silent subprocess counts 0 without a separate silent-move
+  exclusion. The mass is conditioned on observation exactly as
+  `alignment_coverage_pn2`'s is (executions with no synchronous move
+  excluded, traces observing the node nowhere dropped from both the
+  average and the normaliser `W`, coverage 0 where `W` is 0), which it
+  gets by calling `coveragemass.observed_alignment_mass` with the
+  skip-weighted ratio rather than repeating that arithmetic.
+  `observed_alignment_mass` and `_alignment_values` gained a `ratio=`
+  parameter for this; their default behaviour is unchanged.
+
 * `lab.collection_report`: which `lab.metric_registry` ids have real
   (non-null) values recorded for which logs, across every root-level
   result CSV in `var/lab/results`, as a Markdown table. Answers "has this
@@ -65,6 +82,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `voidsalign` is retired, superseded by `voidsalign2`, and the runner
+  scores `voidsalign2` in its place at the root and per node. The retired
+  form was `skip_prob` times a SIZE share of the whole tree's
+  skip-weighted move volume, which is not what the definition specifies:
+  it reports a share of the process rather than a rate, so it has no
+  reading at which a wholly missing subprocess is 1. Result CSVs written
+  before this carry the size share under the `voidsalign` column; the
+  registry keeps that id with its description, as it does every retired
+  id. `process_voids.voidsalign` and its tests stay in place, now unused
+  by the roster.
 * The discovered-tree cache is one shared `lab.discovery.discover_cached`,
   used by `exp_disco_degrade`, `exp_surprise` and `exp_voidmass`, instead
   of a copy in each of the latter two. `exp_disco_degrade` now caches its
