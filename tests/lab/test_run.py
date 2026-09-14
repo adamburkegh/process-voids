@@ -259,6 +259,59 @@ class NoDegradationCellShapeTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['skipprob'], 0.1)
 
 
+class RunHistoryTest(FakePipelineMixin, unittest.TestCase):
+    """A completed run appends one row to the history CSV. Without this
+    wiring lab.run_history is a feature that exists but never happens."""
+
+    def setUp(self):
+        self.tree = _single_activity_tree()
+        self.combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(self.tree))}
+        self.vm_table = {self.tree: _fake_classical_row()}
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.history_csv = str(Path(self.tmp.name) / 'run_history.csv')
+
+    def _run(self, out_csv, **kwargs):
+        return run(['fake_log.xes'], combos=self.combos, degradations={},
+                   out_csv=out_csv, run_history_csv=self.history_csv, **kwargs)
+
+    def test_a_completed_run_appends_one_row_naming_its_out_csv(self):
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        out_csv = str(Path(self.tmp.name) / 'out.csv')
+        self._run(out_csv)
+
+        history = pd.read_csv(self.history_csv)
+        self.assertEqual(len(history), 1)
+        # recorded with forward slashes, so it stays legible off Windows
+        self.assertEqual(history.iloc[0]['out_csv'], Path(out_csv).as_posix())
+        self.assertEqual(history.iloc[0]['combos'], 'fake')
+        self.assertEqual(history.iloc[0]['logs'], 'fake_log')
+
+    def test_a_second_run_appends_rather_than_replacing(self):
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        self._run(str(Path(self.tmp.name) / 'a.csv'))
+        self._run(str(Path(self.tmp.name) / 'b.csv'))
+        self.assertEqual(len(pd.read_csv(self.history_csv)), 2)
+
+    def test_the_row_records_which_metrics_were_actually_scored(self):
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        self._run(str(Path(self.tmp.name) / 'out.csv'), metrics=['skipprob'])
+
+        row = pd.read_csv(self.history_csv).iloc[0]
+        self.assertEqual(row['metrics'], 'skipprob')
+        self.assertIn('voidsat', row['excluded_metrics'].split(';'))
+
+    def test_a_failure_building_the_history_row_does_not_lose_the_run(self):
+        """The results are the expensive part - bookkeeping must never
+        be able to take them down. Building the row shells out to git
+        for both packages' commit state, so it has its own ways to fail
+        that say nothing about the run that just succeeded."""
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        with patch('lab.run_history.run_history_row', side_effect=OSError('no git')):
+            df, _node_df, _timings = self._run(str(Path(self.tmp.name) / 'out.csv'))
+        self.assertEqual(df.iloc[0]['status'], 'ok')
+
+
 class TreeProvenanceColumnsTest(FakePipelineMixin, unittest.TestCase):
     """Which tree a row was scored against is what the shared cache
     makes ambiguous, so it rides on the result rows themselves at the
@@ -294,6 +347,15 @@ class TreeProvenanceColumnsTest(FakePipelineMixin, unittest.TestCase):
         expected = 'fake_log__fake__pair.pkl'
         self.assertTrue(df.iloc[0]['tree_cache_file'].endswith(expected))
         self.assertTrue(node_df.iloc[0]['tree_cache_file'].endswith(expected))
+
+    def test_the_cache_path_is_recorded_with_forward_slashes(self):
+        """A portable path rather than this machine's separator, so a
+        result CSV stays legible away from Windows."""
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table)
+        df, node_df, _timings = self._run()
+        for frame in (df, node_df):
+            self.assertNotIn('\\', frame.iloc[0]['tree_cache_file'])
+            self.assertIn('/', frame.iloc[0]['tree_cache_file'])
 
     def test_a_failed_discovery_leaves_the_provenance_columns_empty(self):
         def boom(log):

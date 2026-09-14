@@ -23,6 +23,32 @@ All notable changes to this project will be documented in this file.
   `observed_alignment_mass` and `_alignment_values` gained a `ratio=`
   parameter for this; their default behaviour is unchanged.
 
+* `run.sh --seed N` sets `PYTHONHASHSEED` before invoking the command, so a
+  first discovery (a tree-cache miss) can be made reproducible. It has to
+  live in the wrapper script rather than as a Python CLI flag: the
+  interpreter reads `PYTHONHASHSEED` at startup, so by the time a `main()`
+  could parse a flag its own hash seed is already fixed. Recognised in
+  first position only, so it can't swallow an argument meant for the
+  command.
+
+* `lab.run_history`: a run-history CSV (`var/lab/results/run_history.csv`
+  by default), one row per run, appended and never overwritten. Holds the
+  run timestamp, `out_csv` as the join key back to the results, the
+  resolved config (logs, combos, degradations, levels), which metrics were
+  scored and which were therefore excluded, both packages' versions with
+  git commit and dirty state, and `PYTHONHASHSEED` as the interpreter
+  actually saw it - recorded as `unset` when it was not set, since a blank
+  cell reads back as NaN and can't be told from a column that was never
+  written. `lab.run` appends a row after the result CSVs are safely on
+  disk; neither building nor writing the row can fail a completed run.
+  Deliberately not an upsert like `_merge_write`: a rerun to the same
+  `out_csv` is a second run, not a correction of the first.
+
+  Paths in both this file and the results' own `tree_cache_file` column
+  are written with forward slashes rather than the producing machine's
+  separator, so a result set stays legible - and joinable against a path
+  typed by hand - away from Windows.
+
 * `lab.collection_report`: which `lab.metric_registry` ids have real
   (non-null) values recorded for which logs, across every root-level
   result CSV in `var/lab/results`, as a Markdown table. Answers "has this

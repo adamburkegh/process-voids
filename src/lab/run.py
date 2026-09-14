@@ -41,6 +41,7 @@ from lab.logconfig import configure, enable_skipalignments_debug
 from lab.metrics import mean_leaf_skipprob
 from lab.params import (
     ALL_COMBOS, ALL_DEGRADATIONS, ALL_LEVELS, CLASSICAL_ALIGNMENT_TIMEOUT)
+from lab.run_history import DEFAULT_RUN_HISTORY_CSV, record_run
 from lab.runs import Experiment, RUNS
 from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
@@ -323,12 +324,18 @@ def _compute_no_degradation_cell(log_name, combo_name, log, tree, ppt_weights, c
 
 
 def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_LEVELS,
-       metrics=None, out_csv='var/lab/results/run.csv', node_out_csv=None, timings_out_csv=None):
+       metrics=None, out_csv='var/lab/results/run.csv', node_out_csv=None, timings_out_csv=None,
+       run_history_csv=DEFAULT_RUN_HISTORY_CSV, run_name=''):
     """
     Runs every (log, combo, degradation_dim, degradation_level) cell -
     or, if `degradations` is empty, one (log, combo) cell with no
     degradation at all - and writes the root/node/timings CSVs. Returns
     (root_df, node_df, timings_df).
+
+    Also appends one row to the run-history CSV, joinable to the results
+    on out_csv - see lab.run_history for what it holds and why a text
+    log isn't enough. Written last, after the results are safely on
+    disk, and unable to fail the run.
     """
     selected_metrics = _resolve_metrics(metrics)
     null_metric_values = _null_metric_values(selected_metrics)
@@ -350,8 +357,10 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
             try:
                 found = discover_cached(log_name, combo_name, combo, base_log)
                 tree, ppt_weights = found.tree, found.ppt_weights
+                # as_posix, not str: a result CSV carrying this machine's
+                # separator is harder to read anywhere else.
                 tree_provenance = {'tree_source': found.source,
-                                   'tree_cache_file': str(found.cache_path)}
+                                   'tree_cache_file': found.cache_path.as_posix()}
                 discover_status = 'ok'
             except NotImplementedError:
                 tree, ppt_weights = None, None
@@ -525,6 +534,10 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
     timings_df.to_csv(timings_out_csv, index=False)
     logger.info('Wrote %d timing rows to %s', len(timings_df), timings_out_csv)
 
+    record_run(run_history_csv, out_csv=out_csv, log_paths=log_paths,
+               combos=list(combos), degradations=list(degradations), levels=levels,
+               metric_ids=[m.id for m in selected_metrics], run_name=run_name)
+
     return df, node_df, timings_df
 
 
@@ -626,7 +639,7 @@ def main():
     df, node_df, timings_df = run(
         log_paths=experiment.log_paths, combos=experiment.combos,
         degradations=experiment.degradations, levels=experiment.levels,
-        metrics=args.metrics, out_csv=out_csv)
+        metrics=args.metrics, out_csv=out_csv, run_name=experiment.name)
     print(df)
     logger.info("Wrote %s (%d rows), %d node rows and %d timing rows",
                 out_csv, len(df), len(node_df), len(timings_df))
