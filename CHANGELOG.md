@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `lab.collection_report`: which `lab.metric_registry` ids have real
+  (non-null) values recorded for which logs, across every root-level
+  result CSV in `var/lab/results`, as a Markdown table. Answers "has this
+  been collected at all", not what its latest value is or whether the id
+  is still live - a retired id still reads as collected from before it
+  was retired. Rows are attributed by a CSV's own `log` column rather
+  than its filename, so ad hoc and probe runs count like a named sweep.
+* `bpic2020_rfp` joins the log catalogue and gains a named run.
+
 * Three squash-review reports in `process_voids.util`, beside
   `release_check`, each runnable as a single command and each defaulting
   to `HEAD` against the index (the staged change under review):
@@ -69,6 +78,12 @@ All notable changes to this project will be documented in this file.
   `lab.metric_registry`, which now owns that.
 
 ### Fixed
+
+* `lab.plots`' panel list still named the `alignment_coverage_pn_*`
+  columns retired in 0.5.0, so plotting any result CSV written since
+  raised a `KeyError`; its own test fixtures used the same retired names,
+  which is why the suite stayed green. The panels now read
+  `alignment_coverage_pn2_*`, and `voidsalign` gains one.
 
 * `lab.run`'s root-level row always included every `ALL_METRICS` id
   regardless of a restricted `metrics=` selection - `_compute_cell` built it
