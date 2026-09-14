@@ -9,7 +9,8 @@ import unittest
 import pandas as pd
 
 from lab.degradation import (
-    degrade_activity_wise, degrade_activity_wise_gradual, degrade_target_subprocess,
+    degrade_activity_wise, degrade_activity_wise_gradual,
+    degrade_activity_by_frequency, degrade_target_subprocess,
 )
 
 
@@ -20,6 +21,18 @@ def make_log(activities, n_per_activity=10):
     i = 0
     for a in activities:
         for _ in range(n_per_activity):
+            rows.append({'case:concept:name': f'c{i}', 'concept:name': a})
+            i += 1
+    return pd.DataFrame(rows)
+
+
+def make_uneven_log(activity_counts):
+    '''activity_counts: {activity: event_count} - a log with each
+    activity occurring exactly that many times, one case per event.'''
+    rows = []
+    i = 0
+    for a, count in activity_counts.items():
+        for _ in range(count):
             rows.append({'case:concept:name': f'c{i}', 'concept:name': a})
             i += 1
     return pd.DataFrame(rows)
@@ -80,6 +93,75 @@ class GradualActivityDegradationTest(unittest.TestCase):
         self.assertEqual(len(dropped), 2)
         counts = degraded['concept:name'].value_counts().to_dict()
         self.assertTrue(all(c in (0, 10) for c in counts.values()))
+
+
+class FrequencyGradualActivityDegradationTest(unittest.TestCase):
+    def setUp(self):
+        # deliberately constructed in descending order, distinct from
+        # frequency order, so a test passing by accident of insertion
+        # order rather than actually sorting by count would be caught
+        self.log = make_uneven_log({'d': 4, 'c': 3, 'b': 2, 'a': 1})
+
+    def _counts(self, level):
+        degraded, dropped = degrade_activity_by_frequency(self.log, level)
+        counts = degraded['concept:name'].value_counts().to_dict()
+        return {a: counts.get(a, 0) for a in ('a', 'b', 'c', 'd')}, dropped
+
+    def test_zero_level_drops_nothing(self):
+        counts, dropped = self._counts(0.0)
+        self.assertEqual(dropped, set())
+        self.assertEqual(counts, {'a': 1, 'b': 2, 'c': 3, 'd': 4})
+
+    def test_full_level_drops_everything(self):
+        counts, dropped = self._counts(1.0)
+        self.assertEqual(dropped, {'a', 'b', 'c', 'd'})
+        self.assertEqual(counts, {'a': 0, 'b': 0, 'c': 0, 'd': 0})
+
+    def test_rarest_activity_drops_first(self):
+        # level 0.1 of 10 total events = 1 event - exactly 'a's count
+        counts, dropped = self._counts(0.1)
+        self.assertEqual(dropped, {'a'})
+        self.assertEqual(counts, {'a': 0, 'b': 2, 'c': 3, 'd': 4})
+
+    def test_dose_is_fraction_of_events_not_of_distinct_activities(self):
+        # level 0.3 of 10 total events = 3 events = exactly a(1) + b(2) -
+        # two of four activities dropped for 30% of the EVENT volume,
+        # not 30% of the activity count (which would round to ~1 activity)
+        counts, dropped = self._counts(0.3)
+        self.assertEqual(dropped, {'a', 'b'})
+        self.assertEqual(sum(counts.values()), 7)
+
+    def test_boundary_activity_is_partially_dropped(self):
+        # level 0.45 -> target 4.5 events: a(1)+b(2) fully gone (3), c's
+        # own 3 events get a partial drop for the remaining 1.5 (rounds
+        # to 2) - c is NOT in `dropped` (not fully removed), d untouched
+        counts, dropped = self._counts(0.45)
+        self.assertEqual(dropped, {'a', 'b'})
+        self.assertEqual(counts['c'], 1)
+        self.assertEqual(counts['d'], 4)
+
+    def test_ties_in_frequency_broken_by_activity_name(self):
+        log = make_uneven_log({'m': 10, 'z': 5, 'a': 5})
+        degraded, dropped = degrade_activity_by_frequency(log, 0.25)  # target 5 events
+        self.assertEqual(dropped, {'a'})
+
+    def test_monotonically_nested_across_levels(self):
+        degraded_low, _ = degrade_activity_by_frequency(self.log, 0.3)
+        degraded_high, _ = degrade_activity_by_frequency(self.log, 0.7)
+        remaining_low = set(degraded_low.index)
+        remaining_high = set(degraded_high.index)
+        self.assertTrue(remaining_high.issubset(remaining_low))
+
+    def test_deterministic_across_repeated_calls(self):
+        # no seed parameter at all - frequency order is a fixed property
+        # of the log, and the one remaining random step (which of the
+        # boundary activity's own events get dropped) uses a fixed,
+        # activity-keyed seed internally
+        _, dropped_1 = degrade_activity_by_frequency(self.log, 0.45)
+        degraded_2, dropped_2 = degrade_activity_by_frequency(self.log, 0.45)
+        _, dropped_1_again = degrade_activity_by_frequency(self.log, 0.45)
+        self.assertEqual(dropped_1, dropped_1_again)
+        self.assertEqual(sorted(degraded_2.index), sorted(degraded_2.index))
 
 
 def make_case_log(case_activities):

@@ -66,6 +66,57 @@ def degrade_activity_wise_gradual(log: pd.DataFrame, level: float,
     return log[~mask].copy(), dropped
 
 
+def degrade_activity_by_frequency(log: pd.DataFrame, level: float) -> Tuple[pd.DataFrame, Set[str]]:
+    '''
+    Activities dropped rarest-first by event count, one at a time, until
+    roughly `level` of the log's total EVENT volume is gone - unlike
+    degrade_activity_wise(_gradual), whose dose is a count of distinct
+    activity labels regardless of how much event volume each one
+    represents. level=0.5 here means "half the log's events are gone",
+    not "half the distinct labels are gone", so the dose corresponds to
+    an actual, meaningful quantity - how much of the log's behaviour has
+    disappeared - rather than a count that a single very common or very
+    rare activity can dominate arbitrarily.
+
+    No seed, unlike the other activity-wise degradations: frequency
+    order is a real, fixed property of the log, not an arbitrary choice
+    that needs averaging over multiple random orderings to be
+    informative (a seeded shuffle's specific draw is itself a confound -
+    see the mechanism this replaces). Ties in frequency are broken by
+    activity label for reproducibility. The one remaining randomised
+    step - which of the boundary activity's own events are the ones
+    dropped to hit the target fraction exactly - uses a fixed,
+    activity-keyed seed, matching degrade_activity_wise_gradual's own
+    convention for the same problem.
+
+    dropped: activities fully removed (same convention as
+    degrade_activity_wise_gradual - the boundary activity being
+    partially dropped to hit the target exactly is not included).
+    '''
+    counts = log['concept:name'].value_counts()
+    activities_rarest_first = sorted(counts.index, key=lambda a: (counts[a], a))
+    target_events = level * len(log)
+
+    dropped = set()
+    events_dropped = 0
+    mask = pd.Series(False, index=log.index)
+    for activity in activities_rarest_first:
+        activity_count = counts[activity]
+        if events_dropped + activity_count <= target_events:
+            dropped.add(activity)
+            events_dropped += activity_count
+            mask = mask | (log['concept:name'] == activity)
+        else:
+            remaining = target_events - events_dropped
+            if remaining > 0:
+                current_idx = list(log.index[log['concept:name'] == activity])
+                random.Random(f'freq_gradual:{activity}').shuffle(current_idx)
+                n_drop_current = round(remaining)
+                mask = mask | log.index.isin(current_idx[:n_drop_current])
+            break
+    return log[~mask].copy(), dropped
+
+
 def degrade_trace_wise(log: pd.DataFrame, level: float,
                         seed: int = 42) -> Tuple[pd.DataFrame, Set[str]]:
     cases = sorted(log['case:concept:name'].unique())
@@ -85,6 +136,7 @@ DEGRADATIONS = {
     # degrade_activity_wise stays directly importable for anything that
     # specifically wants the step behaviour.
     'activity_gradual': degrade_activity_wise_gradual,
+    'activity_frequency_gradual': degrade_activity_by_frequency,
     'trace': degrade_trace_wise,
 }
 
