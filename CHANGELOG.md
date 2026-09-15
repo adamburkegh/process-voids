@@ -6,6 +6,32 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `partial_sequence`, a third fixture (`lab.fixtures.
+  build_partial_sequence_log`/`build_partial_sequence_tree`,
+  `data/partial_sequence.xes`): `seq(o, seq(x, y, z), p)` over three
+  traces recording the inner sequence completely, without its middle
+  step, and without two of three. Named for what it tests rather than a
+  domain, since it models nothing. Every trace has exactly one optimal
+  alignment, so the inner sequence reads partial 0, 1/3 and 2/3
+  undiluted - which `payment_partial` cannot show, because completing a
+  loop traversal and discarding an escalation cost the same there, so
+  the partial explanation is always one of two ties. The subprocess is
+  traversed in all three traces, so its skip probability is 0
+  throughout and only completeness varies.
+* `payment_partial`, a second running-example fixture beside
+  `payment_approval` (`lab.fixtures.build_payment_partial_log`/
+  `build_payment_partial_tree`, `data/payment_partial.xes`, registered in
+  `lab.params.ALL_LOGS`). Same story, in the shape `inductive_noise20`
+  discovers from it - `seq(o, xor(tau, loop(a, e)), s, p)`, hand-built so
+  a test against it does not depend on discovery's cross-process
+  tie-break - and two extra traces where a subprocess is TRAVERSED BUT
+  RECORDED INCOMPLETELY. Every absence in `payment_approval` is a whole
+  traversal, so skip probability accounts for all of it and a partial
+  term has nothing to fire on; in `sigma7` the loop's closing `a` is
+  unrecorded, so the loop ran (skip probability 0) while a third of its
+  moves went unobserved. `sigma8` is the same variant with different
+  timings, for the duration-based metrics. `payment_approval` is
+  unchanged, so numbers pinned against it stay valid.
 * `voidsalign2` (`process_voids.voidsalign2`), Definitions [Coverage by
   Skip-Weighted Alignment Correspondence] and [Void by Skip-Weighted
   Alignment Correspondence]: `1 - (1 - skip_prob) * mass`, where the mass

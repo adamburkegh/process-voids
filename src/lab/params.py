@@ -11,6 +11,8 @@ from lab.discovery import COMBOS
 
 ALL_LOGS = {
     'payment_approval': 'data/payment_approval.xes',
+    'payment_partial': 'data/payment_partial.xes',
+    'partial_sequence': 'data/partial_sequence.xes',
     'rtfm': 'C:/working/data/rtfm.xes',
     'sepsis': 'C:/working/data/sepsis.xes',
     'bpi2013_incidents': 'C:/working/data/BPI_Challenge_2013_incidents.xes',
