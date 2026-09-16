@@ -59,16 +59,12 @@ _ALL = frozenset(name for name, _regex, _why in FORBIDDEN_PATTERNS)
 
 # path -> pattern names that file is allowed to contain.
 #
-# lab/params.py catalogues the large logs, which by agreed convention live
-# outside the repository at absolute paths; the allowance is that pattern
-# only, so the same file naming a private file is still reported.
-#
-# This module and its tests are allowed everything: the module has to
-# spell out each pattern it looks for, and the tests have to exercise
-# them, so scanning either against itself could only ever report its own
-# pattern list.
+# Only this module and its tests, which are allowed everything: the module
+# has to spell out each pattern it looks for, and the tests have to
+# exercise them, so scanning either against itself could only ever report
+# its own pattern list. Machine paths belong in pvoid.toml, so no other
+# file has a reason to hold one.
 ALLOWANCES = {
-    'src/lab/params.py': frozenset({'absolute_path'}),
     'src/process_voids/util/squash_review.py': _ALL,
     'tests/process_voids/test_squash_review.py': _ALL,
 }
@@ -192,26 +188,48 @@ def _section(title, body):
     return f'== {title} ==\n{body}'
 
 
+def comparison_base(base, target, cwd=None):
+    """
+    The ref to compare `target` from: the merge base of the two when both
+    are commits, else `base` itself.
+
+    Reviewing a branch against a trunk that has moved on since the branch
+    was cut would otherwise compare two trees, so the trunk's newer work
+    reads as the branch removing it - registry ids reported removed, tests
+    reported dropped. From the merge base, only the branch's own changes
+    show. The index is built on its base commit, so a comparison involving
+    it needs no adjustment.
+    """
+    if is_index(base) or is_index(target):
+        return base
+    return run_git(['merge-base', base, target], cwd=cwd).strip()
+
+
 def build_report(base='HEAD', target=INDEX, cwd=None) -> str:
     """The combined report. Raises GitError or SyntaxError if a ref or
     the registry at it cannot be read."""
+    start = comparison_base(base, target, cwd=cwd)
     registry = registry_diff.diff_registries(
-        registry_diff.load_metrics(base, cwd=cwd),
+        registry_diff.load_metrics(start, cwd=cwd),
         registry_diff.load_metrics(target, cwd=cwd))
     names = test_name_diff.diff_test_names(
-        test_name_diff.collect_test_names(base, TEST_PATHS, cwd=cwd),
+        test_name_diff.collect_test_names(start, TEST_PATHS, cwd=cwd),
         test_name_diff.collect_test_names(target, TEST_PATHS, cwd=cwd))
 
-    stat = diff_stat(base, target, cwd=cwd)
-    changelog = changelog_note(changed_files(base, target, cwd=cwd))
+    stat = diff_stat(start, target, cwd=cwd)
+    changelog = changelog_note(changed_files(start, target, cwd=cwd))
+
+    header = f'Squash review: {base} -> {target}'
+    if start != base and start != run_git(['rev-parse', base], cwd=cwd).strip():
+        header += f' (from their merge base {start[:12]})'
 
     return '\n\n'.join([
-        f'Squash review: {base} -> {target}',
+        header,
         _section('Diff stat', stat or 'No changes.'),
         _section('Registry', registry_diff.format_report(registry)),
         _section('Test names', test_name_diff.format_report(names)),
         _section('Public-repo hygiene',
-                 _format_hits(scan_added_lines(added_lines(base, target, cwd=cwd)))),
+                 _format_hits(scan_added_lines(added_lines(start, target, cwd=cwd)))),
         _section('CHANGELOG', changelog or 'No src/ change without a CHANGELOG entry.'),
     ])
 

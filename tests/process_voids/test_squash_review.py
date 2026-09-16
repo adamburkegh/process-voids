@@ -150,21 +150,20 @@ class ScanAddedLinesTest(unittest.TestCase):
         string or docstring is text about markers, not a leftover."""
         self.assertEqual(scan_added_lines([('f', 1, "    '" + '<' * 7 + " HEAD'")]), [])
 
-    def test_params_py_may_hold_absolute_paths_to_external_logs(self):
-        """Agreed convention: the large logs live outside the repo, and
-        lab/params.py is where their paths are catalogued."""
+    def test_params_py_is_held_to_the_same_rule_as_every_other_file(self):
+        """Machine paths live in pvoid.toml now, so an absolute path
+        reappearing in lab/params.py is a regression, not a convention."""
         added = [('src/lab/params.py', 14, "    'rtfm': 'C:/working/data/rtfm.xes',")]
-        self.assertEqual(scan_added_lines(added), [])
+        self.assertEqual(_hits(added), {('src/lab/params.py', 14, 'absolute_path')})
 
-    def test_the_params_py_allowance_covers_absolute_paths_only(self):
-        """The exception is narrow: params.py naming a private file is
-        still a violation."""
-        added = [('src/lab/params.py', 3, '# derived in labnotes.md')]
-        self.assertEqual(_hits(added), {('src/lab/params.py', 3, 'labnotes')})
-
-    def test_an_absolute_path_elsewhere_is_still_flagged(self):
+    def test_an_absolute_path_elsewhere_is_flagged(self):
         added = [('src/lab/run.py', 9, "LOG = 'C:/working/data/rtfm.xes'")]
         self.assertEqual(_hits(added), {('src/lab/run.py', 9, 'absolute_path')})
+
+    def test_only_the_tool_and_its_tests_are_allowed_anything(self):
+        """They have to spell out each pattern; nothing else has a reason to."""
+        self.assertEqual(set(ALLOWANCES), {'src/process_voids/util/squash_review.py',
+                                           'tests/process_voids/test_squash_review.py'})
 
     def test_allowances_name_only_real_patterns(self):
         for path, allowed in ALLOWANCES.items():
@@ -254,6 +253,65 @@ class BuildReportTest(unittest.TestCase):
         self.repo.commit()
         report = build_report('HEAD~1', 'HEAD', cwd=self.repo.path)
         self.assertIn('src/lab/new.py:1', report)
+
+    def test_no_merge_base_note_where_the_base_has_not_moved(self):
+        """The base is already the merge base here, so the note would
+        only suggest a difference that is not there."""
+        self.repo.write('src/lab/new.py', 'X = 1\n')
+        self.repo.commit()
+        report = build_report('HEAD~1', 'HEAD', cwd=self.repo.path)
+        self.assertNotIn('merge base', report.splitlines()[0])
+
+
+class BranchBehindTrunkTest(unittest.TestCase):
+    """A branch cut before trunk moved on. Reviewing it against trunk
+    must report the branch's own changes - not trunk's newer work, which
+    a plain two-tree comparison shows as the branch removing it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.repo = _Repo(self.tmp.name)
+        git = self.repo._git
+
+        self.repo.write('src/lab/metric_registry.py', _registry('a'))
+        self.repo.write('tests/test_x.py', 'def test_kept():\n    pass\n')
+        self.repo.write('CHANGELOG.md', '# Changelog\n')
+        self.repo.commit('base')
+        git('branch', '-M', 'trunk')
+
+        git('checkout', '-q', '-b', 'feature')
+        self.repo.write('src/lab/feature.py', 'X = 1\n')
+        self.repo.write('CHANGELOG.md', '# Changelog\n\n* feature\n')
+        self.repo.commit('feature work')
+
+        git('checkout', '-q', 'trunk')
+        self.repo.write('src/lab/metric_registry.py', _registry('a', 'b'))
+        self.repo.write('tests/test_x.py',
+                        'def test_kept():\n    pass\n\ndef test_on_trunk():\n    pass\n')
+        self.repo.write('CHANGELOG.md', '# Changelog\n\n* trunk\n')
+        self.repo.commit('trunk moves on')
+
+        self.report = build_report('trunk', 'feature', cwd=self.repo.path)
+
+    def test_trunks_newer_registry_id_is_not_reported_as_removed(self):
+        self.assertNotIn('- b', self.report)
+        self.assertIn('No registry changes.', self.report)
+
+    def test_trunks_newer_test_is_not_reported_as_dropped(self):
+        self.assertNotIn('test_on_trunk', self.report)
+        self.assertIn('No test names dropped.', self.report)
+
+    def test_the_diff_stat_holds_only_the_branchs_own_files(self):
+        stat = self.report.split('== Diff stat ==')[1].split('==')[0]
+        self.assertIn('src/lab/feature.py', stat)
+        self.assertNotIn('metric_registry.py', stat)
+        self.assertNotIn('test_x.py', stat)
+
+    def test_the_header_names_the_merge_base_it_compared_from(self):
+        """So a reader can see the comparison was not against trunk's tip."""
+        merge_base = self.repo._git('merge-base', 'trunk', 'feature').stdout.strip()
+        self.assertIn(merge_base[:7], self.report.splitlines()[0])
 
 
 class MainTest(unittest.TestCase):

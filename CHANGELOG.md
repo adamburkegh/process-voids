@@ -61,11 +61,8 @@ All notable changes to this project will be documented in this file.
   private lab notebook, the gitignored paper and report directories, the
   private archive repository, per-machine agent configuration, absolute
   Windows paths, and merge conflict markers at the start of a line.
-  Allowances are per file and per pattern:
-  `lab/params.py` may hold absolute paths, since the large logs live
-  outside the repository by agreed convention, but is still reported for
-  anything else; the tool and its tests may hold every pattern, since they
-  have to spell each one out. The CHANGELOG note is worded as a report - a
+  Only the tool and its tests are allowed any pattern, since they have to
+  spell each one out. The CHANGELOG note is worded as a report - a
   docstring-only change needs no entry. Like the others it reports rather
   than gates, exiting non-zero only on an internal error, and it does not
   run the test suite.
@@ -338,6 +335,15 @@ All notable changes to this project will be documented in this file.
   remain readable.
 
 ### Fixed
+
+* `process_voids.util.squash_review` given two refs compared their trees,
+  so reviewing a branch against a trunk that had moved on since the branch
+  was cut reported the trunk's newer work as the branch removing it -
+  registry ids as removed, tests as dropped. It now compares from their
+  merge base, and says so in the report's first line when that differs
+  from the base named. HEAD against the index, the default, is unchanged.
+  Its allowance for absolute paths in `lab/params.py` is gone: machine
+  paths live in `pvoid.toml`, so one reappearing there is now reported.
 
 * `lab.print_tree` raised `TypeError` on every invocation: it unpacked
   `discover_cached`'s return as a `(tree, ppt_weights)` pair after that
