@@ -8,22 +8,17 @@ _Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. A
 
 ## Building and Running
 
-This project is under development, and requires [skip-alignments](https://github.com/adamburkegh/skip-alignments) as a local dependency.
-
-Clone skip-alignments. In skip-alignments, perhaps in a venv:
-```
-pip install -e .
-```
-
 In process-voids, perhaps in a venv:
 
 ```
 pip install -e .
 ```
 
-Install [ebi](https://bpm.rwth-aachen.de/ebi/) and create a link in the local directory, or set the `skipalignments.probabilities.EBI_EXECUTABLE` constant to the path of the executable.
+Install [ebi](https://bpm.rwth-aachen.de/ebi/).
 
-Calculate skip probabilities and coverage on a XES event log and a PTML process tree model.
+Configure paths to ebi, data files, and so on in `pvoid.toml`.
+
+To calculate skip probabilities and coverage on a XES event log and a PTML process tree model:
 
 ```
 python -m process_voids.pvoid <log> <model>
