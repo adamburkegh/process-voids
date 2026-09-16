@@ -5,22 +5,21 @@ design direction and handles all source control on `main`.
 
 ## Environment
 
-- Windows. Python 3.14 at `C:\working\tools\python\python314`.
+- Windows, Python 3.14.
+- **Machine-specific paths** (Python, ebi, the large logs, the papers) are in
+  `pvoid.toml` in the main checkout's root, gitignored. Copy it from
+  `pvoid.example.toml`; every worktree finds it there.
 - The project venv is `pvoid/` at the repo root (gitignored). Run everything
   through `run.sh`, which activates it: `bash run.sh python -m ...`. Run from
   the repo root; don't prefix commands with `cd`.
-- **ebi**: skip-alignments calls `ebi` by bare name, so it must be on PATH. It
-  is installed at `C:\working\tools\ebi\ebi.exe` and hard-linked into
-  `pvoid\Scripts\ebi.exe`, so activating the venv puts it on PATH. Don't set
-  environment variables or override `EBI_EXECUTABLE` per command.
-- **Machine-specific paths** live in `pvoid.toml` (gitignored), not in code or
-  environment variables. Copy `pvoid.example.toml` to `pvoid.toml` in the main
-  checkout; every worktree finds it there. It sets where the large logs and
-  toothpaste are installed, and optionally the ebi executable.
+- **ebi**: importing `process_voids.pvoid` points skip-alignments at
+  `[tools] ebi`. Anything that doesn't falls back to bare `ebi` on PATH, which
+  the hard-link in `pvoid\Scripts` provides. Don't set environment variables
+  for it.
 - **Logs**: small fixtures are in `data/`; large logs (rtfm, sepsis, BPI) live
-  outside the repo, under `[paths] data_dir`. Register one in `lab/params.py`
-  as `ExternalLog('<filename>')`.
-- **Papers**: The relevant papers can be found in /c/working/data which you have permission to read
+  outside the repo. Register one in `lab/params.py` as
+  `ExternalLog('<filename>')`.
+- **Papers**: you have permission to read the papers directory.
 - **Dependencies**: declared in `pyproject.toml`. After changing it, reinstall
   with `bash run.sh pip install -e .`. `requirements.txt` is a `pip freeze`
   record of the environment - regenerate it, don't hand-edit it. Don't add
@@ -32,14 +31,14 @@ design direction and handles all source control on `main`.
   checkout:
 
   ```
-  C:\working\tools\python\python314\python.exe -m venv pvoid
+  <python> -m venv pvoid
   bash run.sh pip install -e .
   ```
 
   then hard-link ebi into it (PowerShell):
 
   ```
-  New-Item -ItemType HardLink -Path pvoid\Scripts\ebi.exe -Target C:\working\tools\ebi\ebi.exe
+  New-Item -ItemType HardLink -Path pvoid\Scripts\ebi.exe -Target <ebi>
   ```
 
 - Check imports resolve inside the worktree before trusting any result:
