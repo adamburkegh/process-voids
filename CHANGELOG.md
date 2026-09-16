@@ -14,6 +14,24 @@ All notable changes to this project will be documented in this file.
   a registered column rather than inverting `skipprob` itself. The first
   such consumer is the dose-response plots, which invert `skipprob` by
   name today.
+* `process_voids.util.squash_review`: the whole squash review as one
+  command, defaulting to `HEAD` against the index like the other review
+  tools. Prints the diff stat, `registry_diff`'s and `test_name_diff`'s
+  reports (called as functions, not shelled out to), a scan of added lines
+  for anything that must not reach this public repository, and a note
+  where `src/` changed without `CHANGELOG.md`. The scan's patterns are a
+  module constant, each commented with what it catches: references to the
+  private lab notebook, the gitignored paper and report directories, the
+  private archive repository, per-machine agent configuration, absolute
+  Windows paths, and merge conflict markers at the start of a line.
+  Allowances are per file and per pattern:
+  `lab/params.py` may hold absolute paths, since the large logs live
+  outside the repository by agreed convention, but is still reported for
+  anything else; the tool and its tests may hold every pattern, since they
+  have to spell each one out. The CHANGELOG note is worded as a report - a
+  docstring-only change needs no entry. Like the others it reports rather
+  than gates, exiting non-zero only on an internal error, and it does not
+  run the test suite.
 * `partial_sequence`, a third fixture (`lab.fixtures.
   build_partial_sequence_log`/`build_partial_sequence_tree`,
   `data/partial_sequence.xes`): `seq(o, seq(x, y, z), p)` over three
