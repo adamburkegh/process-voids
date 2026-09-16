@@ -7,7 +7,7 @@ registration, so there's a single plot function rather than one per
 experiment script).
 
 plot_dose_response: weight_coverage / skipprob / salign_coverage /
-alignment_coverage_pn2 / voidmass_process vs
+voidsalign2 / voidsat2 / alignment_coverage_pn2 / voidmass_process vs
 degradation_level, one figure per (log, facet value), one line per
 `line_by` value within it. weight_voidage isn't plotted separately -
 it's exactly 1 - weight_coverage, so its own panel would just be a
@@ -60,7 +60,8 @@ METRICS = [
     ('weight_coverage', ('weight_coverage',)),
     ('skipprob', ('skipprob',)),
     ('salign_coverage', ('salign_coverage',)),
-    ('voidsalign', ('voidsalign',)),
+    ('voidsalign2', ('voidsalign2',)),
+    ('voidsat2', ('voidsat2',)),
     ('alignment_coverage_pn2', ('alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')),
     ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
 ]

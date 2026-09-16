@@ -76,13 +76,6 @@ RUNS = {
         degradations=ALL_DEGRADATIONS,
         levels=ALL_LEVELS,
     ),
-    'bpi2013_incidents': Experiment(
-        name='bpi2013_incidents',
-        log_paths=[ALL_LOGS['bpi2013_incidents']],
-        combos=ALL_COMBOS,
-        degradations=ALL_DEGRADATIONS,
-        levels=ALL_LEVELS,
-    ),
     'payment_approval': Experiment(
         name='payment_approval',
         log_paths=[ALL_LOGS['payment_approval']],
@@ -93,6 +86,13 @@ RUNS = {
     'bpic2020_rfp': Experiment(
         name='bpic2020_rfp',
         log_paths=[ALL_LOGS['bpic2020_rfp']],
+        combos=ALL_COMBOS,
+        degradations=ALL_DEGRADATIONS,
+        levels=ALL_LEVELS,
+    ),
+    'bpi2013_closed_problems': Experiment(
+        name='bpi2013_closed_problems',
+        log_paths=[ALL_LOGS['bpi2013_closed_problems']],
         combos=ALL_COMBOS,
         degradations=ALL_DEGRADATIONS,
         levels=ALL_LEVELS,

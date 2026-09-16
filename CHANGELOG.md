@@ -161,6 +161,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `bpi2013_closed_problems` replaces `bpi2013_incidents` in the log
+  catalogue and as a named run, so `--run full` now sweeps closed
+  problems rather than incidents.
+
 * `coveragemass.block` no longer excludes silent (`TauPath`) moves, and
   `coveragemass.mdur` no longer returns 0 for one. Skip alignments have no
   silent move type - Definition 5 of the skip-alignment paper makes every
@@ -238,6 +242,11 @@ All notable changes to this project will be documented in this file.
   remain readable.
 
 ### Fixed
+
+* `lab.plots`' panel list still named `voidsalign` after it was retired
+  in favour of `voidsalign2`, so plotting a result CSV written since
+  raised a `KeyError`. The panel now reads `voidsalign2`, and `voidsat2`
+  gains a panel of its own.
 
 * `lab.plots`' panel list still named the `alignment_coverage_pn_*`
   columns retired in 0.5.0, so plotting any result CSV written since

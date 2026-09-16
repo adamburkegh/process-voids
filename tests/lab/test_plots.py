@@ -23,7 +23,7 @@ def fake_disco_df():
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'status': 'ok',
             'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-            'voidsalign': 0.05,
+            'voidsalign2': 0.05, 'voidsat2': 0.03,
             'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
             'voidmass_process_lower': 0.04, 'voidmass_process_upper': 0.05,
         })
@@ -43,7 +43,7 @@ def fake_claims_shaped_df():
                 'log': 'claims', 'combo': 'claims_known', 'degradation_dim': target,
                 'degradation_level': level, 'status': 'ok',
                 'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
-                'voidsalign': 0.05,
+                'voidsalign2': 0.05, 'voidsat2': 0.03,
                 'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
                 'voidmass_process_lower': 0.01 * level, 'voidmass_process_upper': 0.01 * level,
             })
@@ -67,12 +67,12 @@ def fake_node_df():
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
             'alphabet': 'a', 'weight_coverage': weight_coverage,
             'weight_voidage': 1 - weight_coverage, 'skipprob': skipprob,
-            'salign_coverage': 0.9, 'voidsalign': 0.05,
+            'salign_coverage': 0.9, 'voidsalign2': 0.05,
             'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
             'voidmass_movecount': 1.0, 'voidmass_movecount_bound': 1.0,
             'voidmass_process_lower': voidmass_process, 'voidmass_process_upper': voidmass_process,
             'alignment_coverage_pn2_lower': 0.85, 'alignment_coverage_pn2_upper': 0.9,
-            'voidsat': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
+            'voidsat2': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
         }
     return pd.DataFrame([
         row('1', 'Activity', 1.0, 0.0, 1.0),

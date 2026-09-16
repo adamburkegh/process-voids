@@ -15,8 +15,8 @@ ALL_LOGS = {
     'partial_sequence': 'data/partial_sequence.xes',
     'rtfm': 'C:/working/data/rtfm.xes',
     'sepsis': 'C:/working/data/sepsis.xes',
-    'bpi2013_incidents': 'C:/working/data/BPI_Challenge_2013_incidents.xes',
     'bpic2020_rfp': 'C:/working/data/BPIC2020_rfp.xes',
+    'bpi2013_closed_problems': 'C:/working/data/BPI_Challenge_2013_closed_problems.xes',
 }
 
 ALL_COMBOS = COMBOS
