@@ -53,6 +53,16 @@ SCHEMA = {
         'ebi': Key('the ebi executable skip-alignments calls to estimate skip '
                    'probabilities', default='ebi'),
     },
+    # Facts an agent or person reads from this file, never code: the
+    # interpreter is needed before any Python runs, and the papers are
+    # for reading. Declared here only because load_config rejects
+    # undeclared sections.
+    'agent': {
+        'python': Key('the Python 3.14 interpreter to create a worktree venv '
+                      'with - not read by code'),
+        'papers_dir': Key('the directory holding the relevant papers - not read '
+                          'by code'),
+    },
 }
 
 

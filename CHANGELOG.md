@@ -23,7 +23,9 @@ All notable changes to this project will be documented in this file.
   `[paths] data_dir` only when opened or named, with forward slashes.
   `[tools] ebi` is optional and defaults to bare `ebi` on PATH - the
   skip-alignments default - so an installed package with no file still
-  finds it.
+  finds it. An `[agent]` section holds machine facts that only agents and
+  people read - the interpreter to build a worktree venv with, and where
+  the papers are - and a test holds that no source module reads it.
 
 * `voidsalign3` (`process_voids.voidsalign3`), Definitions [Coverage by
   Skip Alignment Correspondence] and [Void by Skip Alignment

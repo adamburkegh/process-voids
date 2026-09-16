@@ -8,6 +8,7 @@ worktree is the case the lookup exists for. Nothing here reads this
 machine's own pvoid.toml.
 """
 
+import re
 import subprocess
 import tempfile
 import tomllib
@@ -108,6 +109,17 @@ class LoadConfigTest(unittest.TestCase):
             load_config(path)
         self.assertIn('data_dri', str(caught.exception))
 
+    def test_agent_keys_load_alongside_the_codes_own(self):
+        """Machine facts only agents read - the interpreter to build a
+        venv with, where the papers are - share the one file. Declared,
+        or the loader would reject every pvoid.toml that set them."""
+        path = _write(self.dir / CONFIG_FILENAME,
+                      '[paths]\ndata_dir = "/srv/logs"\n\n'
+                      '[agent]\npython = "/opt/python314/bin/python"\n'
+                      'papers_dir = "/srv/papers"\n')
+        self.assertEqual(load_config(path)['agent'],
+                         {'python': '/opt/python314/bin/python', 'papers_dir': '/srv/papers'})
+
     def test_an_unknown_section_is_rejected(self):
         path = _write(self.dir / CONFIG_FILENAME, '[pathz]\ndata_dir = "/srv/logs"\n')
         with self.assertRaises(ConfigError) as caught:
@@ -155,9 +167,29 @@ class EbiExecutableTest(unittest.TestCase):
                          '/opt/ebi/bin/ebi')
 
 
+class AgentSectionTest(unittest.TestCase):
+    """[agent] holds facts an agent or person reads from the file - the
+    interpreter needed before any Python runs, the papers to read - so
+    no code reads them. That is what keeps the section honest: a key the
+    code starts depending on belongs in [paths] or [tools], with the
+    fail-loudly handling those get."""
+
+    def test_no_source_module_reads_an_agent_key(self):
+        reads = re.compile(r"""value\(\s*['"]agent['"]""")
+        offenders = [str(path.relative_to(REPO_ROOT))
+                     for path in (REPO_ROOT / 'src').rglob('*.py')
+                     if reads.search(path.read_text(encoding='utf-8'))]
+        self.assertEqual(offenders, [])
+
+    def test_every_agent_key_says_it_is_not_read_by_code(self):
+        for key, declared in SCHEMA['agent'].items():
+            with self.subTest(key=key):
+                self.assertIn('not read by code', declared.description)
+
+
 class ExampleFileTest(unittest.TestCase):
     """The tracked example is how a new machine learns what to set, so it
-    must declare exactly the keys the code reads - no more, no fewer."""
+    must hold exactly the schema's keys - no more, no fewer."""
 
     def setUp(self):
         with open(REPO_ROOT / EXAMPLE_FILENAME, 'rb') as f:

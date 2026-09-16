@@ -18,5 +18,16 @@ toothpaste_dir = "/path/to/toothpaste"
 
 [tools]
 # The ebi executable skip-alignments calls. Optional: without it, ebi is
-# found by name on PATH.
+# found by name on PATH. Set it to ebi's install path; a worktree venv's
+# hard-link to ebi is made from this path too (see AGENTS.md).
 ebi = "ebi"
+
+[agent]
+# Read by agents and people setting up a machine, never by code.
+
+# The Python 3.14 interpreter to create a worktree venv with. Needed
+# before any Python runs, so nothing can read it on your behalf.
+python = "/path/to/python314/python"
+
+# The directory holding the relevant papers.
+papers_dir = "/path/to/papers"
