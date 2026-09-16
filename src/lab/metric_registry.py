@@ -172,6 +172,18 @@ METRICS = {
                             "skipprob repointed to the correct lookup.",
                  'v0.5.0': _MASKED_SKIP_PROB_HISTORY},
     ),
+    'matchprob': Metric(
+        id='matchprob',
+        description="1 - skipprob at the scored node: skip-alignments' own "
+                    "published skip probability, reported coverage-way up so it "
+                    "reads the same direction as the other coverage metrics. "
+                    "Carries no information skipprob does not - it exists so a "
+                    "consumer wanting that orientation reads a registered column "
+                    "rather than inverting skipprob itself.",
+        source='dv.skip_probs (1 - the direct lookup)',
+        scripts=('exp_disco_degrade',),
+        scale='coverage',
+    ),
     'mean_leaf_skipprob': Metric(
         id='mean_leaf_skipprob',
         description='Mean of skip_probs[leaf] over EVERY Activity leaf in the '

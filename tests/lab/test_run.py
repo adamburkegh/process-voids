@@ -713,6 +713,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
             self.assertIn(key, row)
 
         self.assertEqual(row['skipprob'], 0.2)
+        self.assertAlmostEqual(row['matchprob'], 0.8)
         self.assertEqual(row['voidmass_deficit_lower'], 0.5)
         self.assertEqual(row['voidmass_deficit_upper'], 0.5)
         self.assertEqual(row['voidmass_movecount'], 1.0)

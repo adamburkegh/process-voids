@@ -43,6 +43,7 @@ class DriftTest(unittest.TestCase):
             'process_voids.coveragemass.voidage_by_weight',
             'process_voids.coveragemass.coverage_by_alignment',
             'dv.skip_probs (direct lookup, no computation of its own)',
+            'dv.skip_probs (1 - the direct lookup)',
             'process_voids.voidsalign2.voidsalign2',
             'lab.metrics.mean_leaf_skipprob',
         }
@@ -64,6 +65,7 @@ class DriftTest(unittest.TestCase):
             'process_voids.coveragemass.voidage_by_weight',
             'process_voids.coveragemass.coverage_by_alignment',
             'dv.skip_probs (direct lookup, no computation of its own)',
+            'dv.skip_probs (1 - the direct lookup)',
             'process_voids.voidsalign2.voidsalign2',
         }
         per_node_ids = {mid for mid, m in METRICS.items() if m.source in per_node_sources

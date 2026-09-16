@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `matchprob`, `1 - skipprob` at the scored node, emitted per node by
+  `lab.run` and at the root by `lab.metrics`, registered live with
+  `scale='coverage'` - so `test_metric_extremes` holds it to 1, 0 and
+  0.5 through the real pipeline. It carries nothing `skipprob` does not;
+  it exists so a consumer wanting skip probability coverage-way up reads
+  a registered column rather than inverting `skipprob` itself. The first
+  such consumer is the dose-response plots, which invert `skipprob` by
+  name today.
 * `partial_sequence`, a third fixture (`lab.fixtures.
   build_partial_sequence_log`/`build_partial_sequence_tree`,
   `data/partial_sequence.xes`): `seq(o, seq(x, y, z), p)` over three

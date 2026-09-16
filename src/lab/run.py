@@ -83,7 +83,8 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
 # lab.metric_registry).
 TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
-PER_NODE_METRIC_KEYS = ('weight_voidage', 'skipprob', 'salign_coverage', 'voidsalign2')
+PER_NODE_METRIC_KEYS = ('weight_voidage', 'skipprob', 'matchprob', 'salign_coverage',
+                         'voidsalign2')
 
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat2',)
 
@@ -134,6 +135,8 @@ ALL_METRICS = [
                   compute=lambda ctx, node: voidage_by_weight(node, ctx.stage('dv').skip_probs)),
     ProcessMetric(id='skipprob', scope='node', needs=('dv',),
                   compute=lambda ctx, node: ctx.stage('dv').skip_probs[node]),
+    ProcessMetric(id='matchprob', scope='node', needs=('dv',),
+                  compute=lambda ctx, node: 1 - ctx.stage('dv').skip_probs[node]),
     ProcessMetric(id='salign_coverage', scope='node', needs=('dv', 'executions_cache'),
                   compute=lambda ctx, node: coverage_by_alignment(
                       node, ctx.stage('dv'), executions_cache=ctx.stage('executions_cache'))),
