@@ -7,9 +7,18 @@ itself.
 '''
 
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from lab.discovery import CachedDiscovery
 from lab.print_tree import discovered_tree_text
+
+
+def _found(tree):
+    """What discover_cached really returns. A bare (tree, weights) tuple
+    here would let a caller that unpacks it as a pair pass, while the
+    real call raises."""
+    return CachedDiscovery(tree, None, 'cached', Path('x__y__pair.pkl'))
 
 
 class DiscoveredTreeTextTest(unittest.TestCase):
@@ -20,7 +29,7 @@ class DiscoveredTreeTextTest(unittest.TestCase):
 
         with patch('lab.print_tree.pm4py.read_xes', return_value=fake_log) as mock_read, \
              patch('lab.print_tree.discover_cached',
-                   return_value=(fake_tree, None)) as mock_discover, \
+                   return_value=_found(fake_tree)) as mock_discover, \
              patch('lab.print_tree.ALL_LOGS', {'payment_approval': 'data/payment_approval.xes'}), \
              patch('lab.print_tree.ALL_COMBOS', {'inductive_noise20': 'fake_combo'}):
             text = discovered_tree_text('payment_approval', 'inductive_noise20')
@@ -36,7 +45,7 @@ class DiscoveredTreeTextTest(unittest.TestCase):
 
         with patch('lab.print_tree.pm4py.read_xes', return_value=object()) as mock_read, \
              patch('lab.print_tree.discover_cached',
-                   return_value=(fake_tree, None)) as mock_discover, \
+                   return_value=_found(fake_tree)) as mock_discover, \
              patch('lab.print_tree.ALL_LOGS', {}), \
              patch('lab.print_tree.ALL_COMBOS', {'inductive_noise20': 'fake_combo'}):
             discovered_tree_text('some/ad_hoc.xes', 'inductive_noise20')

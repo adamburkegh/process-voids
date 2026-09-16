@@ -27,6 +27,7 @@ lab.timing.TimingListener).
 
 import argparse
 import logging
+import os
 import time
 from dataclasses import replace
 from datetime import datetime
@@ -352,7 +353,7 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
     timing_rows = []
     for log_path in log_paths:
         log_name = Path(log_path).stem
-        base_log = pm4py.read_xes(log_path)
+        base_log = pm4py.read_xes(os.fspath(log_path))
         n_cases, n_variants = _log_stats(base_log)
         logger.info('Log %s: %s cases, %s variants', log_name, n_cases, n_variants)
 

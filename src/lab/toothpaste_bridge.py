@@ -1,13 +1,14 @@
 """
 Bridge to the external toothpaste miner tool (not part of this repo -
-installed separately at TOOTHPASTE_DIR). Mines a log with toothpaste's
-own dcdt pipeline, then translates its .ptree output into skip-alignments'
-ProcessTree representation.
+installed separately, at [paths] toothpaste_dir in pvoid.toml). Mines a
+log with toothpaste's own dcdt pipeline, then translates its .ptree
+output into skip-alignments' ProcessTree representation.
 
-Mirrors the pattern already used for ebi in process_voids/pvoid.py:
-rather than requiring the executable on PATH, we import toothpaste's own
-Python wrapper module directly from its install location and point its
-TBIN constant at the exe - see README for the equivalent ebi setup.
+Rather than requiring the executable on PATH, imports toothpaste's own
+Python wrapper module directly from its install location and points its
+TBIN constant at the exe. lab.discovery imports this module only when a
+toothpaste combo actually runs, so a machine that never mines with
+toothpaste needs no toothpaste_dir.
 """
 
 import os.path
@@ -19,9 +20,10 @@ from pathlib import Path
 from skipalignments.ppt import parse_ptree, translate_ppt
 
 from lab.discovery import DiscoveryResult
+from process_voids.config import value
 from process_voids.dtlog import write_xes
 
-TOOTHPASTE_DIR = r'C:\working\tools\toothpaste'
+TOOTHPASTE_DIR = value('paths', 'toothpaste_dir')
 TOOTHPASTE_EXECUTABLE = str(Path(TOOTHPASTE_DIR) / 'toothpaste.exe')
 
 if TOOTHPASTE_DIR not in sys.path:

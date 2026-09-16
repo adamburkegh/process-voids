@@ -1,0 +1,22 @@
+# Machine-specific settings for process-voids.
+#
+# Copy this file to pvoid.toml (gitignored) in the main checkout, where
+# every worktree will find it, and set the values for this machine. A
+# worktree may also hold its own pvoid.toml, which takes precedence.
+#
+# Every key here is declared in process_voids.config.SCHEMA, and a test
+# holds this file to it. Keys are read only when something needs them,
+# so a key for a tool you never use can be left as it is.
+
+[paths]
+# The directory holding the large event logs kept outside the repository
+# (rtfm, sepsis, the BPI challenge logs).
+data_dir = "/path/to/data"
+
+# The toothpaste checkout that lab.toothpaste_bridge mines with.
+toothpaste_dir = "/path/to/toothpaste"
+
+[tools]
+# The ebi executable skip-alignments calls. Optional: without it, ebi is
+# found by name on PATH.
+ebi = "ebi"

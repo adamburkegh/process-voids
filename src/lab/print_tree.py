@@ -9,6 +9,7 @@ experiment script uses.
 '''
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -30,9 +31,9 @@ def discovered_tree_text(log, combo_name):
     '''
     log_path = ALL_LOGS.get(log, log)
     log_name = log if log in ALL_LOGS else Path(log_path).stem
-    base_log = pm4py.read_xes(log_path)
-    tree, _ppt_weights = discover_cached(log_name, combo_name, ALL_COMBOS[combo_name], base_log)
-    return str(tree)
+    base_log = pm4py.read_xes(os.fspath(log_path))
+    found = discover_cached(log_name, combo_name, ALL_COMBOS[combo_name], base_log)
+    return str(found.tree)
 
 
 def main():

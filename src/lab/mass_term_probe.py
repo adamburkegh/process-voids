@@ -39,6 +39,7 @@ Usage:
 """
 
 import argparse
+import os
 import time
 
 import pandas as pd
@@ -116,7 +117,7 @@ class DiagnosticCellContext(CellContext):
 def _cell(log_path, combo_name):
     """(log, tree, classical_net) for one (log, combo) pair - the
     reusable setup shared across every repetition, computed once."""
-    log = pm4py.read_xes(log_path)
+    log = pm4py.read_xes(os.fspath(log_path))
     tree = COMBOS[combo_name].discover(log).tree
     classical_net = build_id_net(tree)
     return log, tree, classical_net

@@ -13,10 +13,13 @@ design direction and handles all source control on `main`.
   is installed at `C:\working\tools\ebi\ebi.exe` and hard-linked into
   `pvoid\Scripts\ebi.exe`, so activating the venv puts it on PATH. Don't set
   environment variables or override `EBI_EXECUTABLE` per command.
-- **toothpaste**: `lab/toothpaste_bridge.py` expects it at
-  `C:\working\tools\toothpaste`.
+- **Machine-specific paths** live in `pvoid.toml` (gitignored), not in code or
+  environment variables. Copy `pvoid.example.toml` to `pvoid.toml` in the main
+  checkout; every worktree finds it there. It sets where the large logs and
+  toothpaste are installed, and optionally the ebi executable.
 - **Logs**: small fixtures are in `data/`; large logs (rtfm, sepsis, BPI) live
-  outside the repo in `C:/working/data`.
+  outside the repo, under `[paths] data_dir`. Register one in `lab/params.py`
+  as `ExternalLog('<filename>')`.
 - **Papers**: The relevant papers can be found in /c/working/data which you have permission to read
 - **Dependencies**: declared in `pyproject.toml`. After changing it, reinstall
   with `bash run.sh pip install -e .`. `requirements.txt` is a `pip freeze`

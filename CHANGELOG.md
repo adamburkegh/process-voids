@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `pvoid.toml`, a gitignored settings file for machine-specific paths,
+  read by `process_voids.config`, with a tracked `pvoid.example.toml`
+  documenting every key. It replaces constants in code: `lab.params`'
+  large-log paths, `lab.toothpaste_bridge.TOOTHPASTE_DIR`, and
+  `process_voids.pvoid`'s `EBI_EXECUTABLE`. Keys are declared in
+  `config.SCHEMA`, and a test holds the example file to it; an unknown
+  section or key is rejected rather than ignored, so a misspelt key cannot
+  read as unset. Lookup tries the running checkout's root, then the main
+  checkout's, so one file serves every worktree and a worktree may
+  override it. Nothing reads a key until it is needed: a machine without
+  the file imports everything and runs the suite, and reading an unset key
+  with no default raises `ConfigError` naming the key, what it is for, and
+  the paths searched. A large log is registered as
+  `lab.params.ExternalLog('<filename>')` and resolves under
+  `[paths] data_dir` only when opened or named, with forward slashes.
+  `[tools] ebi` is optional and defaults to bare `ebi` on PATH - the
+  skip-alignments default - so an installed package with no file still
+  finds it.
+
 * `voidsalign3` (`process_voids.voidsalign3`), Definitions [Coverage by
   Skip Alignment Correspondence] and [Void by Skip Alignment
   Correspondence]: `voidsalign2` with one term changed. A skip move now
@@ -317,6 +336,11 @@ All notable changes to this project will be documented in this file.
   remain readable.
 
 ### Fixed
+
+* `lab.print_tree` raised `TypeError` on every invocation: it unpacked
+  `discover_cached`'s return as a `(tree, ppt_weights)` pair after that
+  became a `CachedDiscovery`. Its tests mocked the old tuple, which let
+  the unpack pass; they now mock a `CachedDiscovery`.
 
 * `lab.plots`' panel list still named `voidsalign` after it was retired
   in favour of `voidsalign2`, so plotting a result CSV written since
