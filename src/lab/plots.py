@@ -6,17 +6,18 @@ fixture via lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS
 registration, so there's a single plot function rather than one per
 experiment script).
 
-plot_dose_response: weight_voidage / skipprob / salign_coverage /
-voidsalign2 / voidsat2 / alignment_coverage_pn2 / voidmass_process vs
-degradation_level, one figure per (log, facet value), one line per
-`line_by` value within it.
+plot_dose_response: one panel per metric vs degradation_level, one
+figure per (log, facet value), one line per `line_by` value within it.
+The panels are not listed here or anywhere else in this module - see
+metric_panels, which reads them from lab.metric_registry, so renaming or
+retiring a metric there can never leave a panel reading a column that
+no longer exists.
 
-alignment_coverage_pn2/voidmass_process are each a
-_lower/_upper bound pair, not a single column (the timed-out-variant
-bound - see lab.exp_disco_degrade.CLASSICAL_METRIC_KEYS): plotted as the
-midpoint line with a shaded band between the two. A cell with no
-timed-out variants has lower == upper, so the band collapses to a plain
-line with no special-casing needed.
+A metric registered as a <base>_lower/<base>_upper pair (the
+timed-out-variant bounds - see lab.run.CLASSICAL_METRIC_KEYS) is one
+panel, plotted as the midpoint line with a shaded band between the two.
+A cell with no timed-out variants has lower == upper, so the band
+collapses to a plain line with no special-casing needed.
 
 line_by='combo' (default): compare discovery/estimator combos under
 one fixed degradation dimension - faceted by (log, degradation_dim).
@@ -50,26 +51,40 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# (label, columns): columns is a 1-tuple for a plain value or a 2-tuple
-# (lower, upper) for a bound pair - see module docstring. label is the
-# axis text (and the lookup key for the skipprob-inversion special case
-# below), independent of the column name(s) it reads.
-METRICS = [
-    ('weight_voidage', ('weight_voidage',)),
-    ('skipprob', ('skipprob',)),
-    ('salign_coverage', ('salign_coverage',)),
-    ('voidsalign2', ('voidsalign2',)),
-    ('voidsat2', ('voidsat2',)),
-    ('alignment_coverage_pn2', ('alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')),
-    ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
-]
+from lab import metric_registry
+
+# The runner whose result CSVs these plots read.
+_RUNNER = 'exp_disco_degrade'
+_BOUNDS = ('_lower', '_upper')
+
+def metric_panels():
+    """
+    [(label, columns)] for every dose-response panel, in registry order:
+    one per live metric in lab.metric_registry that has a scale, is
+    plotted, and is emitted by the runner these plots read.
+
+    columns is a 1-tuple for a plain metric, or (lower, upper) where the
+    registry holds the metric as a <base>_lower/<base>_upper pair - which
+    is then one banded panel labelled <base>. Read at call time rather
+    than at import, so the registry is the only list of panels there is.
+    """
+    panels = {}
+    for metric_id, metric in metric_registry.METRICS.items():
+        if (metric.status != 'live' or metric.scale is None or not metric.plotted
+                or _RUNNER not in metric.scripts):
+            continue
+        base = metric_id
+        for suffix in _BOUNDS:
+            base = base.removesuffix(suffix)
+        panels.setdefault(base, []).append(metric_id)
+    return [(base, tuple(sorted(ids, key=lambda i: i.endswith(_BOUNDS[1]))))
+            for base, ids in panels.items()]
 
 
 def _metric_columns():
-    """Every column METRICS reads, flattened - the one place the flat
-    list lives, so average_over_nodes can't drift from what
-    plot_dose_response itself actually plots."""
-    return [col for _label, cols in METRICS for col in cols]
+    """Every column metric_panels reads, flattened, so average_over_nodes
+    can't drift from what plot_dose_response itself plots."""
+    return [col for _label, cols in metric_panels() for col in cols]
 
 
 def _exclude_degenerate(df: pd.DataFrame) -> pd.DataFrame:
@@ -108,9 +123,8 @@ def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
     Tau nodes are excluded, same convention as
     process_voids.coveragemass's mandatory_node_count/total_node_count:
     a Tau leaf represents "do nothing", not a thing whose coverage/void
-    reading should pull the average toward its own degenerate values
-    (eg skipprob=1.0, weight_voidage=1.0 on every Tau node, regardless
-    of how the rest of the tree is actually behaving).
+    reading should pull the average toward its own degenerate values,
+    regardless of how the rest of the tree is actually behaving.
 
     Feed the result straight into plot_dose_response - a 'status'='ok'
     column is added so the output matches the root-level CSV's shape
@@ -134,7 +148,7 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
                         fmt: str = 'png', line_by: str = 'combo', title_suffix: str = ''):
     """
     Writes one figure per (log, facet value), each with a subplot per
-    metric in METRICS, one line per `line_by` value within it - see
+    panel in metric_panels(), one line per `line_by` value within it - see
     this module's docstring for line_by='combo' vs 'degradation_dim'.
     Pass fmt='pdf' for vector output that drops straight into a LaTeX
     build. Returns the list of paths written. See _exclude_degenerate
@@ -159,27 +173,22 @@ def plot_dose_response(df: pd.DataFrame, out_dir: str = 'var/lab/results/plots',
     written = []
 
     ok = _exclude_degenerate(df)
+    panels = metric_panels()
 
     for (log, facet_val), group in df.groupby(['log', facet_by]):
-        fig, axes = plt.subplots(1, len(METRICS), figsize=(5 * len(METRICS), 4))
-        if len(METRICS) == 1:
+        fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4))
+        if len(panels) == 1:
             axes = [axes]
 
         group_ok = ok[(ok['log'] == log) & (ok[facet_by] == facet_val)]
-        for ax, (metric_label, cols) in zip(axes, METRICS):
-            # skipprob is a skip probability (higher = worse); every other
-            # metric here is a coverage proxy (higher = better) - plot
-            # 1-skipprob so all four panels read the same direction.
-            label = '1 - skipprob' if metric_label == 'skipprob' else metric_label
+        for ax, (label, cols) in zip(axes, panels):
             for line_val, line_group in group_ok.groupby(line_by):
                 line_group = line_group.sort_values('degradation_level')
                 if line_group.empty:
                     continue
                 x = line_group['degradation_level']
                 if len(cols) == 1:
-                    y = (1 - line_group[cols[0]] if metric_label == 'skipprob'
-                         else line_group[cols[0]])
-                    ax.plot(x, y, marker='o', label=line_val)
+                    ax.plot(x, line_group[cols[0]], marker='o', label=line_val)
                 else:
                     lower_col, upper_col = cols
                     # to_numeric: a column that HELD a non-numeric value

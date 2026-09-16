@@ -29,6 +29,13 @@ diagnostics, root-only statistics) has no scale. tests/lab/
 test_metric_extremes.py holds every live metric with a scale to its
 promise, and pins the ones that break it.
 
+lab.plots draws one dose-response panel for every live metric with a
+scale that exp_disco_degrade emits, reading this registry rather than a
+list of its own. A Metric's plotted is False only where another live
+metric already shows the same information, so a panel for it would
+repeat one - skipprob, which matchprob shows coverage-way up. It does
+not otherwise affect what a metric is or what it promises.
+
 This module is the one exception to the repo's rule that comments and
 docstrings describe the code as it is, with change history kept in
 CHANGELOG.md and commit messages. A history entry here is not narration:
@@ -127,6 +134,7 @@ class Metric:
     superseded_by: str = None     # id of the metric that replaces this one, if retired
     history: dict = field(default_factory=dict)  # commit/version -> prior meaning
     scale: str = None             # one of SCALES, or None - see the module docstring
+    plotted: bool = True          # whether lab.plots draws it - see the module docstring
 
 
 METRICS = {
@@ -165,6 +173,7 @@ METRICS = {
         source='dv.skip_probs (direct lookup, no computation of its own)',
         scripts=('exp_disco_degrade',),
         scale='void',
+        plotted=False,
         history={'f2aa44c': 'Blended mean of skip_probs[leaf] over every Activity '
                             'leaf in the tree (lab.metrics.mean_skipprob), not '
                             "dv.skip_probs[node] itself - the id was wired to the "

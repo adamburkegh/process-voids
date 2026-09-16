@@ -30,7 +30,16 @@ REGISTRY_PATH = 'src/lab/metric_registry.py'
 # Compared per surviving id. description is deliberately absent: it is
 # prose that gets reworded constantly, and a diff of it is what `git
 # diff` is for.
-COMPARED_FIELDS = ('status', 'superseded_by', 'scripts', 'source', 'scale')
+COMPARED_FIELDS = ('status', 'superseded_by', 'scripts', 'source', 'scale', 'plotted')
+
+# What a field reads as on a ref from before it existed. A field added
+# with a default is that default everywhere it was never written, so
+# comparing across its introduction must not report every id as changed.
+_ABSENT_FIELD_DEFAULTS = {'plotted': True}
+
+
+def _field(metric, name):
+    return getattr(metric, name, _ABSENT_FIELD_DEFAULTS.get(name))
 
 # A history entry that gained text is fine (the append-only rule allows
 # adding to the record); one that was altered or dropped is not.
@@ -110,9 +119,9 @@ def diff_registries(old: dict, new: dict) -> RegistryDiff:
 
     for metric_id in sorted(set(old) & set(new)):
         old_metric, new_metric = old[metric_id], new[metric_id]
-        changes = [(f, getattr(old_metric, f, None), getattr(new_metric, f, None))
+        changes = [(f, _field(old_metric, f), _field(new_metric, f))
                    for f in COMPARED_FIELDS
-                   if getattr(old_metric, f, None) != getattr(new_metric, f, None)]
+                   if _field(old_metric, f) != _field(new_metric, f)]
         if changes:
             result.changed[metric_id] = changes
         notes = _compare_history(old_metric, new_metric)

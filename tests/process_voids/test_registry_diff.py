@@ -33,6 +33,7 @@ class Metric:
     superseded_by: str = None
     history: dict = field(default_factory=dict)
     scale: str = None
+    plotted: bool = True
 
 
 METRICS = {{
@@ -127,6 +128,26 @@ class DiffRegistriesTest(unittest.TestCase):
         self.assertEqual(changes['status'], ('live', 'retired'))
         self.assertEqual(changes['superseded_by'], (None, 'b'))
         self.assertNotIn('scale', changes)
+
+    def test_reports_a_change_to_whether_a_metric_is_plotted(self):
+        '''Taking a metric off the plots changes what a reader sees without
+        changing any result column, so a review has to be told.'''
+        result = _diff([_metric('a')], [_metric('a', plotted=False)])
+        changes = dict((field, (old, new)) for field, old, new in result.changed['a'])
+        self.assertEqual(changes['plotted'], (True, False))
+
+    def test_a_registry_from_before_plotted_existed_reads_as_plotted(self):
+        '''An older ref's Metric has no plotted field at all. That is the
+        default, not a change, so comparing across the field's
+        introduction must not report every id as changed.'''
+        source = _registry_source([_metric('a')])
+        before_the_field = source.replace('    plotted: bool = True\n', '')
+        self.assertNotEqual(before_the_field, source)
+        namespace = {}
+        exec(compile(before_the_field, 'registry', 'exec'), namespace)
+        old = namespace['METRICS']
+        self.assertFalse(hasattr(old['a'], 'plotted'))
+        self.assertNotIn('a', diff_registries(old, _as_objects([_metric('a')])).changed)
 
     def test_an_extended_history_entry_is_not_a_violation(self):
         result = _diff([_metric('a', history={'v0.5.0': 'was X.'})],

@@ -187,6 +187,24 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `lab.plots` reads its panels from `lab.metric_registry` instead of
+  keeping its own list: one panel per live metric with a scale that
+  `exp_disco_degrade` emits and that is plotted, with a
+  `<base>_lower`/`<base>_upper` pair drawn as one banded panel.
+  `lab.plots.METRICS` is gone; `metric_panels()` replaces it. The
+  hand-written list had gone stale four times - each time a metric was
+  renamed or retired the panel stayed, and plotting a current result CSV
+  raised a `KeyError` - and the suite never caught it, because its
+  fixtures hand-typed the same names. They are now built from
+  `metric_panels()` too, and a test renames and retires a metric in a
+  synthetic registry to show the plots follow with no edit.
+* `lab.metric_registry.Metric` gains `plotted` (default `True`), `False`
+  only where another live metric already shows the same information.
+  `skipprob` is the one such metric: its panel is gone, and `matchprob`
+  shows it coverage-way up instead of `lab.plots` inverting `skipprob` by
+  name. `process_voids.util.registry_diff` compares the new field, and
+  reads a ref from before it existed as `plotted=True`, so a diff across
+  its introduction reports nothing spurious.
 * `weight_coverage` is retired. `lab.run` and `lab.metrics` no longer
   emit it, so result CSVs written from here carry no `weight_coverage`
   column; `weight_voidage` stays, and is what the dose-response plots now
