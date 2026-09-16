@@ -99,7 +99,7 @@ class RowContentTest(unittest.TestCase):
     def test_excluded_metrics_are_the_complement_of_what_was_scored(self):
         row = self._row(metric_ids=['skipprob'])
         excluded = row['excluded_metrics'].split(';')
-        self.assertIn('voidsat', excluded)
+        self.assertIn('voidsat2', excluded)
         self.assertNotIn('skipprob', excluded)
 
     def test_seed_records_what_the_interpreter_actually_saw(self):

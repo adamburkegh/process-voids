@@ -100,6 +100,14 @@ _MASKED_SKIP_PROB_HISTORY = (
 _LUMPED_SKIP_BOTH_FACTORS_HISTORY = (
     _INHERITED_LUMP_HISTORY + ' ' + _MASKED_SKIP_PROB_HISTORY)
 
+# Prior meaning of every id built on move durations, before v0.5.1.
+_SILENT_MOVE_DURATION_HISTORY = (
+    "Charged move durations with coveragemass.block excluding silent "
+    "(TauPath) moves and mdur returning 0 for one. Skip alignments have "
+    "no silent move type, so that dropped real deviations from the block "
+    "sharing a gap and inflated what the surviving moves were charged. "
+    "Values differ wherever an alignment contains a silent move.")
+
 # weight_coverage/weight_voidage read skip probabilities only at the
 # leaves, so the correction changes what they can register at all.
 _MASKED_SKIP_PROB_WEIGHT_HISTORY = (
@@ -422,7 +430,38 @@ METRICS = {
         source='process_voids.coveragemass.voidsat',
         scripts=('exp_disco_degrade',),
         scale='void_share',
-        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
+        status='retired',
+        superseded_by='voidsat2',
+        history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY,
+                 'v0.5.1': _SILENT_MOVE_DURATION_HISTORY},
+    ),
+    'voidsat2': Metric(
+        id='voidsat2',
+        description="\\voidsat (defn:aligned-duration), over skip-alignments' "
+                    "own lumped optimal alignments: 1 - (1 - skip_prob) * a "
+                    "mass averaging obsdur/(obsdur + misdur) - the share of a "
+                    "subprocess's own aligned elapsed time that a synchronous "
+                    "move accounts for. A RATE of the subprocess's time, not a "
+                    "share of the whole trace's, which is what voidsat "
+                    "reported and why it had no reading at which a wholly "
+                    "missing subprocess is 1. Each interval between "
+                    "consecutive consumed events divides equally among the "
+                    "moves preceding it, with no move type excluded (skip "
+                    "alignments have no silent move type). Averaged over every "
+                    "actual trace instance, not deduplicated variants - "
+                    "duration is per-instance. Conditioned on observation as "
+                    "alignment_coverage_pn2's mass is: only alignments where "
+                    "the subprocess has a synchronous move count, traces "
+                    "observing it nowhere leave both the average and the "
+                    "obscount normalising it, and mass is 0 where obscount is "
+                    "0, so a subprocess observed nowhere reads void 1. A "
+                    "subprocess observed but unmeasurable - recorded at the "
+                    "very start of a trace, where no interval bounds it - "
+                    "reads ratio 1 rather than 0: it was recorded, and the log "
+                    "cannot time it.",
+        source='process_voids.voidsat2.voidsat2',
+        scripts=('exp_disco_degrade',),
+        scale='void',
     ),
     'containment_bits': Metric(
         id='containment_bits',

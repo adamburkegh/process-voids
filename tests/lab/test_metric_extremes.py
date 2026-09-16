@@ -51,10 +51,6 @@ KNOWN_FAILURES = {
     ('target_voidage_subprocess', 'half_missing'): 0.25,
     ('voidage_process', 'half_missing'): 0.125,
     ('target_voidage_process', 'half_missing'): 0.125,
-    # b is the last activity: a skip move with no following event gets no
-    # duration, so an always-missing b has no aligned duration at all.
-    ('voidsat', 'always_missing'): 0.0,
-    ('voidsat', 'half_missing'): 0.5,
 }
 
 _READINGS = {

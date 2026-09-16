@@ -46,11 +46,12 @@ from lab.runs import Experiment, RUNS
 from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
-    mass_by_weight, voidage_by_weight, coverage_by_alignment, voidsat,
+    mass_by_weight, voidage_by_weight, coverage_by_alignment,
 )
 from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
 from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
 from process_voids.voidsalign2 import voidsalign2
+from process_voids.voidsat2 import voidsat2
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage',
                          'voidsalign2')
 
-ALIGNED_DURATION_METRIC_KEYS = ('voidsat',)
+ALIGNED_DURATION_METRIC_KEYS = ('voidsat2',)
 
 # --metrics group names -> the ids each expands to.
 GROUPS = {
@@ -161,9 +162,12 @@ ALL_METRICS = [
     ProcessMetric(id='alignment_coverage_pn2_upper', scope='node',
                   needs=('classical', 'dv', 'executions_cache'),
                   compute=_alignment_coverage_pn(1.0)),
-    ProcessMetric(id='voidsat', scope='node', needs=('dv', 'aligned_duration_cache'),
-                  compute=lambda ctx, node: voidsat(
-                      node, ctx.tree, ctx.stage('dv'), ctx.log,
+    ProcessMetric(id='voidsat2', scope='node', needs=('dv', 'aligned_duration_cache'),
+                  compute=lambda ctx, node: voidsat2(
+                      node, ctx.tree, ctx.log,
+                      {k: [s.path for s in v]
+                       for k, v in ctx.stage('dv').skip_dict_backup.items()},
+                      ctx.stage('dv').skip_probs,
                       cache=ctx.stage('aligned_duration_cache'))),
 ]
 

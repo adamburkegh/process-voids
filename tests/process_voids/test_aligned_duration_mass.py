@@ -71,14 +71,17 @@ class ConsumesNxtBlockTest(unittest.TestCase):
         path = [('a', self.a), ('>>', self.a)]
         self.assertIsNone(nxt(path, 1))
 
-    def test_block_excludes_silent_moves_but_includes_everything_else(self):
-        # positions 1 (skip) and 2 (sync) both resolve to nxt=2; the
-        # silent (tau) move at position 0 is excluded even though its
-        # own nxt is also 2.
+    def test_block_is_every_move_sharing_the_next_consumed_position(self):
+        # positions 0 (tau), 1 (skip) and 2 (sync) all resolve to nxt=2,
+        # and all three are in the block. Skip alignments have no silent
+        # move type (Definition 5): every non-synchronous model-side move
+        # is a skip, and skips are deviations, so excluding any of them
+        # would drop real deviations from the block that shares the gap.
         from skipalignments import TauPath, Skip
         path = [('>>', TauPath(self.tau)), ('>>', Skip(self.a, 1)), ('a', self.a)]
-        self.assertEqual(block(path, 1), [1, 2])
-        self.assertEqual(block(path, 2), [1, 2])
+        self.assertEqual(block(path, 0), [0, 1, 2])
+        self.assertEqual(block(path, 1), [0, 1, 2])
+        self.assertEqual(block(path, 2), [0, 1, 2])
 
     def test_block_is_empty_when_nxt_is_undefined(self):
         path = [('a', self.a), ('>>', self.a)]
@@ -119,8 +122,7 @@ class LumpedMissingSubprocessSharesBlockWithFollowingEventTest(unittest.TestCase
 
     Confirmed against the real aligner's output (not assumed): that skip
     move and the immediately-following sync move c share the SAME block
-    (both resolve to the same nxt, c's own position - c is non-silent,
-    so block()'s tau-only exclusion doesn't drop it). The gap therefore
+    (both resolve to the same nxt, c's own position). The gap therefore
     splits 50/50 between the missing subprocess and c, not "the whole
     gap" to the missing subprocess alone - lumping only reduces how many
     pieces the missing portion itself is chopped into (1 piece here vs.

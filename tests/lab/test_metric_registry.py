@@ -78,7 +78,8 @@ class DriftTest(unittest.TestCase):
 
     def test_aligned_duration_metric_keys_match_registry(self):
         aligned_duration_ids = {mid for mid, m in METRICS.items()
-                                 if m.source == 'process_voids.coveragemass.voidsat'
+                                 if m.source in ('process_voids.coveragemass.voidsat',
+                                                 'process_voids.voidsat2.voidsat2')
                                  and m.status == 'live'}
         self.assertEqual(set(ALIGNED_DURATION_METRIC_KEYS), aligned_duration_ids)
 

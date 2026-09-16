@@ -82,7 +82,7 @@ class FakePipelineMixin:
 
     def patch_pipeline(self, skip_probs, vm_table, timed_out_count=0, timed_out_weight=0.0,
                        skip_dict=None, read_xes_return=None,
-                       salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat_value=0.0,
+                       salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat2_value=0.0,
                        voidsalign2_value=0.0):
         # lab.run discovers through lab.discovery.discover_cached, which
         # pickles the discovered tree under TREE_CACHE_DIR. Left pointing at
@@ -104,7 +104,7 @@ class FakePipelineMixin:
         self._patch('lab.run.coverage_by_alignment', return_value=salign_coverage)
         self._patch('lab.run.voidsalign2', return_value=voidsalign2_value)
         self._patch('lab.run.coverage_by_alignment_pn', return_value=alignment_coverage_pn)
-        self._patch('lab.run.voidsat', return_value=voidsat_value)
+        self._patch('lab.run.voidsat2', return_value=voidsat2_value)
 
 
 class MetricsSelectionTest(FakePipelineMixin, unittest.TestCase):
@@ -137,8 +137,8 @@ class MetricsSelectionTest(FakePipelineMixin, unittest.TestCase):
         objects, not name strings - _resolve_metrics must pass these
         through rather than trying to look each one up by name.
         """
-        without_voidsat = [m for m in ALL_METRICS if m.id != 'voidsat']
-        self.assertEqual(_resolve_metrics(without_voidsat), without_voidsat)
+        without_voidsat2 = [m for m in ALL_METRICS if m.id != 'voidsat2']
+        self.assertEqual(_resolve_metrics(without_voidsat2), without_voidsat2)
         self.assertEqual(_resolve_metrics(ALL_METRICS), ALL_METRICS)
 
     def test_selecting_one_metric_leaves_others_absent_or_null(self):
@@ -172,7 +172,7 @@ class MetricsExclusionTest(FakePipelineMixin, unittest.TestCase):
     Passing an already-filtered ProcessMetric list (the shape
     lab.exp_disco_degrade's --exclude-metric complement uses) works the
     same way as an inclusive --metrics name list - a metric that's
-    known-expensive (voidsat on a high-case-count log) or known-wrong
+    known-expensive (voidsat2 on a high-case-count log) or known-wrong
     (pending an upstream fix) contributes no timing row and its CSV
     column is entirely absent from the scored values, never a KeyError
     or an inconsistent column set between rows - see
@@ -185,56 +185,56 @@ class MetricsExclusionTest(FakePipelineMixin, unittest.TestCase):
         self.combos = {'fake': DiscoveryCombo('fake', lambda log: DiscoveryResult(self.tree))}
         self.degradations = {'activity': degrade_stub}
         self.tmp_out = Path(tempfile.mkdtemp()) / 'out.csv'
-        self.metrics_without_voidsat = [m for m in ALL_METRICS if m.id != 'voidsat']
+        self.metrics_without_voidsat2 = [m for m in ALL_METRICS if m.id != 'voidsat2']
 
     def test_excluded_metric_gets_no_timing_row(self):
         self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
-                            voidsat_value=0.99)
+                            voidsat2_value=0.99)
         _df, _node_df, timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
-            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
-        self.assertNotIn('voidsat', set(timings_df['metric_or_stage']))
+            levels=[0.5], metrics=self.metrics_without_voidsat2, out_csv=str(self.tmp_out))
+        self.assertNotIn('voidsat2', set(timings_df['metric_or_stage']))
         self.assertIn('skipprob', set(timings_df['metric_or_stage']))
 
     def test_excluded_metric_column_is_absent_from_scored_values_not_crashed_around(self):
         self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
-                            voidsat_value=0.99)
+                            voidsat2_value=0.99)
         df, node_df, _timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
-            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
+            levels=[0.5], metrics=self.metrics_without_voidsat2, out_csv=str(self.tmp_out))
         # root df has no fixed schema (plain pd.DataFrame(rows)) - a key
         # absent from every row means the column doesn't exist at all.
-        self.assertNotIn('voidsat', df.columns)
+        self.assertNotIn('voidsat2', df.columns)
         # node_df DOES have a fixed schema (NODE_ROW_COLUMNS), so the
         # excluded metric still gets its column - just entirely empty.
-        self.assertIn('voidsat', node_df.columns)
-        self.assertTrue(node_df['voidsat'].isna().all())
+        self.assertIn('voidsat2', node_df.columns)
+        self.assertTrue(node_df['voidsat2'].isna().all())
         self.assertEqual(df.iloc[0]['skipprob'], 0.1)
 
     def test_error_row_null_fallback_matches_the_excluded_metric_set(self):
         # a cell-wide failure (dv/classical stage) must fall back to
         # None for every SCORED metric only - if the null fallback still
         # referenced the frozen ALL_METRICS default, an error row would
-        # carry a 'voidsat' key a successful row in the same run does
+        # carry a 'voidsat2' key a successful row in the same run does
         # not, exactly the column-inconsistency this feature must avoid.
         self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()})
         self._patch('process_voids.metric_context.pvoid.skipprob',
                     side_effect=RuntimeError('boom'))
         df, _node_df, _timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
-            levels=[0.5], metrics=self.metrics_without_voidsat, out_csv=str(self.tmp_out))
+            levels=[0.5], metrics=self.metrics_without_voidsat2, out_csv=str(self.tmp_out))
         row = df.iloc[0]
         self.assertTrue(str(row['status']).startswith('error'))
-        self.assertNotIn('voidsat', df.columns)
+        self.assertNotIn('voidsat2', df.columns)
 
     def test_default_metrics_argument_still_scores_everything(self):
         self.patch_pipeline({self.tree: 0.1}, {self.tree: _fake_classical_row()},
-                            voidsat_value=0.42)
+                            voidsat2_value=0.42)
         df, _node_df, timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations,
             levels=[0.5], out_csv=str(self.tmp_out))
-        self.assertEqual(df.iloc[0]['voidsat'], 0.42)
-        self.assertIn('voidsat', set(timings_df['metric_or_stage']))
+        self.assertEqual(df.iloc[0]['voidsat2'], 0.42)
+        self.assertIn('voidsat2', set(timings_df['metric_or_stage']))
 
 
 class NoDegradationCellShapeTest(FakePipelineMixin, unittest.TestCase):
@@ -299,7 +299,7 @@ class RunHistoryTest(FakePipelineMixin, unittest.TestCase):
 
         row = pd.read_csv(self.history_csv).iloc[0]
         self.assertEqual(row['metrics'], 'skipprob')
-        self.assertIn('voidsat', row['excluded_metrics'].split(';'))
+        self.assertIn('voidsat2', row['excluded_metrics'].split(';'))
 
     def test_a_failure_building_the_history_row_does_not_lose_the_run(self):
         """The results are the expensive part - bookkeeping must never
@@ -653,7 +653,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
     """
     Full run against a small REAL tree (Xor(Tau, a)) - mass_by_weight/
     voidage_by_weight/mandatory_node_count/total_node_count run for
-    real; coverage_by_alignment/coverage_by_alignment_pn/voidsat are
+    real; coverage_by_alignment/coverage_by_alignment_pn/voidsat2 are
     mocked since their own correctness is covered elsewhere
     (test_coveragemass, test_voidmass_pn_prototype) - this is about the
     row-assembly schema (one row per tree node, right ids, right
@@ -705,7 +705,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
 
     def test_row_has_every_metric_column_with_correct_values(self):
         _df, node_df, _timings_df = self._run(
-            salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat_value=0.33,
+            salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat2_value=0.33,
             voidsalign2_value=0.66)
         row = node_df[node_df['node_id'] == '1'].iloc[0]
 
@@ -722,7 +722,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['voidsalign2'], 0.66)
         self.assertEqual(row['alignment_coverage_pn2_lower'], 0.88)
         self.assertEqual(row['alignment_coverage_pn2_upper'], 0.88)
-        self.assertEqual(row['voidsat'], 0.33)
+        self.assertEqual(row['voidsat2'], 0.33)
         # a's own subtree is just itself, no silent alternative from its
         # own perspective (mandatory_node_count/total_node_count are
         # evaluated AT that node, not from an outside ancestor's view).

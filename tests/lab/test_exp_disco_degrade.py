@@ -123,7 +123,7 @@ class ExcludeMetricCliTest(unittest.TestCase):
 
     def test_excluded_metric_is_removed_from_what_gets_passed_through(self):
         with patch('sys.argv', ['exp_disco_degrade', '--run', 'smoke',
-                                 '--exclude-metric', 'voidsat', '--dry-run']), \
+                                 '--exclude-metric', 'voidsat2', '--dry-run']), \
              patch('lab.exp_disco_degrade.configure'), \
              patch('lab.exp_disco_degrade.run_disco_degrade') as mock_run:
             buf = io.StringIO()
@@ -135,12 +135,12 @@ class ExcludeMetricCliTest(unittest.TestCase):
         # exclusion was parsed and would have applied.
         mock_run.assert_not_called()
         self.assertIn('excluding metrics', output)
-        self.assertIn('voidsat', output)
+        self.assertIn('voidsat2', output)
 
     def test_excluded_metric_reaches_run_disco_degrade_as_the_complement(self):
         fake = pd.DataFrame()
         with patch('sys.argv', ['exp_disco_degrade', '--run', 'smoke',
-                                 '--exclude-metric', 'voidsat']), \
+                                 '--exclude-metric', 'voidsat2']), \
              patch('lab.exp_disco_degrade.configure'), \
              patch('lab.exp_disco_degrade.run_disco_degrade',
                    return_value=(fake, fake, fake)) as mock_run:
@@ -148,7 +148,7 @@ class ExcludeMetricCliTest(unittest.TestCase):
 
         _args, kwargs = mock_run.call_args
         scored_ids = {m.id for m in kwargs['metrics']}
-        self.assertNotIn('voidsat', scored_ids)
+        self.assertNotIn('voidsat2', scored_ids)
         self.assertIn('skipprob', scored_ids)
 
     def test_unknown_exclude_metric_name_errors_out(self):

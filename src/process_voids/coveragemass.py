@@ -809,16 +809,18 @@ classical-alignment \\covat/\\voidat (not yet requested) would instead need
 paths translated the way voidmass_pn._to_alignment_mass_path does for
 \\covermove.
 
-consumes/nxt/block/mdur implement Definition [Move Durations] exactly,
-including its two corrections found this session against the original
-draft: the move-weights reference was removed (a lumped skip move over an
-entirely-absent subprocess is simply the only non-silent move in its own
-block, so it already takes the whole gap - no separate weighting needed),
-and mdur's zero-guard is on nxt(agn,j) being the FIRST element of
-consumes(agn) (no preceding consumed event to measure a gap from), not on
-the literal alignment position j=1 - several leading model-only moves
-before the first-ever consumed log event all resolve to that same first
-element and must all be zeroed, not just position 1.
+consumes/nxt/block/mdur implement Definition [Move Durations]. A block is
+every move sharing a next-consumed position, with nothing excluded: skip
+alignments have no silent move type (Definition 5 of the skip-alignment
+paper), so every non-synchronous model-side move is a skip and every skip
+is a deviation. Each move in a block takes an equal share of the gap, so
+there is no separate move weighting - a lumped skip over an entirely
+absent subprocess is one move in its block, sharing with whatever real
+event follows it. mdur's zero-guard is on nxt(agn,j) being the FIRST
+element of consumes(agn) (no preceding consumed event to measure a gap
+from), not on the literal alignment position j=1 - several leading
+model-only moves before the first-ever consumed log event all resolve to
+that same first element and must all be zeroed, not just position 1.
 
 adur/admass implement Definition [Aligned Duration Mass]. admass iterates
 every REAL TRACE in the log, not deduplicated variants like
@@ -857,12 +859,18 @@ def nxt(path, j, consumed=None):
 
 def block(path, j, consumed=None):
     '''
-    Positions sharing the same nxt(path,j) as j, excluding pure silent
-    (tau) moves - Definition [Move Durations]' block(agn,j). Computed as
-    the contiguous run (prev_consumed, target] rather than scanning
-    nxt() for every position in `path`: every position in that range
-    shares the same next-consumed position (target) by construction,
-    since none of them is itself a consuming position before target.
+    Every position sharing the same nxt(path,j) as j - Definition
+    [Move Durations]' block(agn,j). Computed as the contiguous run
+    (prev_consumed, target] rather than scanning nxt() for every
+    position in `path`: every position in that range shares the same
+    next-consumed position (target) by construction, since none of them
+    is itself a consuming position before target.
+
+    No move is excluded. Skip alignments have no silent move type
+    (Definition 5 of the skip-alignment paper): every non-synchronous
+    model-side move is a skip, and skips are deviations, so excluding
+    any of them would drop real deviations from the block that shares
+    the gap and inflate what the survivors are each charged.
     '''
     if consumed is None:
         consumed = consumes(path)
@@ -871,8 +879,7 @@ def block(path, j, consumed=None):
         return []
     idx = bisect.bisect_left(consumed, target)
     prev = consumed[idx - 1] if idx > 0 else -1
-    return [p for p in range(prev + 1, target + 1)
-            if _classify_move(path[p][1])[1] != 'tau']
+    return list(range(prev + 1, target + 1))
 
 
 def mdur(path, trace, j, consumed=None):
@@ -880,17 +887,14 @@ def mdur(path, trace, j, consumed=None):
     Definition [Move Durations]' mdur(agn,sigma,j) - `trace` is a real
     event sequence (each event exposing ['time:timestamp'], the same
     shape coverage_by_duration's log/trace already use), 0-indexed.
-    Zero where path[j] is a silent (tau) move, where nxt(path,j) is
-    undefined (nothing left to consume after j), or where nxt(path,j)
-    is the FIRST element of consumes(path) (no preceding consumed event
-    to measure a gap from - not merely j==0, see this section's module
-    docstring).
+    Zero only where nxt(path,j) is undefined (nothing left to consume
+    after j), or where nxt(path,j) is the FIRST element of
+    consumes(path) (no preceding consumed event to measure a gap from -
+    not merely j==0, see this section's module docstring). There is no
+    silence test: see block, which excludes nothing either.
     '''
     if consumed is None:
         consumed = consumes(path)
-    _log_elem, model_elem = path[j]
-    if _classify_move(model_elem)[1] == 'tau':
-        return 0
     target = nxt(path, j, consumed)
     if target is None:
         return 0
@@ -997,6 +1001,65 @@ def adur(pt, tree, alignments, trace, cache=None):
         for j in positions_by_node.get(pt, []):
             total += mdur(path, trace, j, consumed)
     return total / len(alignments)
+
+
+def _split_duration(pt, tree, path, trace, cache=None):
+    '''
+    (observed, missing) move-duration totals for pt in one alignment
+    `path` against one real `trace` - Definition [Observed and Missing
+    Duration]'s obsdur/misdur computed in a single pass, since they
+    partition the same positions.
+
+    Summed over pt's relevant positions rather than grouped into
+    exec(m,pt,path)'s discrete executions first: both are plain sums
+    over every position of every execution, with no per-execution
+    weighting to make the grouping matter (the same argument adur
+    makes).
+    '''
+    consumed = consumes(path)
+    if cache is not None:
+        positions_by_node = _relevant_positions_for(path, cache)
+    else:
+        positions_by_node = _relevant_positions_by_node(path, tree)
+    observed = 0.0
+    missing = 0.0
+    for j in positions_by_node.get(pt, []):
+        d = mdur(path, trace, j, consumed)
+        if _classify_move(path[j][1])[1] == 'sync':
+            observed += d
+        else:
+            missing += d
+    return observed, missing
+
+
+def obsdur(pt, tree, path, trace, cache=None):
+    '''Definition [Observed and Missing Duration]'s obsdur(m,msub,sigma,agn) -
+    the move durations of pt's synchronous moves. See _split_duration.'''
+    return _split_duration(pt, tree, path, trace, cache)[0]
+
+
+def misdur(pt, tree, path, trace, cache=None):
+    '''Definition [Observed and Missing Duration]'s misdur(m,msub,sigma,agn) -
+    the move durations of pt's non-synchronous moves. See _split_duration.'''
+    return _split_duration(pt, tree, path, trace, cache)[1]
+
+
+def has_synchronous_move(pt, tree, path, cache=None):
+    '''
+    Whether pt has any synchronous move in `path` - membership of
+    Definition [Coverage and Void by Aligned Duration]'s O_sigma.
+
+    Keyed on the move rather than on positive observed duration: a
+    subprocess recorded at the very start of a trace has no interval
+    bounding it and so no measurable duration, but it was still
+    observed, and dropping it would count a recording as an absence.
+    '''
+    if cache is not None:
+        positions_by_node = _relevant_positions_for(path, cache)
+    else:
+        positions_by_node = _relevant_positions_by_node(path, tree)
+    return any(_classify_move(path[j][1])[1] == 'sync'
+               for j in positions_by_node.get(pt, []))
 
 
 def admass(pt, tree, log, alignments_by_variant, cache=None):

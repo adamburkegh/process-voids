@@ -49,6 +49,24 @@ All notable changes to this project will be documented in this file.
   `observed_alignment_mass` and `_alignment_values` gained a `ratio=`
   parameter for this; their default behaviour is unchanged.
 
+* `voidsat2` (`process_voids.voidsat2`), Definition [Coverage and Void by
+  Aligned Duration]: `1 - (1 - skip_prob) * mass`, where the mass averages
+  `obsdur / (obsdur + misdur)` - the share of a subprocess's own aligned
+  elapsed time that a synchronous move accounts for. A rate of the
+  subprocess's time, where the retired `voidsat` divided by the whole
+  trace's duration and so reported a share. Conditioned on observation as
+  `alignment_coverage_pn2`'s mass is: only alignments where the subprocess
+  has a synchronous move count, traces observing it nowhere leave both the
+  average and the `obscount` normalising it, and the mass is 0 where
+  `obscount` is 0. It does not call `observed_alignment_mass` despite that
+  identical conditioning, because it iterates real traces rather than
+  deduplicated weighted variants - duration is per-instance - and takes a
+  ratio of summed totals rather than a mean of per-execution ratios.
+  `coveragemass` gained `obsdur`, `misdur` and `has_synchronous_move`
+  beside the existing move-duration primitives. A subprocess observed but
+  unmeasurable - recorded at the very start of a trace, where no interval
+  bounds it - reads ratio 1 rather than 0.
+
 * `run.sh --seed N` sets `PYTHONHASHSEED` before invoking the command, so a
   first discovery (a tree-cache miss) can be made reproducible. It has to
   live in the wrapper script rather than as a Python CLI flag: the
@@ -142,6 +160,27 @@ All notable changes to this project will be documented in this file.
   runner gets the same cached, process-stable tree.
 
 ### Changed
+
+* `coveragemass.block` no longer excludes silent (`TauPath`) moves, and
+  `coveragemass.mdur` no longer returns 0 for one. Skip alignments have no
+  silent move type - Definition 5 of the skip-alignment paper makes every
+  non-synchronous model-side move a skip, and every skip a deviation - so
+  the exclusion was dropping real deviations from the block that shares a
+  gap, and inflating what the surviving moves were each charged. The
+  clause it was written against also described a different thing from what
+  the code tested: a zero-cost skip, not a `TauPath`. Every metric built on
+  move durations (`adur`, `admass`, `covat`, `voidat`, `voidsat`) changes
+  value where an alignment contains a silent move.
+
+* `voidsat` is retired, superseded by `voidsat2`, and the runner scores
+  `voidsat2` in its place at the root and per node. The retired form was
+  `skip_prob` times a share of the whole trace's duration, so an entirely
+  missing subprocess - whose mass is 0 - read void 0, the reverse of the
+  truth. It was pinned in `test_metric_extremes`' `KNOWN_FAILURES` at 0.0
+  for `always_missing` and 0.5 for `half_missing`; `voidsat2` meets both
+  promises and needs no pin. Result CSVs written before this carry the
+  share under the `voidsat` column; the registry keeps that id with its
+  description, as it does every retired id.
 
 * `voidsalign` is retired, superseded by `voidsalign2`, and the runner
   scores `voidsalign2` in its place at the root and per node. The retired
