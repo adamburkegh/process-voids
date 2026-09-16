@@ -47,8 +47,8 @@ def run_premodel(cases, out_csv='var/lab/results/exp_premodel.csv'):
             row['status'] = 'ok'
             row.update(metrics)
         except Exception as e:
-            row.update(status=f'error: {e}', weight_coverage=None,
-                        weight_voidage=None, skipprob=None, salign_coverage=None)
+            row.update(status=f'error: {e}', weight_voidage=None, skipprob=None,
+                       salign_coverage=None)
         rows.append(row)
 
         elapsed = time.monotonic() - started

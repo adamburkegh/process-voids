@@ -348,10 +348,10 @@ class RealStageIntegrationTest(unittest.TestCase):
     that it runs something.
     """
 
-    def test_skipprob_and_weight_coverage_match_compute_metrics(self):
+    def test_skipprob_and_weight_voidage_match_compute_metrics(self):
         from lab.fixtures import build_running_example_log, build_running_example_tree
         from lab.metrics import compute_metrics
-        from process_voids.coveragemass import mass_by_weight
+        from process_voids.coveragemass import voidage_by_weight
 
         log = build_running_example_log()
         # Temp dir for the intermediate SLPNs: nothing here creates var/lab/.
@@ -364,13 +364,13 @@ class RealStageIntegrationTest(unittest.TestCase):
                               slpn_path=str(Path(tmp) / 'test_metric_context_ctx.slpn'))
             skipprob_metric = ProcessMetric(id='skipprob', scope='root', needs=('dv',),
                                      compute=lambda c, node: c.stage('dv').skip_probs[node])
-            weight_coverage_metric = ProcessMetric(
-                id='weight_coverage', scope='root', needs=('dv',),
-                compute=lambda c, node: mass_by_weight(node, c.stage('dv').skip_probs))
+            weight_voidage_metric = ProcessMetric(
+                id='weight_voidage', scope='root', needs=('dv',),
+                compute=lambda c, node: voidage_by_weight(node, c.stage('dv').skip_probs))
 
             self.assertAlmostEqual(ctx.score(skipprob_metric), expected_metrics['skipprob'])
-            self.assertAlmostEqual(ctx.score(weight_coverage_metric),
-                                   expected_metrics['weight_coverage'])
+            self.assertAlmostEqual(ctx.score(weight_voidage_metric),
+                                   expected_metrics['weight_voidage'])
 
 
 if __name__ == '__main__':

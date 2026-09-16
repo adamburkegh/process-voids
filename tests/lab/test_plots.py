@@ -22,7 +22,7 @@ def fake_disco_df():
         rows.append({
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'status': 'ok',
-            'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
+            'weight_voidage': 0.2, 'skipprob': 0.2, 'salign_coverage': 0.98,
             'voidsalign2': 0.05, 'voidsat2': 0.03,
             'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
             'voidmass_process_lower': 0.04, 'voidmass_process_upper': 0.05,
@@ -42,7 +42,7 @@ def fake_claims_shaped_df():
             rows.append({
                 'log': 'claims', 'combo': 'claims_known', 'degradation_dim': target,
                 'degradation_level': level, 'status': 'ok',
-                'weight_coverage': 0.8, 'skipprob': 0.2, 'salign_coverage': 0.98,
+                'weight_voidage': 0.2, 'skipprob': 0.2, 'salign_coverage': 0.98,
                 'voidsalign2': 0.05, 'voidsat2': 0.03,
                 'alignment_coverage_pn2_lower': 0.90, 'alignment_coverage_pn2_upper': 0.95,
                 'voidmass_process_lower': 0.01 * level, 'voidmass_process_upper': 0.01 * level,
@@ -60,13 +60,12 @@ def fake_node_df():
     run_disco_degrade). voidmass_process and
     alignment_coverage_pn2 carry _lower/_upper bound columns rather than
     a single column - see lab.run.CLASSICAL_METRIC_KEYS.'''
-    def row(node_id, node_type, weight_coverage, skipprob,
+    def row(node_id, node_type, weight_voidage, skipprob,
              voidmass_process, level=0.0):
         return {
             'log': 'fake_log', 'combo': 'inductive', 'degradation_dim': 'activity',
             'degradation_level': level, 'node_id': node_id, 'node_type': node_type,
-            'alphabet': 'a', 'weight_coverage': weight_coverage,
-            'weight_voidage': 1 - weight_coverage, 'skipprob': skipprob,
+            'alphabet': 'a', 'weight_voidage': weight_voidage, 'skipprob': skipprob,
             'salign_coverage': 0.9, 'voidsalign2': 0.05,
             'voidmass_deficit_lower': 0.1, 'voidmass_deficit_upper': 0.1,
             'voidmass_movecount': 1.0, 'voidmass_movecount_bound': 1.0,
@@ -75,13 +74,13 @@ def fake_node_df():
             'voidsat2': 0.0, 'mandatory_node_count': 1, 'total_node_count': 1,
         }
     return pd.DataFrame([
-        row('1', 'Activity', 1.0, 0.0, 1.0),
+        row('1', 'Activity', 0.0, 0.0, 1.0),
         row('2', 'Activity', 0.5, 0.5, 0.5),
         # a Tau row at the same cell, with values far outside the two
         # Activity rows' range - must not pull the average toward it
-        row('3', 'Tau', 0.0, 1.0, 0.0),
+        row('3', 'Tau', 1.0, 1.0, 0.0),
         # a second cell (level=1.0) that must be dropped entirely
-        row('1', 'Activity', 0.0, 1.0, 0.0, level=1.0),
+        row('1', 'Activity', 1.0, 1.0, 0.0, level=1.0),
     ])
 
 
@@ -90,9 +89,9 @@ class AverageOverNodesTest(unittest.TestCase):
         averaged = average_over_nodes(fake_node_df())
         row = averaged[(averaged['degradation_dim'] == 'activity')
                         & (averaged['degradation_level'] == 0.0)].iloc[0]
-        # mean of the two Activity rows only (1.0, 0.5) -> 0.75, not
-        # pulled toward the Tau row's 0.0
-        self.assertAlmostEqual(row['weight_coverage'], 0.75)
+        # mean of the two Activity rows only (0.0, 0.5) -> 0.25, not
+        # pulled toward the Tau row's 1.0
+        self.assertAlmostEqual(row['weight_voidage'], 0.25)
         self.assertAlmostEqual(row['skipprob'], 0.25)
 
     def test_averages_both_bound_columns_for_a_banded_metric(self):

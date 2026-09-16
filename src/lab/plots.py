@@ -6,12 +6,10 @@ fixture via lab.claims_fixture's CLAIMS_COMBOS/CLAIMS_DEGRADATIONS
 registration, so there's a single plot function rather than one per
 experiment script).
 
-plot_dose_response: weight_coverage / skipprob / salign_coverage /
+plot_dose_response: weight_voidage / skipprob / salign_coverage /
 voidsalign2 / voidsat2 / alignment_coverage_pn2 / voidmass_process vs
 degradation_level, one figure per (log, facet value), one line per
-`line_by` value within it. weight_voidage isn't plotted separately -
-it's exactly 1 - weight_coverage, so its own panel would just be a
-mirror image with no new signal.
+`line_by` value within it.
 
 alignment_coverage_pn2/voidmass_process are each a
 _lower/_upper bound pair, not a single column (the timed-out-variant
@@ -57,7 +55,7 @@ import pandas as pd
 # axis text (and the lookup key for the skipprob-inversion special case
 # below), independent of the column name(s) it reads.
 METRICS = [
-    ('weight_coverage', ('weight_coverage',)),
+    ('weight_voidage', ('weight_voidage',)),
     ('skipprob', ('skipprob',)),
     ('salign_coverage', ('salign_coverage',)),
     ('voidsalign2', ('voidsalign2',)),
@@ -111,7 +109,7 @@ def average_over_nodes(node_df: pd.DataFrame) -> pd.DataFrame:
     process_voids.coveragemass's mandatory_node_count/total_node_count:
     a Tau leaf represents "do nothing", not a thing whose coverage/void
     reading should pull the average toward its own degenerate values
-    (eg skipprob=1.0, weight_coverage=0.0 on every Tau node, regardless
+    (eg skipprob=1.0, weight_voidage=1.0 on every Tau node, regardless
     of how the rest of the tree is actually behaving).
 
     Feed the result straight into plot_dose_response - a 'status'='ok'

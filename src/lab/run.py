@@ -46,7 +46,7 @@ from lab.runs import Experiment, RUNS
 from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
-    mass_by_weight, voidage_by_weight, coverage_by_alignment,
+    voidage_by_weight, coverage_by_alignment,
 )
 from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
 from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
@@ -83,8 +83,7 @@ CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
 # lab.metric_registry).
 TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
-PER_NODE_METRIC_KEYS = ('weight_coverage', 'weight_voidage', 'skipprob', 'salign_coverage',
-                         'voidsalign2')
+PER_NODE_METRIC_KEYS = ('weight_voidage', 'skipprob', 'salign_coverage', 'voidsalign2')
 
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat2',)
 
@@ -131,8 +130,6 @@ def _alignment_coverage_pn(timed_out_ratio):
 # node - see _compute_cell. mean_leaf_skipprob and TIMEOUT_DIAGNOSTIC_KEYS
 # are root-only bookkeeping, not in this list - see _compute_cell.
 ALL_METRICS = [
-    ProcessMetric(id='weight_coverage', scope='node', needs=('dv',),
-                  compute=lambda ctx, node: mass_by_weight(node, ctx.stage('dv').skip_probs)),
     ProcessMetric(id='weight_voidage', scope='node', needs=('dv',),
                   compute=lambda ctx, node: voidage_by_weight(node, ctx.stage('dv').skip_probs)),
     ProcessMetric(id='skipprob', scope='node', needs=('dv',),
@@ -431,13 +428,13 @@ def run(log_paths, combos=ALL_COMBOS, degradations=ALL_DEGRADATIONS, levels=ALL_
                 with Timer() as t:
                     try:
                         # Computed HERE, once, rather than once per dim
-                        # below - mass_by_weight/voidage_by_weight read
+                        # below - voidage_by_weight reads
                         # tree.weight/child.weight directly off the
                         # shared, mutable tree object, which the 'dv'
                         # stage's transfer_pt_weights overwrites on every
                         # OTHER cell's call too. A second dim reusing
                         # this "shared" level-0.0 result would otherwise
-                        # recompute weight_coverage/weight_voidage LIVE,
+                        # recompute weight_voidage LIVE,
                         # after an unrelated nonzero-level cell of the
                         # first dim has already reset those attributes.
                         # dim is stamped in per use below, since these

@@ -434,7 +434,7 @@ class NotImplementedComboTest(unittest.TestCase):
                 levels=[0.0, 0.5], out_csv=str(tmp_out))
             mock_skipprob.assert_not_called()
             self.assertTrue((df['status'] == 'not_implemented').all())
-            self.assertTrue(df['weight_coverage'].isna().all())
+            self.assertTrue(df['weight_voidage'].isna().all())
             self.assertTrue(df['voidmass_deficit_lower'].isna().all())
             self.assertTrue(df['timed_out_count'].isna().all())
             self.assertTrue(df['timed_out_weight'].isna().all())
@@ -461,7 +461,7 @@ class ComputeErrorTest(FakePipelineMixin, unittest.TestCase):
             out_csv=str(tmp_out))
         self.assertEqual(len(df), 1)
         self.assertIn('RuntimeError: boom', df.iloc[0]['status'])
-        self.assertIsNone(df.iloc[0]['weight_coverage'])
+        self.assertIsNone(df.iloc[0]['weight_voidage'])
         self.assertIsNone(df.iloc[0]['voidmass_deficit_lower'])
 
         # Every cell errored, so node_rows never got populated - the
@@ -504,7 +504,7 @@ class ComputeErrorTest(FakePipelineMixin, unittest.TestCase):
 class SharedZeroLevelNodeRowsWeightStabilityTest(FakePipelineMixin, unittest.TestCase):
     """
     Level-0.0 node rows must agree across degradation dims.
-    mass_by_weight/voidage_by_weight read tree.weight/child.weight
+    voidage_by_weight reads tree.weight/child.weight
     directly off the shared, mutable ProcessTree object -
     transfer_pt_weights (inside the 'dv' stage) overwrites those
     attributes on EVERY cell's call, not just the shared level-0.0 one.
@@ -513,8 +513,7 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(FakePipelineMixin, unittest.Tes
     stamped in after the fact) for every dim. Recomputing them for a
     second dim would read whatever weight state an intervening,
     unrelated nonzero-level cell of the FIRST dim had left on the tree,
-    silently corrupting weight_coverage/weight_voidage for every dim
-    after the first.
+    silently corrupting weight_voidage for every dim after the first.
     """
 
     def setUp(self):
@@ -527,8 +526,8 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(FakePipelineMixin, unittest.Tes
         self.a.set_parent(self.tree)
         self.b.set_parent(self.tree)
 
-        # a fully covered, b fully void - the Xor's own weight_coverage
-        # is then exactly a.weight / (a.weight + b.weight), so a weight
+        # a fully covered, b fully void - the Xor's own weight_voidage
+        # is then exactly b.weight / (a.weight + b.weight), so a weight
         # swap between calls is directly visible in the number.
         self.skip_probs = {self.tree: 0.0, self.a: 0.0, self.b: 1.0}
         self.vm_table = {node: _fake_classical_row() for node in (self.tree, self.a, self.b)}
@@ -568,15 +567,15 @@ class SharedZeroLevelNodeRowsWeightStabilityTest(FakePipelineMixin, unittest.Tes
 
         root_rows = node_df[(node_df['node_id'] == '3') & (node_df['degradation_level'] == 0.0)]
         self.assertEqual(len(root_rows), 2)  # one per dim
-        weight_coverages = set(root_rows['weight_coverage'])
+        weight_voidages = set(root_rows['weight_voidage'])
         self.assertEqual(
-            len(weight_coverages), 1,
-            f"weight_coverage diverged across dims at level 0.0: "
-            f"{root_rows[['degradation_dim', 'weight_coverage']].to_dict('records')}")
+            len(weight_voidages), 1,
+            f"weight_voidage diverged across dims at level 0.0: "
+            f"{root_rows[['degradation_dim', 'weight_voidage']].to_dict('records')}")
         # and it must be the snapshot from the FIRST (zero-level) call
-        # (a=3,b=1 -> 0.75), not whatever a later cell's mutation left
-        # behind (a=1,b=3 -> 0.25).
-        self.assertAlmostEqual(weight_coverages.pop(), 0.75, places=6)
+        # (a=3,b=1 -> 0.25), not whatever a later cell's mutation left
+        # behind (a=1,b=3 -> 0.75).
+        self.assertAlmostEqual(weight_voidages.pop(), 0.25, places=6)
 
 
 class ClassicalMetricsTimeoutDiagnosticsTest(FakePipelineMixin, unittest.TestCase):

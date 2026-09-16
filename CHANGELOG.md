@@ -161,6 +161,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `weight_coverage` is retired. `lab.run` and `lab.metrics` no longer
+  emit it, so result CSVs written from here carry no `weight_coverage`
+  column; `weight_voidage` stays, and is what the dose-response plots now
+  show in its place. The two were always exact complements
+  (`weight_voidage = 1 - weight_coverage` at every node), so a value from
+  an earlier result file can still be read against a later one as
+  `1 - weight_voidage`. The registry keeps the id with its description and
+  history, as it does every retired id; there is no `superseded_by`,
+  since `weight_voidage` is its mirror rather than a replacement.
 * `bpi2013_closed_problems` replaces `bpi2013_incidents` in the log
   catalogue and as a named run, so `--run full` now sweeps closed
   problems rather than incidents.

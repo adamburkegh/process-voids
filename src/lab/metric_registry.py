@@ -140,6 +140,7 @@ METRICS = {
         source='process_voids.coveragemass.mass_by_weight',
         scripts=('exp_disco_degrade',),
         scale='coverage',
+        status='retired',
         history={'v0.5.0': _MASKED_SKIP_PROB_WEIGHT_HISTORY},
     ),
     'weight_voidage': Metric(
