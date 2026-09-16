@@ -3,7 +3,7 @@ Metric computation for a single (log, model) run, built on top of the
 existing skip-probability pipeline in process_voids.pvoid.
 
 METRIC_KEYS: weight_voidage, skipprob, matchprob, salign_coverage,
-voidsalign2, mean_leaf_skipprob - see lab.metric_registry for what each id
+voidsalign3, mean_leaf_skipprob - see lab.metric_registry for what each id
 means and where it's computed. duration_coverage is product-only, not on
 this roster.
 """
@@ -15,11 +15,11 @@ from skipalignments import Activity
 from process_voids import pvoid, slpn_importer
 from process_voids.coveragemass import transfer_pt_weights, coverage_by_alignment, \
     voidage_by_weight
-from process_voids.voidsalign2 import voidsalign2
+from process_voids.voidsalign3 import voidsalign3
 
 
 METRIC_KEYS = ('weight_voidage', 'skipprob', 'matchprob', 'salign_coverage',
-               'voidsalign2', 'mean_leaf_skipprob')
+               'voidsalign3', 'mean_leaf_skipprob')
 
 
 def mean_leaf_skipprob(tree, skip_probs):
@@ -65,7 +65,7 @@ def compute_metrics(log, tree, slpn_path, ppt_weights=None, return_dv=False):
         dv.skip_probs[tree],
         1 - dv.skip_probs[tree],
         coverage_by_alignment(tree, dv),
-        voidsalign2(tree, dv.skip_dict_backup, dv.pl, dv.skip_probs),
+        voidsalign3(tree, dv.skip_dict_backup, dv.pl, dv.skip_probs),
         mean_leaf_skipprob(tree, dv.skip_probs),
     )
     metrics = dict(zip(METRIC_KEYS, values))

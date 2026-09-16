@@ -21,7 +21,7 @@ from process_voids.voidmass_pn import VoidmassPnResult
 class FakeDv:
     def __init__(self, skip_probs):
         self.skip_probs = skip_probs
-        # voidsalign2 is mocked in every test here, but its arguments
+        # voidsalign3 is mocked in every test here, but its arguments
         # (dv.skip_dict_backup/dv.pl) are still evaluated eagerly at the
         # ProcessMetric's own call site regardless.
         self.skip_dict_backup = {}
@@ -83,7 +83,7 @@ class FakePipelineMixin:
     def patch_pipeline(self, skip_probs, vm_table, timed_out_count=0, timed_out_weight=0.0,
                        skip_dict=None, read_xes_return=None,
                        salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat2_value=0.0,
-                       voidsalign2_value=0.0):
+                       voidsalign3_value=0.0):
         # lab.run discovers through lab.discovery.discover_cached, which
         # pickles the discovered tree under TREE_CACHE_DIR. Left pointing at
         # the real var/lab/tree_cache, these tests would write a fake tree
@@ -102,7 +102,7 @@ class FakePipelineMixin:
                                                   timed_out_count=timed_out_count,
                                                   timed_out_weight=timed_out_weight))
         self._patch('lab.run.coverage_by_alignment', return_value=salign_coverage)
-        self._patch('lab.run.voidsalign2', return_value=voidsalign2_value)
+        self._patch('lab.run.voidsalign3', return_value=voidsalign3_value)
         self._patch('lab.run.coverage_by_alignment_pn', return_value=alignment_coverage_pn)
         self._patch('lab.run.voidsat2', return_value=voidsat2_value)
 
@@ -705,7 +705,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
     def test_row_has_every_metric_column_with_correct_values(self):
         _df, node_df, _timings_df = self._run(
             salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat2_value=0.33,
-            voidsalign2_value=0.66)
+            voidsalign3_value=0.66)
         row = node_df[node_df['node_id'] == '1'].iloc[0]
 
         for key in (PER_NODE_METRIC_KEYS + CLASSICAL_METRIC_KEYS
@@ -719,7 +719,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['voidmass_movecount'], 1.0)
         self.assertEqual(row['voidmass_movecount_bound'], 1.5)
         self.assertEqual(row['salign_coverage'], 0.77)
-        self.assertEqual(row['voidsalign2'], 0.66)
+        self.assertEqual(row['voidsalign3'], 0.66)
         self.assertEqual(row['alignment_coverage_pn2_lower'], 0.88)
         self.assertEqual(row['alignment_coverage_pn2_upper'], 0.88)
         self.assertEqual(row['voidsat2'], 0.33)

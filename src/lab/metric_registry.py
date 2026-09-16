@@ -272,6 +272,33 @@ METRICS = {
         source='process_voids.voidsalign2.voidsalign2',
         scripts=('exp_disco_degrade',),
         scale='void',
+        status='retired',
+        superseded_by='voidsalign3',
+    ),
+    'voidsalign3': Metric(
+        id='voidsalign3',
+        description="\\voidsalign (defn:salign-void): 1 - \\coversalign, where "
+                    "\\coversalign (defn:salign-coverage) is (1 - skip_prob) "
+                    "times a skip-weighted match ratio over the SAME lumped "
+                    "skip-alignment normal form salign_coverage uses. Each "
+                    "skip move counts for |leaves(msub) \\ {silent}| - the "
+                    "number of labelled activities in the skipped subprocess - "
+                    "so a lumped skip over a large subtree is not "
+                    "underweighted, and a skip over a wholly silent subprocess "
+                    "counts 0. Unlike voidsalign2's aligncost(<>, msub), that "
+                    "weight does not fall below the subprocess's own "
+                    "activities where a traversal performs fewer of them: a "
+                    "skipped optional block still carries its activity, a "
+                    "skipped choice all its branches, a skipped loop its "
+                    "redo-child. The mass is conditioned on observation "
+                    "exactly as alignment_coverage_pn2's is: executions with "
+                    "no synchronous move are excluded, traces observing the "
+                    "node nowhere leave both the average and the normaliser, "
+                    "and coverage is 0 where that normaliser is 0 - so a "
+                    "wholly missing subprocess reads void 1.",
+        source='process_voids.voidsalign3.voidsalign3',
+        scripts=('exp_disco_degrade',),
+        scale='void',
     ),
     'mandatory_node_count': Metric(
         id='mandatory_node_count',

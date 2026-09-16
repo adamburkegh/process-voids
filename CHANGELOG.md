@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `voidsalign3` (`process_voids.voidsalign3`), Definitions [Coverage by
+  Skip Alignment Correspondence] and [Void by Skip Alignment
+  Correspondence]: `voidsalign2` with one term changed. A skip move now
+  counts for `|leaves(msub) \ {silent}|`, the number of labelled
+  activities in the subprocess it skips, rather than `aligncost(<>,
+  msub)`. The cost-minimal execution against the empty trace falls below
+  a subprocess's own activities wherever a traversal performs fewer of
+  them - to nothing for an optional block, so a skipped optional block's
+  absence was invisible in the mass. The weights now differ for
+  `xor(a, tau)` (0 -> 1), `xor(a, b)` (1 -> 2) and `loop(a, e)` (1 -> 2),
+  and agree for a single activity or a sequence. On the payment running
+  example only the root moves, since `<o, s, p>` aligns with a skip of
+  the approval loop: its void reading goes 0.0833 -> 2/15. Registered
+  `scale='void'`, so `test_metric_extremes` holds it to 0, 1 and 0.5.
+  The dose-response plots picked it up from the registry with no edit.
+
 * `matchprob`, `1 - skipprob` at the scored node, emitted per node by
   `lab.run` and at the root by `lab.metrics`, registered live with
   `scale='coverage'` - so `test_metric_extremes` holds it to 1, 0 and
@@ -187,6 +203,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* `voidsalign2` is retired, superseded by `voidsalign3`, which `lab.run`
+  and `lab.metrics` now emit in its place. Result CSVs written before
+  this carry the `aligncost`-weighted reading under the `voidsalign2`
+  column; the registry keeps that id with its description.
+  `process_voids.voidsalign2` and its tests stay in place, off the
+  roster.
 * `lab.plots` reads its panels from `lab.metric_registry` instead of
   keeping its own list: one panel per live metric with a scale that
   `exp_disco_degrade` emits and that is plotted, with a
