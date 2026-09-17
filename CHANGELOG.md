@@ -223,7 +223,7 @@ Now requires Python 3.11.
 
 ### Changed
 
-* Now requires Python 3.11 or later, previously 3.10 (via tomlib). 
+* Now requires Python 3.11 or later, previously 3.10 (via tomllib). 
 
 * `voidsalign2` is retired, superseded by `voidsalign3`, which `lab.run`
   and `lab.metrics` now emit in its place. Result CSVs written before
