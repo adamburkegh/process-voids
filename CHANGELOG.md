@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+Now requires Python 3.11.
+
 ### Added
 
 * `pvoid.toml`, a gitignored settings file for machine-specific paths,
