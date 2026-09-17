@@ -6,17 +6,44 @@ own values) to run as a Cartesian product via run_disco_degrade(). This
 module is the single place new logs/levels get registered.
 """
 
+import os
+from pathlib import Path
+
 from lab.degradation import DEGRADATIONS
 from lab.discovery import COMBOS
+from process_voids.config import value
+
+
+class ExternalLog(os.PathLike):
+    """
+    A log kept outside the repository, registered by filename. Its
+    directory is [paths] data_dir in pvoid.toml, read only when the path
+    is actually used - os.fspath, or Path() around it - so building
+    ALL_LOGS, and lab.runs' named runs from it, needs no configuration.
+
+    Resolves with forward slashes. pm4py's reader is typed for a str, so
+    a caller opening one passes os.fspath(log_path) rather than the
+    object.
+    """
+
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __fspath__(self):
+        return (Path(value('paths', 'data_dir')) / self.filename).as_posix()
+
+    def __repr__(self):
+        return f'ExternalLog({self.filename!r})'
+
 
 ALL_LOGS = {
     'payment_approval': 'data/payment_approval.xes',
     'payment_partial': 'data/payment_partial.xes',
     'partial_sequence': 'data/partial_sequence.xes',
-    'rtfm': 'C:/working/data/rtfm.xes',
-    'sepsis': 'C:/working/data/sepsis.xes',
-    'bpic2020_rfp': 'C:/working/data/BPIC2020_rfp.xes',
-    'bpi2013_closed_problems': 'C:/working/data/BPI_Challenge_2013_closed_problems.xes',
+    'rtfm': ExternalLog('rtfm.xes'),
+    'sepsis': ExternalLog('sepsis.xes'),
+    'bpic2020_rfp': ExternalLog('BPIC2020_rfp.xes'),
+    'bpi2013_closed_problems': ExternalLog('BPI_Challenge_2013_closed_problems.xes'),
 }
 
 ALL_COMBOS = COMBOS

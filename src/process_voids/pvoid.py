@@ -16,9 +16,10 @@ from skipalignments import (
     Sequence, Xor, And, Loop, probabilities,
 )
 from process_voids import slpn_importer
+from process_voids.config import ebi_executable
 from process_voids.tree import from_pm4py
 
-probabilities.EBI_EXECUTABLE="ebi.exe"   # resolved via PATH; see README
+probabilities.EBI_EXECUTABLE = ebi_executable()   # bare 'ebi' on PATH unless pvoid.toml says otherwise
 
 
 

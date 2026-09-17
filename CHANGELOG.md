@@ -4,7 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+Now requires Python 3.11.
+
 ### Added
+
+* `pvoid.toml`, a gitignored settings file for machine-specific paths,
+  read by `process_voids.config`, with a tracked `pvoid.example.toml`
+  documenting every key. It replaces constants in code: `lab.params`'
+  large-log paths, `lab.toothpaste_bridge.TOOTHPASTE_DIR`, and
+  `process_voids.pvoid`'s `EBI_EXECUTABLE`. Keys are declared in
+  `config.SCHEMA`, and a test holds the example file to it; an unknown
+  section or key is rejected rather than ignored, so a misspelt key cannot
+  read as unset. Lookup tries the running checkout's root, then the main
+  checkout's, so one file serves every worktree and a worktree may
+  override it. Nothing reads a key until it is needed: a machine without
+  the file imports everything and runs the suite, and reading an unset key
+  with no default raises `ConfigError` naming the key, what it is for, and
+  the paths searched. A large log is registered as
+  `lab.params.ExternalLog('<filename>')` and resolves under
+  `[paths] data_dir` only when opened or named, with forward slashes.
+  `[tools] ebi` is optional and defaults to bare `ebi` on PATH - the
+  skip-alignments default - so an installed package with no file still
+  finds it. An `[agent]` section holds machine facts that only agents and
+  people read - the interpreter to build a worktree venv with, and where
+  the papers are - and a test holds that no source module reads it.
 
 * `voidsalign3` (`process_voids.voidsalign3`), Definitions [Coverage by
   Skip Alignment Correspondence] and [Void by Skip Alignment
@@ -40,11 +63,8 @@ All notable changes to this project will be documented in this file.
   private lab notebook, the gitignored paper and report directories, the
   private archive repository, per-machine agent configuration, absolute
   Windows paths, and merge conflict markers at the start of a line.
-  Allowances are per file and per pattern:
-  `lab/params.py` may hold absolute paths, since the large logs live
-  outside the repository by agreed convention, but is still reported for
-  anything else; the tool and its tests may hold every pattern, since they
-  have to spell each one out. The CHANGELOG note is worded as a report - a
+  Only the tool and its tests are allowed any pattern, since they have to
+  spell each one out. The CHANGELOG note is worded as a report - a
   docstring-only change needs no entry. Like the others it reports rather
   than gates, exiting non-zero only on an internal error, and it does not
   run the test suite.
@@ -203,6 +223,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* Now requires Python 3.11 or later, previously 3.10 (via tomllib). 
+
 * `voidsalign2` is retired, superseded by `voidsalign3`, which `lab.run`
   and `lab.metrics` now emit in its place. Result CSVs written before
   this carry the `aligncost`-weighted reading under the `voidsalign2`
@@ -317,6 +339,20 @@ All notable changes to this project will be documented in this file.
   remain readable.
 
 ### Fixed
+
+* `process_voids.util.squash_review` given two refs compared their trees,
+  so reviewing a branch against a trunk that had moved on since the branch
+  was cut reported the trunk's newer work as the branch removing it -
+  registry ids as removed, tests as dropped. It now compares from their
+  merge base, and says so in the report's first line when that differs
+  from the base named. HEAD against the index, the default, is unchanged.
+  Its allowance for absolute paths in `lab/params.py` is gone: machine
+  paths live in `pvoid.toml`, so one reappearing there is now reported.
+
+* `lab.print_tree` raised `TypeError` on every invocation: it unpacked
+  `discover_cached`'s return as a `(tree, ppt_weights)` pair after that
+  became a `CachedDiscovery`. Its tests mocked the old tuple, which let
+  the unpack pass; they now mock a `CachedDiscovery`.
 
 * `lab.plots`' panel list still named `voidsalign` after it was retired
   in favour of `voidsalign2`, so plotting a result CSV written since

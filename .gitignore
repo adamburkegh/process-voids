@@ -11,3 +11,5 @@ model.pnml
 logs/
 # private lab notebook, kept in a separate private repo
 labnotes.md
+# this machine's settings - see pvoid.example.toml
+pvoid.toml
