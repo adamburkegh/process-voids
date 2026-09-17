@@ -221,6 +221,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+* Now requires Python 3.11 or later, previously 3.10 (via tomlib). 
+
 * `voidsalign2` is retired, superseded by `voidsalign3`, which `lab.run`
   and `lab.metrics` now emit in its place. Result CSVs written before
   this carry the `aligncost`-weighted reading under the `voidsalign2`

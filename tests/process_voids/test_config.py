@@ -187,6 +187,20 @@ class AgentSectionTest(unittest.TestCase):
                 self.assertIn('not read by code', declared.description)
 
 
+class DeclaredPythonVersionTest(unittest.TestCase):
+
+    def test_the_package_does_not_claim_a_python_without_tomllib(self):
+        """This module reads pvoid.toml with tomllib, new in Python 3.11,
+        and process_voids.pvoid imports it at load - so on an older
+        interpreter the product fails at import. pyproject.toml must not
+        claim to support one."""
+        with open(REPO_ROOT / 'pyproject.toml', 'rb') as f:
+            requires = tomllib.load(f)['project']['requires-python']
+        floor = re.search(r'>=\s*(\d+)\.(\d+)', requires)
+        self.assertIsNotNone(floor, f'no lower bound in requires-python {requires!r}')
+        self.assertGreaterEqual((int(floor.group(1)), int(floor.group(2))), (3, 11), requires)
+
+
 class ExampleFileTest(unittest.TestCase):
     """The tracked example is how a new machine learns what to set, so it
     must hold exactly the schema's keys - no more, no fewer."""
