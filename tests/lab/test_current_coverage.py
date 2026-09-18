@@ -86,5 +86,24 @@ class CurrentCoverageTest(unittest.TestCase):
             self.assertTrue(df.loc['voidsat2', 'rtfm'])
 
 
+class MainTest(unittest.TestCase):
+    def test_results_dir_flag_reads_that_directory(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from lab.current_coverage import main
+        with tempfile.TemporaryDirectory() as d:
+            _write_csv(d, 'rtfm.csv', 'rtfm', ['skipprob'])
+            # provenance file beside the results: no 'log' column, must be skipped
+            pd.DataFrame([{'log_id': 'rtfm', 'source_csv': 'x.csv'}]).to_csv(
+                Path(d) / 'runs.csv', index=False)
+            out = io.StringIO()
+            with patch('sys.argv', ['current_coverage', '--results-dir', d]), \
+                    contextlib.redirect_stdout(out):
+                main()
+        self.assertIn('| skipprob | Done |', out.getvalue())
+        self.assertIn('as of:', out.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()
