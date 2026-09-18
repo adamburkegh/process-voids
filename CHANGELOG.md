@@ -8,6 +8,13 @@ Now requires Python 3.11.
 
 ### Added
 
+* `lab.trace_variability`: standard deviation of each metric's values
+  across trace-degradation levels, one number per (metric, log, combo) -
+  a numeric stand-in for the trace-dimension dose-response plots, which
+  are informative to look at but too flat to earn a figure. Reuses
+  `lab.cross_log_plots`' `METRIC_SPECS`/`_series_for`/`load_logs`, so a
+  banded metric uses the same midpoint the plot draws as its line, and a
+  log missing a metric's column reads `NaN`, not an error.
 * `lab.runtime_table`: metric x (log, combo) -> total wall-clock seconds,
   read from each log's own `*_timings.csv`. A metric's own row is
   usually near-zero - the real cost sits in shared stages (`classical`,
