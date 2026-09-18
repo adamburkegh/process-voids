@@ -8,6 +8,13 @@ Now requires Python 3.11.
 
 ### Added
 
+* `lab.check_run`: a quick sanity summary of a result CSV - row count,
+  status breakdown, and which logs/combos/degradation dims it covers.
+  The "did this run go the way I expected" question after a sweep,
+  answered once instead of as a fresh `python -c` snippet each time. A
+  column a given CSV doesn't have (eg a `*_timings.csv` has no
+  `combo`/`degradation_dim`) is skipped, not an error.
+
 * `pvoid.toml`, a gitignored settings file for machine-specific paths,
   read by `process_voids.config`, with a tracked `pvoid.example.toml`
   documenting every key. It replaces constants in code: `lab.params`'
