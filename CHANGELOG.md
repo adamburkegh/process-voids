@@ -18,13 +18,18 @@ Now requires Python 3.11.
   is the wrong view for deciding what to rerun. A metric absent from a
   log's newest file reads as not done here even if an older file for
   the same log once had it.
-* `lab.cross_log_plots`: dose-response plots comparing the SAME combo
-  and degradation dimension across DIFFERENT logs' own result CSVs, one
-  line per log - `lab.plots` compares combos or dimensions within one
-  log's own CSV, not across logs. A log's CSV missing a metric's column
-  (a sweep predating that metric) is skipped for that line, not an
-  error, since different logs' sweeps can be pinned to different
-  metric-registry versions.
+* `lab.cross_log_plots`: dose-response plots comparing DIFFERENT logs'
+  own result CSVs side by side - `lab.plots` compares combos or
+  dimensions within one log's own CSV, not across logs. Three axis
+  arrangements via `--panel-by`: `metric` (default, panel per metric,
+  line per log), `log` (panel per log, line per metric), `log_metric`
+  (panel per log/metric pair, line per combo - figures then split by
+  degradation dimension only, since combo is a line here rather than a
+  figure axis). `--ylim MIN MAX` fixes every panel's y-axis instead of
+  autoscaling per panel. A log's CSV missing a metric's column (a sweep
+  predating that metric) is skipped for that line, not an error, since
+  different logs' sweeps can be pinned to different metric-registry
+  versions.
 * `lab.check_run`: a quick sanity summary of a result CSV - row count,
   status breakdown, and which logs/combos/degradation dims it covers.
   The "did this run go the way I expected" question after a sweep,

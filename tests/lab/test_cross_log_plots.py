@@ -17,7 +17,9 @@ tests.lab.test_plots.
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from lab.cross_log_plots import METRIC_SPECS, _series_for, load_logs, plot_cross_log
@@ -115,6 +117,67 @@ class PlotCrossLogTest(unittest.TestCase):
                                       metric_ids=['voidsalign3', 'voidsat2'], out_dir=out_dir)
             self.assertEqual(len(written), 1)
             self.assertTrue(written[0].exists())
+
+    def test_ylim_applied_to_every_panel(self):
+        '''fake_df_with_all_metrics' values (0.05-1.0) autoscale to a range
+        distinguishable from an explicit (0.0, 1.0), so capturing the real
+        axes and reading back get_ylim() is a genuine check, not a tautology.'''
+        import matplotlib.pyplot as plt
+        real_subplots = plt.subplots
+        created_axes = []
+
+        def spy_subplots(*args, **kwargs):
+            fig, axes = real_subplots(*args, **kwargs)
+            created_axes.extend(axes if hasattr(axes, '__iter__') else [axes])
+            return fig, axes
+
+        log_dfs = {'log_a': fake_df_with_all_metrics()}
+        with patch('lab.cross_log_plots.plt.subplots', side_effect=spy_subplots):
+            with tempfile.TemporaryDirectory() as out_dir:
+                plot_cross_log(log_dfs, combos=['inductive_noise20'], degradation_dims=['trace'],
+                                out_dir=out_dir, ylim=(0.0, 1.0))
+        self.assertEqual(len(created_axes), len(METRIC_SPECS))
+        for ax in created_axes:
+            self.assertEqual(ax.get_ylim(), (0.0, 1.0))
+
+    def test_panel_by_log_writes_by_log_suffixed_file(self):
+        log_dfs = {'log_a': fake_df_with_all_metrics(), 'log_b': fake_df_with_all_metrics()}
+        with tempfile.TemporaryDirectory() as out_dir:
+            written = plot_cross_log(log_dfs, combos=['inductive_noise20'],
+                                      degradation_dims=['trace'], out_dir=out_dir, panel_by='log')
+            self.assertEqual(len(written), 1)
+            self.assertEqual(written[0].name, 'inductive_noise20_trace_by_log.png')
+
+    def test_panel_by_log_metric_ignores_combo_as_figure_axis(self):
+        '''panel_by='log_metric' makes combo a LINE, not a figure axis - two
+        combos and two dims should still write one file per dim, not per
+        (combo, dim), since every combo's line lands in the same panel.'''
+        log_dfs = {'log_a': fake_df_with_all_metrics(), 'log_b': fake_df_with_all_metrics()}
+        with tempfile.TemporaryDirectory() as out_dir:
+            written = plot_cross_log(log_dfs, combos=['inductive_noise20', 'toothpaste_noise10'],
+                                      degradation_dims=['trace', 'activity_frequency_gradual'],
+                                      out_dir=out_dir, panel_by='log_metric')
+            self.assertEqual(len(written), 2)
+            names = sorted(p.name for p in written)
+            self.assertEqual(names, ['activity_frequency_gradual_by_log_metric.png',
+                                      'trace_by_log_metric.png'])
+
+    def test_panel_by_log_metric_has_one_panel_per_log_metric_pair(self):
+        log_dfs = {'log_a': fake_df_with_all_metrics(), 'log_b': fake_df_with_all_metrics()}
+        with patch('lab.cross_log_plots.plt.subplots', wraps=plt.subplots) as spy:
+            with tempfile.TemporaryDirectory() as out_dir:
+                plot_cross_log(log_dfs, combos=['inductive_noise20'], degradation_dims=['trace'],
+                                out_dir=out_dir, panel_by='log_metric',
+                                metric_ids=['voidsalign3', 'voidsat2'])
+        # 2 logs x 2 metrics = 4 panels
+        spy.assert_called_once_with(1, 4, figsize=(20, 4))
+
+    def test_invalid_panel_by_raises(self):
+        log_dfs = {'log_a': fake_df_with_all_metrics()}
+        with tempfile.TemporaryDirectory() as out_dir:
+            with self.assertRaises(ValueError):
+                plot_cross_log(log_dfs, combos=['inductive_noise20'], degradation_dims=['trace'],
+                                out_dir=out_dir, panel_by='nonsense')
 
     def test_metric_specs_cover_default_ids(self):
         for metric_id in ('voidsalign3', 'voidsat2', 'voidmass_process'):
