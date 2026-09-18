@@ -13,7 +13,8 @@ import unittest
 
 import pandas as pd
 
-from lab.trace_variability import std_dev_for, summarize, variability_table
+from lab.trace_variability import (
+    std_dev_for, summarize, to_latex_table, to_markdown_table, variability_table)
 
 
 def _row(combo, dim, level, **metrics):
@@ -100,6 +101,32 @@ class SummarizeTest(unittest.TestCase):
         self.assertEqual(min_where, ('m1', 'c1', 'log_a'))
         self.assertAlmostEqual(max_val, 0.4)
         self.assertEqual(max_where, ('m1', 'c1', 'log_b'))
+
+
+class TableFormattingTest(unittest.TestCase):
+    def _sample_df(self):
+        return pd.DataFrame(
+            {'rtfm': [0.0, float('nan')], 'bpic2020_rfp': [0.00854, 0.0006]},
+            index=pd.MultiIndex.from_tuples(
+                [('Void by Aligned Durations', 'inductive_noise20'),
+                 ('Void by Skip Alignment', 'inductive_noise20')],
+                names=['metric', 'combo']),
+        )
+
+    def test_markdown_table_formats_values_and_missing(self):
+        text = to_markdown_table(self._sample_df())
+        self.assertIn('Void by Aligned Durations', text)
+        self.assertIn('0.0085', text)
+        self.assertIn('inductive_noise20', text)
+        # a NaN cell must not render as the literal string 'nan'
+        self.assertNotIn('nan', text)
+
+    def test_latex_table_formats_values_and_missing(self):
+        text = to_latex_table(self._sample_df())
+        self.assertIn(r'\begin{tabular}', text)
+        self.assertIn(r'\end{tabular}', text)
+        self.assertIn('0.0085', text)
+        self.assertNotIn('nan', text)
 
 
 if __name__ == '__main__':

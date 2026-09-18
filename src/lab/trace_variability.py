@@ -64,6 +64,40 @@ def variability_table(log_dfs, combos, metric_ids=DEFAULT_METRICS):
     return pd.DataFrame(data, index=pd.MultiIndex.from_tuples(index, names=['metric', 'combo']))
 
 
+def _format_cell(value):
+    '''4 decimal places, or 'n/a' for a metric a log doesn't have - never
+    the literal string 'nan', and plain ASCII so it's safe on a Windows
+    console without a UTF-8 reconfigure (see lab.print_tree's own note
+    on this).'''
+    return 'n/a' if pd.isna(value) else f'{value:.4f}'
+
+
+def to_markdown_table(df):
+    headers = ['metric', 'combo'] + list(df.columns)
+    lines = ['| ' + ' | '.join(headers) + ' |',
+             '| ' + ' | '.join(['---'] * len(headers)) + ' |']
+    for (metric, combo), row in df.iterrows():
+        cells = [metric, combo] + [_format_cell(v) for v in row]
+        lines.append('| ' + ' | '.join(cells) + ' |')
+    return '\n'.join(lines)
+
+
+def to_latex_table(df):
+    ncols = 2 + len(df.columns)
+    lines = [
+        r'\begin{tabular}{' + 'l' * ncols + '}',
+        r'\toprule',
+        ' & '.join(['Metric', 'Combo'] + list(df.columns)) + r' \\',
+        r'\midrule',
+    ]
+    for (metric, combo), row in df.iterrows():
+        cells = [metric, combo] + [_format_cell(v) for v in row]
+        lines.append(' & '.join(cells) + r' \\')
+    lines.append(r'\bottomrule')
+    lines.append(r'\end{tabular}')
+    return '\n'.join(lines)
+
+
 def summarize(df):
     '''(min_value, (metric, combo, log) at the min, max_value, (metric,
     combo, log) at the max) - NaN cells (a log missing that metric)
@@ -93,7 +127,10 @@ def main():
     log_dfs = load_logs(log_csvs)
     df = variability_table(log_dfs, args.combos, args.metrics)
 
-    print(df.to_string())
+    print('# Markdown\n')
+    print(to_markdown_table(df))
+    print('\n# LaTeX\n')
+    print(to_latex_table(df))
     min_val, min_where, max_val, max_where = summarize(df)
     print(f'\nmin std dev: {min_val:.4f} at {min_where}')
     print(f'max std dev: {max_val:.4f} at {max_where}')
