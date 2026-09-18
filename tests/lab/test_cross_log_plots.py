@@ -22,7 +22,9 @@ from unittest.mock import patch
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from lab.cross_log_plots import METRIC_SPECS, _series_for, load_logs, plot_cross_log
+from lab.cross_log_plots import (
+    COMBO_LABELS, DIM_LABELS, LOG_LABELS, METRIC_SPECS, _display, _series_for, load_logs,
+    plot_cross_log)
 
 
 def _row(combo, dim, level, **metrics):
@@ -75,6 +77,20 @@ class SeriesForTest(unittest.TestCase):
         series = _series_for(df, 'inductive_noise20', 'trace',
                               ('voidmass_process_lower', 'voidmass_process_upper'))
         self.assertIsNotNone(series)
+
+
+class DisplayTest(unittest.TestCase):
+    def test_mapped_value_returns_display_label(self):
+        self.assertEqual(_display('inductive_noise20', COMBO_LABELS), 'Inductive noise=0.2')
+        self.assertEqual(_display('rtfm', LOG_LABELS), 'Road Traffic Fines')
+        self.assertEqual(_display('trace', DIM_LABELS), 'Trace degradation')
+        self.assertEqual(_display('activity_frequency_gradual', DIM_LABELS),
+                          'Activity degradation')
+
+    def test_unmapped_value_falls_back_to_itself(self):
+        self.assertEqual(_display('toothpaste', COMBO_LABELS), 'toothpaste')
+        self.assertEqual(_display('bpic2020_rfp', LOG_LABELS), 'bpic2020_rfp')
+        self.assertEqual(_display('activity_gradual', DIM_LABELS), 'activity_gradual')
 
 
 class LoadLogsTest(unittest.TestCase):
@@ -178,6 +194,30 @@ class PlotCrossLogTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 plot_cross_log(log_dfs, combos=['inductive_noise20'], degradation_dims=['trace'],
                                 out_dir=out_dir, panel_by='nonsense')
+
+    def test_display_names_used_in_title_and_legend_not_filename(self):
+        real_subplots = plt.subplots
+        created = []
+
+        def spy_subplots(*args, **kwargs):
+            fig, axes = real_subplots(*args, **kwargs)
+            created.append(fig)
+            return fig, axes
+
+        log_dfs = {'rtfm': fake_df_with_all_metrics()}
+        with patch('lab.cross_log_plots.plt.subplots', side_effect=spy_subplots):
+            with tempfile.TemporaryDirectory() as out_dir:
+                written = plot_cross_log(log_dfs, combos=['inductive_noise20'],
+                                          degradation_dims=['trace'], out_dir=out_dir,
+                                          metric_ids=['voidsat2'])
+        # filename stays on the raw ids, not the display text
+        self.assertEqual(written[0].name, 'inductive_noise20_trace.png')
+        # but the figure's own title and legend read in plain language
+        fig = created[0]
+        self.assertIn('Inductive noise=0.2', fig._suptitle.get_text())
+        self.assertIn('Trace degradation', fig._suptitle.get_text())
+        _handles, labels = fig.axes[0].get_legend_handles_labels()
+        self.assertEqual(labels, ['Road Traffic Fines'])
 
     def test_metric_specs_cover_default_ids(self):
         for metric_id in ('voidsalign3', 'voidsat2', 'voidmass_process'):
