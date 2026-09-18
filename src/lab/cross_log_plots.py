@@ -35,13 +35,16 @@ import pandas as pd
 
 from lab.plots import _exclude_degenerate
 
-# label -> (panel title, columns). A 1-tuple is a plain metric; a
-# (lower, upper) pair is one banded panel, plotted as its midpoint with
-# a shaded band - see plot_cross_log.
+# metric id -> (display label, columns). The label is what shows up in
+# a panel title/axis, distinct from the id so a plot can read in plain
+# language without renaming the underlying registry id. A 1-tuple is a
+# plain metric; a (lower, upper) pair is one banded panel, plotted as
+# its midpoint with a shaded band - see plot_cross_log.
 METRIC_SPECS = {
-    'voidsalign3': ('voidsalign3', ('voidsalign3',)),
-    'voidsat2': ('voidsat2', ('voidsat2',)),
-    'voidmass_process': ('voidmass_process', ('voidmass_process_lower', 'voidmass_process_upper')),
+    'voidsalign3': ('Void by Skip Alignment', ('voidsalign3',)),
+    'voidsat2': ('Void by Aligned Durations', ('voidsat2',)),
+    'voidmass_process': ('Void by Process Relative Moves',
+                          ('voidmass_process_lower', 'voidmass_process_upper')),
 }
 
 DEFAULT_METRICS = ('voidsalign3', 'voidsat2', 'voidmass_process')
