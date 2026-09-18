@@ -8,6 +8,22 @@ Now requires Python 3.11.
 
 ### Added
 
+* A property-based test of Lemma [Additivity] for Definition [Void by
+  Process-Relative Alignment Moves] - `voidmass_process` from classical
+  alignments (`voidmass_pn.voidmass_table_pn`): over any antichain of nodes
+  covering the labelled leaves, values sum to the root's. `hypothesis`
+  generates the tree (sequences, choices, parallel blocks, loops and silent
+  leaves), the log (activities dropped, reordered, repeated, and ones the
+  model does not have) and the cut (silent leaves may be left out). A
+  second property checks the test has teeth: leaving out a labelled leaf
+  that carries deficit leaves the sum short, which hypothesis would fail
+  as unsatisfiable were the generated logs all perfectly aligned. The
+  lemma holds only where leaf labels are distinct: `terms_by_node`
+  credits a move to every node whose leaves carry its label, so on
+  `seq(a, a)` against `<a>` both leaves claim the one missing `a` and sum
+  to 1.0 where the root reads 0.5. That case is pinned at what the code
+  reads today. `hypothesis` joins the dependencies for this.
+
 * `lab.check_run`: a quick sanity summary of a result CSV - row count,
   status breakdown, and which logs/combos/degradation dims it covers.
   The "did this run go the way I expected" question after a sweep,
