@@ -1,9 +1,13 @@
 # process-voids
 Characterising unobserved activities in process event data.
 
-Background and motivation can be found in [this blog post](https://adamburkeware.net/2025/11/11/pvoid-adsn.html). This was presented at ADSN 2025; a preprint is forthcoming.
+Background and motivation can be found in [this blog post](https://adamburkeware.net/2025/11/11/pvoid-adsn.html). This was presented at ADSN 2025.
 
 _Burke, A., Wynn, M.T. (2025). Process Voids: Data Science Without Data. Talk. Australian Data Science Network 2025._
+
+The following related paper is under review:
+
+_Burke, A., Wynn, M.T. (2026). Measuring Process Voids Using Skip Alignments. In review._
 
 
 ## Building and Running
