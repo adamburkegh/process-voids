@@ -87,15 +87,25 @@ Every void or coverage metric pairs a **source of model information** (none,
 structure only, classical alignments, skip alignments) with a **source of
 magnitude** (activity alphabet, estimated stochastic weights, uniform move
 counts, skip-weighted move counts, interval distributions, attributed
-duration). The paper in preparation arranges the candidates on this grid, and
-it's the right map. A new metric proposal should say which cell it occupies
-and why the neighbouring cells failed.
+duration). It's the right map, failures included. A new metric proposal should
+say which cell it occupies and why the neighbouring cells failed.
 
-Most metrics take a *product form*: `coverage = (1 − P(skip)) × mass` or
-`void = P(skip) × mass`. The product means something only when the two factors
-are independent evidence: how often the subprocess was skipped, and how big it
-is. See open question 2 for masses built from alignment match ratios, which
-already contain the skip evidence.
+The current set is three metrics that read different evidence. Each is a
+potential headline, and which one leads depends on the question being asked.
+There is no universal void metric.
+
+- `voidsalign3` reads subprocess structure, over skip alignments.
+- `voidsat2` reads elapsed time, over skip alignments and the log's
+  timestamps.
+- `voidmass_process_lower`/`_upper` read deviation across the whole process,
+  from classical alignments, and by definition decompose over any cut of the
+  tree.
+
+The first two take a *product form*: `void = 1 − P(match) × mass`, where
+`P(match) = 1 − P(skip)`. The mass is conditioned on observation: it measures
+how completely a subprocess was recorded in the traces where it was seen at
+all, so absence is counted once, by the match probability. A mass averaged
+over unobserved executions as well counts it twice; see open question 1.
 
 The roster itself, with each metric's status, is in the registry. It isn't
 copied here.
@@ -112,7 +122,7 @@ that rule for its own criterion.
 | Specificity | No response to ablating an optional subprocess, or to thinning the log (fewer cases, same proportions) | Claims fixture `appeal_seq`; trace-wise degradation |
 | Size sensitivity | A missing subprocess of eight activities outweighs one of two | `SizeSensitivityTest` in `test_voidmass.py` |
 | Extremes | Zero when nothing is missing, maximal when the subprocess is always missing; each metric declares its promise as a registry `scale` | `tests/lab/test_metric_extremes.py`, with today's exceptions pinned in `KNOWN_FAILURES` |
-| Decomposability (desirable) | The root value can be explained from its parts: a sum over any antichain cut, or a stated weighted average | `test_variant2_root_equals_sum_of_children` |
+| Decomposability (desirable) | The root value can be explained from its parts: a sum over any antichain cut, or a stated weighted average | A `hypothesis` property test of Lemma [Additivity] for `voidmass_process`; repeated leaf labels are pinned as an exception until moves are attributed by leaf |
 | Honesty under failure | Timeouts produce provable bounds, not guesses or crashes | `_lower`/`_upper` columns, `timed_out_weight` |
 | Interpretable units | A reader can say what 0.25 means (a share of expected moves, of elapsed time, ...) | Registry descriptions |
 | Cost | Runs on logs the size of Road Traffic Fines inside a sweep | Per-cell timing in run logs |
@@ -150,8 +160,9 @@ that rule for its own criterion.
   metrics to numbers that can be checked by hand. Results go to `var/`. Runs
   are named in `lab/runs.py`, so what was run is committed alongside the code
   that ran it.
-- **One runner.** Experiments are being consolidated into a single
-  registry-driven runner. Harness features are designed for every experiment
+- **One runner.** Experiments run through a single registry-driven runner,
+  `lab.run`. `exp_disco_degrade` has moved onto it, and the other `exp_*`
+  scripts are to follow. Harness features are designed for every experiment
   at once, and no new `exp_*` entry points are added.
 
 ## 6. Guidance
@@ -170,11 +181,14 @@ that rule for its own criterion.
 - **Reference models are read-only during a sweep.** Per-cell quantities
   (weights, skip probabilities) belong in maps keyed by node, not in
   attributes written onto a shared tree.
-- **Pin the reference model across runs.** Discovery isn't reproducible
-  between processes by default: a hash-seeded tie-break in pm4py's cut
-  selection can change the discovered tree. Any comparison spanning runs
-  needs the same tree, either cached as `exp_surprise` and `exp_voidmass` do
-  under `var/lab/tree_cache/`, or written to ptml and reloaded.
+- **Know which tree a result used.** Discovery isn't reproducible between
+  processes by default: a hash-seeded tie-break in pm4py's cut selection can
+  change the discovered tree. `lab.run` discovers each tree once and caches it
+  per checkout. That's deliberate: sessions must not disturb each other's
+  state. Every per-node row records `tree_source` and `tree_cache_file`,
+  `run.sh --seed` sets the hash seed, and `lab.run_history` records the seed
+  each run saw. Results from different checkouts or processes may rest on
+  different trees, so check before comparing them.
 - **Bound what you can't compute.** When a search times out, report provable
   bounds, and say how much of the log is affected (`timed_out_weight`).
 - **Cache per report row, not per node.** Structural maps and per-path
@@ -192,27 +206,24 @@ that rule for its own criterion.
 These are unresolved. They're listed so that nobody mistakes the current code
 for a decision.
 
-1. **Which metric is the headline?** The candidates are `voidmass_process`
-   (decomposable, interpretable units, expensive to compute), `voidsat`
-   (time-based, unaffected by lumping), and a skip-weighted count. This waits
-   on the experiments.
-2. **Where the product-form double count remains.** Coverage by Alignment
-   Correspondence now conditions its mass on observation
-   (`alignment_coverage_pn2`), so absence is counted once, by the skip
-   probability. `salign_coverage` and `exp_voidmass`'s `voidage_*` family
-   still count it twice, and are pinned in the extremes test's
+1. **Where the product-form double count remains.** `voidsalign3`,
+   `voidsat2` and Coverage by Alignment Correspondence
+   (`alignment_coverage_pn2`) condition their masses on observation, so
+   absence is counted once. `salign_coverage` and `exp_voidmass`'s `voidage_*`
+   family still count it twice, and are pinned in the extremes test's
    `KNOWN_FAILURES`. Condition them the same way, or retire them.
-3. **How should a skip move share a time gap?** The definition and the tests
-   split the gap with the following event, but the Coverage By Aligned
-   Duration docstring in `coveragemass` says the skip takes the whole gap. In
-   concurrent regions, the normal form's ordering convention, not evidence,
-   decides which gap a skip lands in. A move also gets no duration where
-   nothing follows it to consume, so an always-missing submodel at the end of
-   a process reads 0, exactly as a fully observed one does.
-4. **Model provenance.** By principle 2, voids are meaningful only against
+2. **How should time be divided among moves?** Each interval between recorded
+   events is shared equally among the moves that precede the event closing
+   it. Silent moves take a share, as deviations like any other, although
+   alignments treat a silent step as a fitting move that costs nothing. No
+   duration fixture contains a silent move, so the effect on discovered trees,
+   where silent branches are routine, is unmeasured. In concurrent regions,
+   the normal form's ordering convention, not evidence, decides which interval
+   a skip lands in.
+3. **Model provenance.** By principle 2, voids are meaningful only against
    external obligations, yet nothing records which nodes of a hybrid model a
    person asserted and which were discovered.
-5. **What does the product show?** pvoid prints weight coverage and coverage
+4. **What does the product show?** pvoid prints weight coverage and coverage
    by duration, and `bpmn_colour` paints skip probabilities onto tasks.
    Neither is yet a subprocess-level void metric.
 
