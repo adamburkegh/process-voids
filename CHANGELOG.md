@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [0.5.1] - 2026-09-19
 
 Now requires Python 3.11.
 
