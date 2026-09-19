@@ -16,7 +16,7 @@ design direction and handles all source control on `main`.
   `[tools] ebi`. Anything that doesn't falls back to bare `ebi` on PATH, which
   the hard-link in `pvoid\Scripts` provides. Don't set environment variables
   for it.
-- **Logs**: small fixtures are in `data/`; large logs (rtfm, sepsis, BPI) live
+- **Logs**: small fixtures are in `data/`; large logs (rtfm, BPI) live
   outside the repo. Register one in `lab/params.py` as
   `ExternalLog('<filename>')`.
 - **Papers**: you have permission to read the papers directory.

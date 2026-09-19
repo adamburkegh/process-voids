@@ -10,7 +10,7 @@
 
 [paths]
 # The directory holding the large event logs kept outside the repository
-# (rtfm, sepsis, the BPI challenge logs).
+# (rtfm, the BPI challenge logs).
 data_dir = "/path/to/data"
 
 # The toothpaste checkout that lab.toothpaste_bridge mines with.

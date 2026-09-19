@@ -41,7 +41,6 @@ ALL_LOGS = {
     'payment_partial': 'data/payment_partial.xes',
     'partial_sequence': 'data/partial_sequence.xes',
     'rtfm': ExternalLog('rtfm.xes'),
-    'sepsis': ExternalLog('sepsis.xes'),
     'bpic2020_rfp': ExternalLog('BPIC2020_rfp.xes'),
     'bpi2013_closed_problems': ExternalLog('BPI_Challenge_2013_closed_problems.xes'),
 }

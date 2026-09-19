@@ -284,6 +284,10 @@ Now requires Python 3.11.
 * `bpi2013_closed_problems` replaces `bpi2013_incidents` in the log
   catalogue and as a named run, so `--run full` now sweeps closed
   problems rather than incidents.
+* `sepsis` dropped from the log catalogue: both combos tried against it
+  failed structurally (`ShuffleExplosionError` on `inductive_noise20`,
+  a plain `MemoryError` after 55 minutes on `toothpaste`), the same
+  treatment `bpi2013_incidents` got for the same reason.
 
 * `coveragemass.block` no longer excludes silent (`TauPath`) moves, and
   `coveragemass.mdur` no longer returns 0 for one. Skip alignments have no
