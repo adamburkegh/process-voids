@@ -8,6 +8,19 @@ Now requires Python 3.11.
 
 ### Added
 
+* `lab.publish_results`: builds a compact, publishable `results/` folder
+  from full-size result CSVs, so anyone who reruns an experiment can
+  regenerate it. Per log id it writes the root-level CSV verbatim (the
+  `log` column keeps the XES file stem the run wrote; only
+  `tree_cache_file`, which names a gitignored path, is dropped), and the
+  `*_timings.csv` collapsed to one row per (combo, dimension, level,
+  stage) - `lab.runtime_table` reads it unchanged - plus a `runs.csv` of
+  which file each log came from and the versions, seed and configuration
+  `lab.run_history` recorded for it. A log id named more than once adds a
+  later source that replaces the earlier ones cell by cell, which folds a
+  retry run into the run it retries without editing either file. Per-node
+  CSVs are not published. `lab.current_coverage` gains `--results-dir`,
+  so it reads the published folder as well as `var/lab/results`.
 * A property-based test of Lemma [Additivity] for Definition [Void by
   Process-Relative Alignment Moves] - `voidmass_process` from classical
   alignments (`voidmass_pn.voidmass_table_pn`): over any antichain of nodes

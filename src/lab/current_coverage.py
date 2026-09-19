@@ -19,6 +19,7 @@ _timestamped() filename - the two normally agree, but mtime is what
 actually reflects when the data was produced regardless of naming.
 '''
 
+import argparse
 from pathlib import Path
 
 import pandas as pd
@@ -86,11 +87,18 @@ def source_files(results_dir=RESULTS_DIR):
 
 
 def main():
-    df = current_coverage()
+    parser = argparse.ArgumentParser(
+        description="Which live metrics each log's newest result CSV has.")
+    parser.add_argument('--results-dir', default=RESULTS_DIR,
+                         help='directory of root-level result CSVs (default: %(default)s); '
+                              "the published results/ folder works too")
+    args = parser.parse_args()
+
+    df = current_coverage(args.results_dir)
     print(to_markdown_table(df))
     print()
     print('as of:')
-    for log_name, path in sorted(source_files().items()):
+    for log_name, path in sorted(source_files(args.results_dir).items()):
         print(f'  {log_name}: {path}')
 
 
