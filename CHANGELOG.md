@@ -24,6 +24,16 @@ Now requires Python 3.11.
   to 1.0 where the root reads 0.5. That case is pinned at what the code
   reads today. `hypothesis` joins the dependencies for this.
 
+* `lab.runtime_table`: metric x (log, combo) -> total wall-clock seconds,
+  read from each log's own `*_timings.csv`. A metric's own row is
+  usually near-zero - the real cost sits in shared stages (`classical`,
+  `dv`, ...) several metrics depend on (`lab.run`'s `ProcessMetric.
+  needs`) - so this sums a metric's own row plus its declared stage
+  dependencies, reading as "what this metric alone would have cost", not
+  additive across metrics without double-counting a shared stage two of
+  them both need. Outputs both Markdown and LaTeX. Same voidsalign2/
+  voidsalign3 fallback as `lab.cross_log_plots`, since different logs'
+  sweeps can be pinned to different registry versions.
 * `lab.current_coverage`: "are we current" for a log - a table of today's
   live `exp_disco_degrade` metrics against each log's own MOST RECENT
   result CSV (by file mtime), one row per metric, one column per log.
