@@ -24,6 +24,28 @@ Now requires Python 3.11.
   to 1.0 where the root reads 0.5. That case is pinned at what the code
   reads today. `hypothesis` joins the dependencies for this.
 
+* `lab.current_coverage`: "are we current" for a log - a table of today's
+  live `exp_disco_degrade` metrics against each log's own MOST RECENT
+  result CSV (by file mtime), one row per metric, one column per log.
+  Deliberately narrower than `lab.collection_report` (which answers "has
+  this ever been collected, across every result CSV ever written",
+  including retired ids and long-stale runs by design): a log can show
+  Done there from a sweep that predates a metric's current form, which
+  is the wrong view for deciding what to rerun. A metric absent from a
+  log's newest file reads as not done here even if an older file for
+  the same log once had it.
+* `lab.cross_log_plots`: dose-response plots comparing DIFFERENT logs'
+  own result CSVs side by side - `lab.plots` compares combos or
+  dimensions within one log's own CSV, not across logs. Three axis
+  arrangements via `--panel-by`: `metric` (default, panel per metric,
+  line per log), `log` (panel per log, line per metric), `log_metric`
+  (panel per log/metric pair, line per combo - figures then split by
+  degradation dimension only, since combo is a line here rather than a
+  figure axis). `--ylim MIN MAX` fixes every panel's y-axis instead of
+  autoscaling per panel. A log's CSV missing a metric's column (a sweep
+  predating that metric) is skipped for that line, not an error, since
+  different logs' sweeps can be pinned to different metric-registry
+  versions.
 * `lab.check_run`: a quick sanity summary of a result CSV - row count,
   status breakdown, and which logs/combos/degradation dims it covers.
   The "did this run go the way I expected" question after a sweep,
