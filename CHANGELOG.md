@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+* Classical per-node void (`voidmass_pn`) now credits each alignment move
+  to the leaf whose transition fired, not to every leaf with that label.
+  The classical net labels transitions by the first leaf to carry a
+  label, so same-labelled leaves were indistinguishable: on `seq(a, a)`
+  against `<a>` each leaf read 0.5 where the definition gives 0.25. Tied
+  optimal alignments were also deduplicated by label, which merged
+  alignments differing only in which same-labelled leaf fired, so the
+  root could move as well (`xor(loop(b, a), b)` against `<a>`: 0.75 where
+  the definition gives 0.8). `build_id_net` records each transition's leaf
+  (`leaf_by_transition`), and deduplication keys on the leaf. Trees
+  without repeated labels, including every `inductive_noise20` tree, are
+  unaffected. The additivity property now holds with repeated labels too.
+
+### Changed
+
+* New registry ids for the fixed classical metrics, the old ones retired
+  with `superseded_by`: `voidmass_process2_lower/_upper`,
+  `voidmass_deficit2_lower/_upper`, `voidmass_movecount2`,
+  `voidmass_movecount2_bound` and `alignment_coverage_pn3_lower/_upper`.
+  `lab.run` writes the new ids. `lab.cross_log_plots` (and through it
+  `lab.trace_variability`) reads `voidmass_process2_*`, falling back to
+  `voidmass_process_*` in result CSVs written before the fix, including
+  the published `results/`; `lab.runtime_table` counts either.
+
+### Added
+
+* `lab.repeated_label_shift`: per-node `voidmass_process` under the old
+  label-based and the fixed leaf-based attribution, from one pass of
+  alignments, over a cached tree and the `lab.degradation` cells - how
+  far the fix moves a result.
+
 ## [0.5.1] - 2026-09-19
 
 Now requires Python 3.11.

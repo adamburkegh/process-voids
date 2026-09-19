@@ -75,10 +75,10 @@ def _log_stats(log):
     return n_cases, n_variants
 
 
-CLASSICAL_METRIC_KEYS = ('voidmass_deficit_lower', 'voidmass_deficit_upper',
-                          'voidmass_movecount', 'voidmass_movecount_bound',
-                          'voidmass_process_lower', 'voidmass_process_upper',
-                          'alignment_coverage_pn2_lower', 'alignment_coverage_pn2_upper')
+CLASSICAL_METRIC_KEYS = ('voidmass_deficit2_lower', 'voidmass_deficit2_upper',
+                          'voidmass_movecount2', 'voidmass_movecount2_bound',
+                          'voidmass_process2_lower', 'voidmass_process2_upper',
+                          'alignment_coverage_pn3_lower', 'alignment_coverage_pn3_upper')
 
 # Per-cell bookkeeping, root CSV only (not metrics, so not in
 # lab.metric_registry).
@@ -145,22 +145,22 @@ ALL_METRICS = [
                   compute=lambda ctx, node: voidsalign3(
                       node, ctx.stage('dv').skip_dict_backup, ctx.stage('dv').pl,
                       ctx.stage('dv').skip_probs, executions_cache=ctx.stage('executions_cache'))),
-    ProcessMetric(id='voidmass_deficit_lower', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_deficit2_lower', scope='node', needs=('classical',),
                   compute=_classical_field('deficit_lower')),
-    ProcessMetric(id='voidmass_deficit_upper', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_deficit2_upper', scope='node', needs=('classical',),
                   compute=_classical_field('deficit_upper')),
-    ProcessMetric(id='voidmass_movecount', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_movecount2', scope='node', needs=('classical',),
                   compute=_classical_field('movecount')),
-    ProcessMetric(id='voidmass_movecount_bound', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_movecount2_bound', scope='node', needs=('classical',),
                   compute=_classical_field('movecount_bound')),
-    ProcessMetric(id='voidmass_process_lower', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_process2_lower', scope='node', needs=('classical',),
                   compute=_classical_field('voidmass_process_lower')),
-    ProcessMetric(id='voidmass_process_upper', scope='node', needs=('classical',),
+    ProcessMetric(id='voidmass_process2_upper', scope='node', needs=('classical',),
                   compute=_classical_field('voidmass_process_upper')),
-    ProcessMetric(id='alignment_coverage_pn2_lower', scope='node',
+    ProcessMetric(id='alignment_coverage_pn3_lower', scope='node',
                   needs=('classical', 'dv', 'executions_cache'),
                   compute=_alignment_coverage_pn(0.0)),
-    ProcessMetric(id='alignment_coverage_pn2_upper', scope='node',
+    ProcessMetric(id='alignment_coverage_pn3_upper', scope='node',
                   needs=('classical', 'dv', 'executions_cache'),
                   compute=_alignment_coverage_pn(1.0)),
     ProcessMetric(id='voidsat2', scope='node', needs=('dv', 'aligned_duration_cache'),

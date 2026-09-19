@@ -71,6 +71,26 @@ class SeriesForTest(unittest.TestCase):
         self.assertIsNone(_series_for(df, 'inductive_noise20', 'activity_frequency_gradual',
                                        ('voidsat2',)))
 
+    def test_voidmass_process_reads_the_leaf_attributed_columns(self):
+        self.assertEqual(METRIC_SPECS['voidmass_process'][1],
+                         ('voidmass_process2_lower', 'voidmass_process2_upper'))
+
+    def test_falls_back_to_pre_fix_voidmass_process_columns(self):
+        '''Result CSVs written before the repeated-label fix, including
+        the published ones, carry voidmass_process_lower/_upper only.'''
+        df = fake_df_with_all_metrics()
+        cols = METRIC_SPECS['voidmass_process'][1]
+        series = _series_for(df, 'inductive_noise20', 'trace', cols)
+        self.assertEqual(list(series['voidmass_process2_lower']), [0.05, 0.2, 1.0])
+        self.assertEqual(list(series['voidmass_process2_upper']), [0.15, 0.3, 1.0])
+
+    def test_new_columns_win_over_the_fallback(self):
+        df = fake_df_with_all_metrics().assign(voidmass_process2_lower=0.7,
+                                               voidmass_process2_upper=0.8)
+        cols = METRIC_SPECS['voidmass_process'][1]
+        series = _series_for(df, 'inductive_noise20', 'trace', cols)
+        self.assertEqual(list(series['voidmass_process2_lower']), [0.7, 0.7, 0.7])
+
     def test_banded_metric_needs_both_columns_present(self):
         df = fake_df_missing_voidsalign3()
         # voidmass_process_lower/upper are both present here

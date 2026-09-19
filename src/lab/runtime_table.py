@@ -26,14 +26,16 @@ import argparse
 import pandas as pd
 
 # metric id -> (display label, own row ids, declared stage dependencies).
-# A pair of own row ids (voidsalign3/voidsalign2) is harmless to sum
-# together - a single file only ever has one of the two.
+# Own row ids from two registry versions (voidsalign3/voidsalign2,
+# voidmass_process2/voidmass_process) are harmless to sum together - a
+# single file only ever has one of the two.
 METRIC_TIMING_SPECS = {
     'voidsalign3': ('Void by Skip Alignment', ('voidsalign3', 'voidsalign2'),
                      ('dv', 'executions_cache')),
     'voidsat2': ('Void by Aligned Durations', ('voidsat2',), ('dv', 'aligned_duration_cache')),
     'voidmass_process': ('Void by Process Relative Moves',
-                          ('voidmass_process_lower', 'voidmass_process_upper'), ('classical',)),
+                          ('voidmass_process2_lower', 'voidmass_process2_upper',
+                           'voidmass_process_lower', 'voidmass_process_upper'), ('classical',)),
 }
 
 DEFAULT_METRICS = ('voidsalign3', 'voidsat2', 'voidmass_process')

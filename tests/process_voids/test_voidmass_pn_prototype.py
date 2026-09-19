@@ -24,8 +24,9 @@ from process_voids.coveragemass import min_activity_count
 from process_voids.voidmass_pn import (
     build_id_net, align_variant, align_variant_all, deficit_by_node, terms_by_node,
     voidmass_table_pn, coverage_by_alignment_pn, timed_out_movecount_bound,
-    DEFAULT_ALIGNMENT_TIMEOUT,
+    DEFAULT_ALIGNMENT_TIMEOUT, leaf_by_transition,
 )
+from skipalignments.probabilities import EbiOccurance
 
 
 def _sequence_of(labels, cost=100000):
@@ -77,7 +78,8 @@ class TotalAblationSizeSensitivityTest(unittest.TestCase):
         # Only 'w' is observed - both subprocesses are totally ablated.
         alignment = align_variant(['w'], self.net, self.im, self.fm,
                                    self.activity_to_id, self.tau_ids)
-        table = deficit_by_node(alignment, self.root, self.activity_to_id, self.tau_ids)
+        table = deficit_by_node(alignment, self.root, leaf_by_transition(self.net, self.root),
+                                self.tau_ids)
 
         self.assertEqual(table[self.small_tree], 2)
         self.assertEqual(table[self.large_tree], 8)
@@ -131,7 +133,8 @@ class E1KnownLimitIsFixedTest(unittest.TestCase):
     def test_total_ablation_size_preservation_now_holds(self):
         alignment = align_variant(['other'], self.net, self.im, self.fm,
                                    self.activity_to_id, self.tau_ids)
-        table = deficit_by_node(alignment, self.tree, self.activity_to_id, self.tau_ids)
+        table = deficit_by_node(alignment, self.tree, leaf_by_transition(self.net, self.tree),
+                                self.tau_ids)
 
         self.assertEqual(table[self.small], 2)
         self.assertEqual(table[self.big], 8)
@@ -163,7 +166,8 @@ class TauLeafIsNotADeficitTest(unittest.TestCase):
     def test_tau_alternative_is_not_counted_as_deficit(self):
         alignment = align_variant(['o', 'a', 'p'], self.net, self.im, self.fm,
                                    self.activity_to_id, self.tau_ids, timeout=30)
-        table = deficit_by_node(alignment, self.tree, self.activity_to_id, self.tau_ids)
+        table = deficit_by_node(alignment, self.tree, leaf_by_transition(self.net, self.tree),
+                                self.tau_ids)
 
         self.assertEqual(table[self.sched], 0)
         self.assertEqual(table[self.tree], 0)
@@ -623,7 +627,8 @@ class TimedOutMovecountBoundTest(unittest.TestCase):
     def _movecounts(self, trace):
         alignments = align_variant_all(trace, self.net, self.im, self.fm, self.activity_to_id,
                                        self.tau_ids, id_loop_list=self.id_loop_list, timeout=30)
-        return [terms_by_node(al, self.loop, self.activity_to_id, self.tau_ids)[self.loop][1]
+        leaves = leaf_by_transition(self.net, self.loop)
+        return [terms_by_node(al, self.loop, leaves, self.tau_ids)[self.loop][1]
                 for al in alignments]
 
     def test_bound_holds_for_every_optimal_alignment(self):
@@ -734,6 +739,95 @@ class DefaultAlignmentTimeoutTest(unittest.TestCase):
             with self.subTest(fn=fn.__name__):
                 default = inspect.signature(fn).parameters['timeout'].default
                 self.assertEqual(default, DEFAULT_ALIGNMENT_TIMEOUT)
+
+
+def _seq_a_a():
+    first = Activity(None, 'a', 100000)
+    second = Activity(None, 'a', 100000)
+    root = Sequence(None, [first, second])
+    first.id, second.id, root.id = 'first', 'second', 'root'
+    first.set_parent(root)
+    second.set_parent(root)
+    return root, first, second
+
+
+class LeafIdentityTest(unittest.TestCase):
+    """
+    build_id_net records which leaf each transition belongs to, without
+    otherwise changing the net. Leaves sharing a label get the same
+    transition label - that is what lets a trace event synchronise with
+    any of them - so the label cannot say which leaf fired; the record
+    can.
+    """
+
+    def test_leaves_sharing_a_label_get_distinct_transitions(self):
+        root, first, second = _seq_a_a()
+        net, *_ = build_id_net(root)
+        self.assertEqual(sorted(leaf.id for leaf in leaf_by_transition(net, root).values()),
+                         ['first', 'second'])
+
+    def test_every_leaf_of_a_fixture_tree_is_recorded_once(self):
+        tree = build_running_example_tree()
+        net, *_ = build_id_net(tree)
+        recorded = list(leaf_by_transition(net, tree).values())
+        leaves = []
+
+        def walk(node):
+            if not node.children:
+                leaves.append(node)
+            for child in node.children:
+                walk(child)
+        walk(tree)
+        self.assertCountEqual(recorded, leaves)
+
+    def test_the_net_is_otherwise_what_a_plain_build_gives(self):
+        for tree in (_seq_a_a()[0], build_running_example_tree()):
+            with self.subTest(tree=str(tree)):
+                plain = EbiOccurance().build_petri_net(tree)
+                built = build_id_net(tree)
+                self.assertEqual(sorted(str(t.label) for t in built[0].transitions),
+                                 sorted(str(t.label) for t in plain[0].transitions))
+                self.assertEqual(built[3], plain[3])        # activity_to_id
+                self.assertEqual(built[4], plain[4])        # tau_ids
+                self.assertEqual(built[5], plain[5])        # id_loop_list
+
+    def test_a_classical_move_names_the_leaf_that_fired(self):
+        """The two tied alignments of seq(a, a) against <a> synchronise
+        the a on different leaves; the move itself says which."""
+        root, first, second = _seq_a_a()
+        net, im, fm, activity_to_id, tau_ids, loops = build_id_net(root)
+        leaves = leaf_by_transition(net, root)
+        synced = []
+        for alignment in align_variant_all(['a'], net, im, fm, activity_to_id, tau_ids,
+                                           id_loop_list=loops):
+            synced.extend(leaves[t.name[1]].id for t in alignment
+                          if t.label[0] != '>>' and t.label[1] != '>>')
+        self.assertCountEqual(synced, ['first', 'second'])
+
+    def test_coverage_by_alignment_pn_resolves_each_move_to_its_own_leaf(self):
+        """
+        seq(a, a) against <a>: in each of the two tied alignments one leaf
+        synchronises and the other is missing. A leaf with no synchronous
+        move in an alignment is not observed there and is left out, so
+        each leaf's observed mass comes from the alignment where it did
+        synchronise - 1.0 for both. Resolving moves by label instead put
+        both a moves on one leaf.
+        """
+        root, first, second = _seq_a_a()
+        net, im, fm, activity_to_id, tau_ids, loops = build_id_net(root)
+        probs = {('a',): 1.0}
+        result = voidmass_table_pn(root, probs, net, im, fm, activity_to_id, tau_ids,
+                                   id_loop_list=loops, timeout=30)
+        for leaf in (first, second):
+            self.assertAlmostEqual(
+                coverage_by_alignment_pn(leaf, 0.0, result.skip_dict, probs), 1.0)
+        self.assertAlmostEqual(coverage_by_alignment_pn(root, 0.0, result.skip_dict, probs), 0.5)
+
+    def test_a_repeated_leaf_id_is_refused(self):
+        root, first, second = _seq_a_a()
+        second.id = 'first'
+        with self.assertRaises(ValueError):
+            build_id_net(root)
 
 
 if __name__ == '__main__':

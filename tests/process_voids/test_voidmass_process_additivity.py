@@ -155,39 +155,62 @@ def models_logs_and_cuts(draw):
     return tree, traces, draw(cuts(tree))
 
 
-class RepeatedLabelsKnownFailureTest(unittest.TestCase):
+@st.composite
+def models_with_repeated_labels(draw):
+    """As models_logs_and_cuts, but activity labels drawn from two, so
+    leaves share labels. The definition attributes each move to exactly
+    one execution, so the lemma holds here too."""
+    shape = draw(SHAPES)
+    n_activities = _count_activities(shape)
+    assume(n_activities >= 2)
+    labels = draw(st.lists(st.sampled_from(['a', 'b']), min_size=n_activities,
+                           max_size=n_activities))
+    assume(len(set(labels)) < len(labels))
+    tree = build_tree(shape, iter(labels))
+    traces = draw(_traces(sorted(set(labels))))
+    return tree, traces, draw(cuts(tree))
+
+
+def _seq_a_a():
+    first = build_tree(('act', ()), iter(['a']))
+    second = build_tree(('act', ()), iter(['a']))
+    tree = Sequence(None, [first, second])
+    first.id, second.id, tree.id = 'first', 'second', 'root'
+    first.set_parent(tree)
+    second.set_parent(tree)
+    return tree, first, second
+
+
+class RepeatedLabelsTest(unittest.TestCase):
     """
-    The lemma holds for the definition, and for this implementation only
-    where leaf labels are distinct - which is why the property above
-    draws them so.
-
-    The definition attributes each move to exactly one execution.
-    voidmass_pn.terms_by_node instead maps a move back to its activity
-    LABEL and credits every node whose leaves carry that label, so two
-    leaves sharing a label both claim every move on it. Hypothesis shrank
-    the first counterexample to this: seq(a, a) against <a>. One a
-    synchronises and the other is a model move, so the root reads deficit
-    1 over 2 moves, 0.5; by the definition the model move belongs to one
-    leaf and the two leaves sum to 0.5, but each is credited with it and
-    they sum to 1.0.
-
-    Pinned at what the code reads today, so the failure stays visible and
-    the test turns red if attribution changes.
+    Leaves sharing a label. A move is credited to the leaf whose
+    transition fired, not to every leaf carrying its label.
     """
 
-    def test_seq_a_a_against_a_counts_the_missing_a_at_both_leaves(self):
-        first = build_tree(('act', ()), iter(['a']))
-        second = build_tree(('act', ()), iter(['a']))
-        tree = Sequence(None, [first, second])
-        first.id, second.id, tree.id = 'first', 'second', 'root'
-        first.set_parent(tree)
-        second.set_parent(tree)
-
+    def test_seq_a_a_against_a_splits_the_missing_a_across_its_two_ties(self):
+        """
+        One a synchronises and the other is a model move, so the root
+        reads deficit 1 over 2 moves, 0.5. There are two tied optimal
+        alignments - the synchronous a on each leaf in turn - averaged
+        uniformly, each crediting the missing a to the other leaf, so each
+        leaf reads 0.25 and the two sum to the root's 0.5.
+        """
+        tree, first, second = _seq_a_a()
         table = voidmass_process_table(tree, [['a']])
 
         self.assertAlmostEqual(table[tree]['voidmass_process_lower'], 0.5)
-        self.assertAlmostEqual(table[first]['voidmass_process_lower'], 0.5)
-        self.assertAlmostEqual(table[second]['voidmass_process_lower'], 0.5)
+        self.assertAlmostEqual(table[first]['voidmass_process_lower'], 0.25)
+        self.assertAlmostEqual(table[second]['voidmass_process_lower'], 0.25)
+
+    @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+    @given(models_with_repeated_labels())
+    def test_the_lemma_holds_with_repeated_labels(self, case):
+        tree, traces, cut = case
+        table = voidmass_process_table(tree, traces)
+        total = sum(table[node]['voidmass_process_lower'] for node in cut)
+        self.assertAlmostEqual(total, table[tree]['voidmass_process_lower'],
+                               delta=TOLERANCE,
+                               msg=f'tree {tree}, traces {traces}, cut {[n.id for n in cut]}')
 
 
 class AdditivityTest(unittest.TestCase):

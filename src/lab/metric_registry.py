@@ -115,6 +115,32 @@ _SILENT_MOVE_DURATION_HISTORY = (
     "sharing a gap and inflated what the surviving moves were charged. "
     "Values differ wherever an alignment contains a silent move.")
 
+# Why the classical-alignment ids written up to v0.5.1 were retired, stated
+# in each so a reader of an old result CSV finds it at the column.
+_LABEL_ATTRIBUTION_RETIRED = (
+    "Retired: a move was credited to every node whose leaves carried its "
+    "activity label, and tied alignments differing only in which "
+    "same-labelled leaf fired were merged as one story. On a tree whose "
+    "leaves repeat a label, a node holding some but not all of them "
+    "overcounts - it claims the others' moves too - and the root can be "
+    "mis-weighted where a merged tie sat beside a story with different "
+    "counts. Trees with distinct labels are unaffected, which includes every "
+    "inductive-miner tree; toothpaste trees usually repeat labels.")
+
+_NAME_RESOLUTION_RETIRED = (
+    "Retired: a move was resolved to a tree leaf by activity name, so where "
+    "leaves repeat a label every move on it landed on one of them and the "
+    "others read as unobserved, and tied alignments differing only in which "
+    "same-labelled leaf fired were merged. Trees with distinct labels are "
+    "unaffected, which includes every inductive-miner tree; toothpaste trees "
+    "usually repeat labels.")
+
+# What replaced it.
+_LEAF_ATTRIBUTION = (
+    "Each move is credited to the one leaf whose transition fired and to that "
+    "leaf's ancestors, and tied alignments are deduplicated by leaf, so leaves "
+    "sharing an activity label are told apart.")
+
 # weight_coverage/weight_voidage read skip probabilities only at the
 # leaves, so the correction changes what they can register at all.
 _MASKED_SKIP_PROB_WEIGHT_HISTORY = (
@@ -334,9 +360,12 @@ METRICS = {
                     "there, as if it fit perfectly. Equal to voidmass_deficit_"
                     "upper whenever no variant times out - the two only diverge "
                     "on a cell that actually hit this case, making the gap "
-                    "itself a visible signal rather than a hidden assumption.",
+                    "itself a visible signal rather than a hidden assumption. "
+                    + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='voidmass_deficit2_lower',
     ),
     'voidmass_deficit_upper': Metric(
         id='voidmass_deficit_upper',
@@ -346,9 +375,11 @@ METRICS = {
                     "the model's cheapest complete path length) - every move of "
                     "the longest path an optimal alignment could take counted "
                     "as a model move. Derived from the aligner's cost model; "
-                    "see that function for the proof.",
+                    "see that function for the proof. " + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='voidmass_deficit2_upper',
     ),
     'voidmass_movecount': Metric(
         id='voidmass_movecount',
@@ -356,9 +387,11 @@ METRICS = {
                     'from completed variants only - a measurement, not a '
                     'substitution. A timed-out variant contributes nothing '
                     'here; see voidmass_movecount_bound for the denominator the '
-                    'lower/upper bounds divide by.',
+                    'lower/upper bounds divide by. ' + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='voidmass_movecount2',
     ),
     'voidmass_movecount_bound': Metric(
         id='voidmass_movecount_bound',
@@ -369,9 +402,11 @@ METRICS = {
                     "own column rather than overloading voidmass_movecount, "
                     "whose meaning would otherwise depend on whether a timeout "
                     "happened. Equal to voidmass_movecount when nothing timed "
-                    "out.",
+                    "out. " + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
+        status='retired',
+        superseded_by='voidmass_movecount2_bound',
     ),
     'voidmass_subprocess_lower': Metric(
         id='voidmass_subprocess_lower',
@@ -398,20 +433,25 @@ METRICS = {
         description="voidmass_deficit_lower / the ROOT's voidmass_movecount_bound "
                     '- missing moves under the scored node as a fraction of the '
                     "whole model's moves (additive over any cut through the "
-                    'tree). A valid lower bound on the no-timeout value.',
+                    'tree). A valid lower bound on the no-timeout value. '
+                    + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
         scale='void_share',
+        status='retired',
+        superseded_by='voidmass_process2_lower',
     ),
     'voidmass_process_upper': Metric(
         id='voidmass_process_upper',
         description="voidmass_deficit_upper / the ROOT's voidmass_movecount_bound "
                     '- see voidmass_process_lower. A valid upper bound on the '
                     'no-timeout value: X_max is the same at every node, so '
-                    'numerator and denominator share it.',
+                    'numerator and denominator share it. ' + _LABEL_ATTRIBUTION_RETIRED,
         source='process_voids.voidmass_pn.voidmass_table_pn',
         scripts=('exp_disco_degrade',),
         scale='void_share',
+        status='retired',
+        superseded_by='voidmass_process2_upper',
     ),
     'alignment_coverage_pn2_lower': Metric(
         id='alignment_coverage_pn2_lower',
@@ -443,10 +483,13 @@ METRICS = {
                     "share that does. LOWER bound: a variant whose alignment "
                     "search timed out (no alignments at all) counts as one "
                     "observed unit at a ratio of 0 (as if it matched "
-                    "nothing), the SMALLER of the two coverage readings.",
+                    "nothing), the SMALLER of the two coverage readings. "
+                    + _NAME_RESOLUTION_RETIRED,
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
         scale='coverage',
+        status='retired',
+        superseded_by='alignment_coverage_pn3_lower',
     ),
     'alignment_coverage_pn2_upper': Metric(
         id='alignment_coverage_pn2_upper',
@@ -454,7 +497,99 @@ METRICS = {
                     "variant counts as one observed unit at a ratio of 1 (as "
                     "if it matched perfectly) - the LARGER of the two coverage "
                     "readings. Equal to alignment_coverage_pn2_lower whenever "
-                    "no variant times out.",
+                    "no variant times out. " + _NAME_RESOLUTION_RETIRED,
+        source='process_voids.voidmass_pn.coverage_by_alignment_pn',
+        scripts=('exp_disco_degrade',),
+        scale='coverage',
+        status='retired',
+        superseded_by='alignment_coverage_pn3_upper',
+    ),
+    # The classical-alignment ids below replace those above from v0.5.2:
+    # each move is credited to the one leaf whose transition fired, and
+    # tied alignments are deduplicated by leaf.
+    'voidmass_deficit2_lower': Metric(
+        id='voidmass_deficit2_lower',
+        description='Pooled voidmass deficit at the scored node, from classical '
+                    '(non-lumped) Petri-net alignments: the missing moves on the '
+                    "node's leaves, averaged over each variant's tied optimal "
+                    'alignments and weighted by variant probability. ' + _LEAF_ATTRIBUTION
+                    + ' LOWER bound: a variant whose alignment search timed out is '
+                    'credited 0 deficit, as if it fitted perfectly. Equal to '
+                    'voidmass_deficit2_upper whenever no variant times out.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_deficit2_upper': Metric(
+        id='voidmass_deficit2_upper',
+        description='Same as voidmass_deficit2_lower, but a timed-out variant is '
+                    'credited its largest possible deficit, w * X_max with X_max = '
+                    'voidmass_pn.timed_out_movecount_bound - see that function '
+                    'for the proof.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_movecount2': Metric(
+        id='voidmass_movecount2',
+        description="Pooled non-silent move count on the scored node's leaves, "
+                    'OBSERVED from completed variants only. ' + _LEAF_ATTRIBUTION
+                    + ' See voidmass_movecount2_bound for the denominator the '
+                    'bounds divide by.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_movecount2_bound': Metric(
+        id='voidmass_movecount2_bound',
+        description='voidmass_movecount2 plus w * X_max for every timed-out '
+                    'variant - the denominator the lower and upper bounds divide '
+                    'by, reported so their arithmetic is reproducible. Equal to '
+                    'voidmass_movecount2 when nothing timed out.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+    ),
+    'voidmass_process2_lower': Metric(
+        id='voidmass_process2_lower',
+        description="\\voidmoveproc (defn:move-void-proc): voidmass_deficit2_lower "
+                    "/ the ROOT's voidmass_movecount2_bound - missing moves under "
+                    "the scored node as a fraction of the whole model's moves. "
+                    + _LEAF_ATTRIBUTION + ' So Lemma [Additivity] holds: over any '
+                    'antichain of nodes covering the labelled leaves, values sum '
+                    "to the root's (a property test holds it, repeated labels "
+                    'included). A valid lower bound on the no-timeout value.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+        scale='void_share',
+    ),
+    'voidmass_process2_upper': Metric(
+        id='voidmass_process2_upper',
+        description="voidmass_deficit2_upper / the ROOT's voidmass_movecount2_bound "
+                    '- see voidmass_process2_lower. A valid upper bound on the '
+                    'no-timeout value: X_max is the same at every node, so '
+                    'numerator and denominator share it. Unlike the lower bound '
+                    'it is not additive over a cut when variants time out, since '
+                    'each node adds the same allowance.',
+        source='process_voids.voidmass_pn.voidmass_table_pn',
+        scripts=('exp_disco_degrade',),
+        scale='void_share',
+    ),
+    'alignment_coverage_pn3_lower': Metric(
+        id='alignment_coverage_pn3_lower',
+        description="\\covermove (defn:move-coverage) on classical alignments: "
+                    "(1 - skip_prob) * a mass conditioned on observation, as "
+                    'alignment_coverage_pn2_lower describes, with each move '
+                    'resolved to the one leaf whose transition fired rather than '
+                    'by activity name, and tied alignments deduplicated by leaf. '
+                    'LOWER bound: a timed-out variant counts as one observed unit '
+                    'at a ratio of 0.',
+        source='process_voids.voidmass_pn.coverage_by_alignment_pn',
+        scripts=('exp_disco_degrade',),
+        scale='coverage',
+    ),
+    'alignment_coverage_pn3_upper': Metric(
+        id='alignment_coverage_pn3_upper',
+        description='Same as alignment_coverage_pn3_lower, but a timed-out '
+                    'variant counts as one observed unit at a ratio of 1. Equal '
+                    'to alignment_coverage_pn3_lower whenever no variant times '
+                    'out.',
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
         scale='coverage',

@@ -44,7 +44,14 @@ METRIC_SPECS = {
     'voidsalign3': ('Void by Skip Alignment', ('voidsalign3',)),
     'voidsat2': ('Void by Aligned Durations', ('voidsat2',)),
     'voidmass_process': ('Void by Process Relative Moves',
-                          ('voidmass_process_lower', 'voidmass_process_upper')),
+                          ('voidmass_process2_lower', 'voidmass_process2_upper')),
+}
+
+# columns -> the columns a result CSV written before them carries
+# instead, read under the new names when the new ones are absent.
+COLUMN_FALLBACKS = {
+    ('voidmass_process2_lower', 'voidmass_process2_upper'):
+        ('voidmass_process_lower', 'voidmass_process_upper'),
 }
 
 DEFAULT_METRICS = ('voidsalign3', 'voidsat2', 'voidmass_process')
@@ -89,9 +96,14 @@ def _series_for(df, combo, degradation_dim, columns):
     '''Rows for one (combo, degradation_dim), sorted by degradation_level
     - or None if any of `columns` isn't in this log's CSV (a sweep
     predating that metric) or no row matches, so the caller can skip
-    the line rather than error.'''
+    the line rather than error. Where `columns` are absent but their
+    COLUMN_FALLBACKS are present, those are returned under the names
+    in `columns`.'''
     if any(col not in df.columns for col in columns):
-        return None
+        fallback = COLUMN_FALLBACKS.get(tuple(columns))
+        if fallback is None or any(col not in df.columns for col in fallback):
+            return None
+        df = df.rename(columns=dict(zip(fallback, columns)))
     rows = df[(df['combo'] == combo) & (df['degradation_dim'] == degradation_dim)]
     if rows.empty:
         return None

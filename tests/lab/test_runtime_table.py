@@ -45,6 +45,14 @@ class TotalSecondsTest(unittest.TestCase):
         ])
         self.assertAlmostEqual(total_seconds(df, 'inductive_noise20', 'voidsalign3'), 5.22)
 
+    def test_counts_voidmass_process2_own_rows(self):
+        df = _timings_df([
+            ('inductive_noise20', 'classical', 100.0),
+            ('inductive_noise20', 'voidmass_process2_lower', 0.25),
+            ('inductive_noise20', 'voidmass_process2_upper', 0.5),
+        ])
+        self.assertAlmostEqual(total_seconds(df, 'inductive_noise20', 'voidmass_process'), 100.75)
+
     def test_different_combo_is_isolated(self):
         df = _timings_df([
             ('inductive_noise20', 'classical', 100.0),

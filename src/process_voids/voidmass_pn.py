@@ -39,6 +39,7 @@ version. id_loop_list must reach align_pn_all (see build_id_net): left
 as [], the A* search can't cycle-detect on a tau-skippable loop.
 '''
 
+import copy
 import logging
 import time
 from dataclasses import dataclass
@@ -74,8 +75,65 @@ def build_id_net(tree):
     skippable loop - MUST be threaded through to align_pn_all/
     align_variant_all/voidmass_table_pn, not left as [] (their default),
     or the guard silently does nothing (see module docstring).
+
+    Every leaf's transition also records which leaf it is, in
+    transition.properties[LEAF_ID], so a move can be credited to the leaf
+    that fired - see leaf_by_transition. The labels alone cannot say:
+    leaves sharing an activity label are given the same transition
+    label, which is what lets a trace event synchronise with any of
+    them. So the net is built from a copy of the tree whose leaves are
+    each labelled with their own node id, which makes every transition
+    label name one leaf; that id is recorded, and the label then reset to
+    the one the tree itself produces. The result is the net a plain build
+    gives, transition for transition, plus the record.
     '''
-    return EbiOccurance().build_petri_net(tree)
+    by_id = {}
+    for leaf in _leaves(tree):
+        if leaf.id in by_id:
+            raise ValueError(f'leaf id {leaf.id!r} is not unique in the tree; moves '
+                             'cannot be attributed to leaves')
+        by_id[leaf.id] = leaf
+
+    net, im, fm, activity_to_id, tau_ids, id_loop_list = EbiOccurance().build_petri_net(tree)
+    relabelled = copy.deepcopy(tree)
+    for leaf in _leaves(relabelled):
+        leaf.name = leaf.id
+    id_net, id_im, id_fm, id_to_own_id, _id_taus, id_loops = \
+        EbiOccurance().build_petri_net(relabelled)
+    if sorted(map(str, id_loops)) != sorted(map(str, id_loop_list)):
+        raise AssertionError('relabelling leaves changed id_loop_list; transition '
+                             'identity cannot be recorded this way')
+
+    leaf_id_of_label = {label: own for own, label in id_to_own_id.items()}
+    for transition in id_net.transitions:
+        leaf_id = leaf_id_of_label.get(transition.label)
+        if leaf_id is None:
+            continue
+        leaf = by_id[leaf_id]
+        transition.properties[LEAF_ID] = leaf_id
+        transition.label = activity_to_id[leaf.name]
+    return id_net, id_im, id_fm, activity_to_id, tau_ids, id_loop_list
+
+
+LEAF_ID = 'process_voids_leaf_id'
+
+
+def _leaves(tree):
+    if not tree.children:
+        return [tree]
+    return [leaf for child in tree.children for leaf in _leaves(child)]
+
+
+def leaf_by_transition(net, tree):
+    '''
+    {net transition name: tree leaf} for every leaf's transition in a net
+    from build_id_net. A classical alignment move names the net
+    transition that fired, so this is how it is credited to one leaf
+    rather than to every leaf sharing its label.
+    '''
+    by_id = {leaf.id: leaf for leaf in _leaves(tree)}
+    return {transition.name: by_id[transition.properties[LEAF_ID]]
+            for transition in net.transitions if LEAF_ID in transition.properties}
 
 
 def align_variant_all(activities, net, im, fm, activity_to_id, tau_id_set,
@@ -101,90 +159,80 @@ def align_variant(activities, net, im, fm, activity_to_id, tau_id_set,
                               id_loop_list=id_loop_list, timeout=timeout)[0]
 
 
-def classify_move(t, id_to_activity, tau_id_set):
+def classify_move(t, leaves, tau_id_set):
     '''
-    (kind, activity) for one alignment move, kind in 'sync'/'log'/'model'/'tau'.
-    activity is None for 'log' (nothing on the model side) and for 'tau'
-    (a silent/helper transition, or a genuine Tau leaf in tau_id_set -
-    neither is a deviation, so neither counts towards deficit).
+    (kind, leaf) for one alignment move, kind in 'sync'/'log'/'model'/'tau'.
+    leaf is the tree leaf whose transition fired, found through `leaves`
+    (leaf_by_transition's map) by the move's model-side transition name -
+    the one leaf, even where several share its label. None for 'log'
+    (nothing on the model side) and for 'tau' (a silent/helper transition,
+    or a genuine Tau leaf in tau_id_set - neither is a deviation, so
+    neither counts towards deficit).
     '''
     trace_side, model_side = t.label
     if model_side == '>>':
         return 'log', None
     if model_side is None or model_side in tau_id_set:
         return 'tau', None
-    activity = id_to_activity.get(model_side)
-    if activity is None:
+    leaf = leaves.get(t.name[1])
+    if leaf is None:
         return 'tau', None
     if trace_side == '>>':
-        return 'model', activity
-    return 'sync', activity
+        return 'model', leaf
+    return 'sync', leaf
 
 
-def deficit_by_node(alignment, tree, activity_to_id, tau_id_set):
+def deficit_by_node(alignment, tree, leaves, tau_id_set):
     '''
     {node: deficit} for every node in tree, where deficit(node) is the
-    count of 'model' moves in `alignment` whose activity is one of
-    node's leaf labels. deficit(execution) = movecount - matchcount
-    simplifies to exactly this count, since movecount excludes tau
-    moves and matchcount is the sync-move count: (sync + model) - sync.
+    count of 'model' moves in `alignment` on a leaf of node's subtree.
+    deficit(execution) = movecount - matchcount simplifies to exactly
+    this count, since movecount excludes tau moves and matchcount is the
+    sync-move count: (sync + model) - sync.
     '''
     return {node: d for node, (d, _m) in
-            terms_by_node(alignment, tree, activity_to_id, tau_id_set).items()}
+            terms_by_node(alignment, tree, leaves, tau_id_set).items()}
 
 
-def terms_by_node(alignment, tree, activity_to_id, tau_id_set):
+def terms_by_node(alignment, tree, leaves, tau_id_set):
     '''
     {node: (deficit, movecount)} for every node in tree, over one
-    alignment - deficit = count of 'model' moves under node's leaves,
-    movecount = count of 'sync'+'model' moves under node's leaves (tau
-    moves excluded from both, matching coveragemass.movecount/matchcount).
+    alignment - deficit = count of 'model' moves on a leaf of node's
+    subtree, movecount = count of 'sync'+'model' moves there (tau moves
+    excluded from both, matching coveragemass.movecount/matchcount).
+
+    Each move counts at the one leaf whose transition fired and that
+    leaf's ancestors - Definition [Void by Process-Relative Alignment
+    Moves] attributes a move to exactly one execution. Classical
+    alignments put every move on a leaf, so the values over any
+    antichain covering the labelled leaves sum to the root's.
     '''
-    id_to_activity = {v: k for k, v in activity_to_id.items()}
-    model_activities = []
-    sync_activities = []
+    per_leaf = {}
     for t in alignment:
-        kind, activity = classify_move(t, id_to_activity, tau_id_set)
-        if kind == 'model':
-            model_activities.append(activity)
-        elif kind == 'sync':
-            sync_activities.append(activity)
+        kind, leaf = classify_move(t, leaves, tau_id_set)
+        if kind in ('model', 'sync'):
+            d, m = per_leaf.get(id(leaf), (0, 0))
+            per_leaf[id(leaf)] = (d + (kind == 'model'), m + 1)
 
     table = {}
 
     def _walk(node):
-        leaves = set(node.get_leaf_labels())
-        d = sum(1 for a in model_activities if a in leaves)
-        m = d + sum(1 for a in sync_activities if a in leaves)
-        table[node] = (d, m)
+        if not node.children:
+            table[node] = per_leaf.get(id(node), (0, 0))
+            return table[node]
+        d = m = 0
         for child in node.children:
-            _walk(child)
+            child_d, child_m = _walk(child)
+            d += child_d
+            m += child_m
+        table[node] = (d, m)
+        return table[node]
 
     _walk(tree)
     return table
 
 
-def _leaf_nodes_by_name(tree):
-    '''{leaf.name: leaf} for every Activity/Tau leaf in tree - the
-    name->node resolution _to_alignment_mass_path needs to wrap a
-    classical alignment move's activity name back into the real tree
-    node coveragemass.py's Skip/TauPath wrappers expect. Same
-    duplicate-label caveat as terms_by_node's leaf-label-set membership
-    check elsewhere in this module: not solved, just not any worse here
-    than it already is throughout this codebase.'''
-    nodes = {}
-
-    def _walk(node):
-        if not node.children:
-            nodes[node.name] = node
-        for child in node.children:
-            _walk(child)
-
-    _walk(tree)
-    return nodes
-
-
-def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set):
+def _to_alignment_mass_path(alignment, leaves, tau_id_set):
     '''
     Translates one classical alignment (list of pm4py Transitions,
     .label = (trace_side, model_side)) into the (log_elem, model_elem)
@@ -200,9 +248,8 @@ def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set
       - Skip(leaf, leaf.skip_cost): a required activity present in the
         model but missing from the log (movecount-counted, non-silent)
       - TauPath(leaf): a silent move through a genuine Tau leaf
-        (movecount-excluded) - resolved via tau_id_set + activity_to_id,
-        which already maps genuine Tau leaves by name (confirmed against
-        build_id_net's real output, not just its docstring)
+        (movecount-excluded), recognised by its label being in
+        tau_id_set
       - '>>' : a pure log move, OR a structural/helper silent transition
         with no tree correspondence at all (build_petri_net inserts
         these for net routing - label=None, never in tau_id_set). Both
@@ -210,10 +257,9 @@ def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set
         in executions()' consecutive-run grouping - the same treatment
         an unrelated move already gets there, not a special case.
 
-    id_to_activity/nodes_by_name are precomputed ONCE by the caller
-    (voidmass_table_pn) and passed in, not rebuilt per call - this is
-    called once per deduped alignment, and a full tree walk
-    (_leaf_nodes_by_name) per call is measurably slow on a real log.
+    Each move is resolved to the one leaf whose transition fired, through
+    `leaves` (leaf_by_transition's map, built once by the caller), so
+    leaves sharing a label are told apart.
     '''
     path = []
     for t in alignment:
@@ -221,8 +267,7 @@ def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set
         if model_side == '>>':
             path.append((trace_side, '>>'))
             continue
-        name = id_to_activity.get(model_side)
-        node = nodes_by_name.get(name) if name is not None else None
+        node = leaves.get(t.name[1])
         if node is None:
             path.append((trace_side, '>>'))
             continue
@@ -235,11 +280,17 @@ def _to_alignment_mass_path(alignment, id_to_activity, nodes_by_name, tau_id_set
     return path
 
 
-def sum_safe_signature(alignment, id_to_activity, tau_id_set):
+def sum_safe_signature(alignment, leaves, tau_id_set):
     '''
     Canonical key for "these two tied optimal alignments tell the same
-    causal story": the ORDERED list of (kind, activity) for 'sync'/
-    'model' moves only - 'log' and 'tau' moves are dropped entirely.
+    causal story": the ORDERED list of (kind, leaf) for 'sync'/'model'
+    moves only - 'log' and 'tau' moves are dropped entirely.
+
+    Keyed by leaf, not by activity label. Two alignments differing only in
+    which of several same-labelled leaves fired are different alignments
+    in the definition's Gamma_sigma and credit different leaves, so they
+    are different stories; merging them would give the variant one story
+    where it has two, and mis-weight every node including the root.
 
     Why this is safe for voidmass specifically, and NOT safe to reuse
     unmodified for anything else: align_pn_all's all-optimal search
@@ -268,8 +319,8 @@ def sum_safe_signature(alignment, id_to_activity, tau_id_set):
     permute.
     '''
     return tuple(
-        (kind, activity) for t in alignment
-        for kind, activity in [classify_move(t, id_to_activity, tau_id_set)]
+        (kind, leaf.id) for t in alignment
+        for kind, leaf in [classify_move(t, leaves, tau_id_set)]
         if kind in ('sync', 'model')
     )
 
@@ -286,7 +337,7 @@ def sum_safe_signature(alignment, id_to_activity, tau_id_set):
 # leaves.
 
 
-def dedupe_alignments(alignments, id_to_activity, tau_id_set, signature_fn=sum_safe_signature):
+def dedupe_alignments(alignments, leaves, tau_id_set, signature_fn=sum_safe_signature):
     '''
     One representative alignment per distinct signature_fn value, in
     first-seen order - collapses combinatorial reorderings of commuting
@@ -295,7 +346,7 @@ def dedupe_alignments(alignments, id_to_activity, tau_id_set, signature_fn=sum_s
     '''
     seen = {}
     for alignment in alignments:
-        sig = signature_fn(alignment, id_to_activity, tau_id_set)
+        sig = signature_fn(alignment, leaves, tau_id_set)
         seen.setdefault(sig, alignment)
     return list(seen.values())
 
@@ -342,10 +393,9 @@ def timed_out_movecount_bound(trace_length, tree):
                   <= 2|sigma| + C_root - 2*log  <=  2|sigma| + C_root.
 
     A node's movecount counts a subset of the whole alignment's moves
-    (terms_by_node attributes by leaf label, and a node's labels are a
-    subset of the root's), so the same X bounds every node. That subset
-    claim holds even with duplicate labels - duplicates break additivity
-    across siblings, not this.
+    (terms_by_node credits each move to one leaf and its ancestors, and
+    a node's leaves are a subset of the root's), so the same X bounds
+    every node.
 
     No bound from the tree's shape alone can do this job: a loop lets
     model moves outnumber any leaf count (loop(seq(a,b), tau) on <a,a,a>
@@ -429,8 +479,7 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
         deficit_sum[node] = deficit_sum.get(node, 0.0) + share * d
         movecount_sum[node] = movecount_sum.get(node, 0.0) + share * m
 
-    id_to_activity = {v: k for k, v in activity_to_id.items()}
-    nodes_by_name = _leaf_nodes_by_name(tree)
+    leaves = leaf_by_transition(net, tree)
     n_variants = len(variant_probs)
     total_started = time.monotonic()
     n_near_timeout = 0
@@ -439,7 +488,7 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
         raw_alignments = align_variant_all(list(variant), net, im, fm, activity_to_id,
                                             tau_id_set, id_loop_list=id_loop_list, timeout=timeout)
         elapsed = time.monotonic() - started
-        alignments = dedupe_alignments(raw_alignments, id_to_activity, tau_id_set)
+        alignments = dedupe_alignments(raw_alignments, leaves, tau_id_set)
         # Flag anything running close to the per-variant timeout - the
         # likely signature of the id_loop_list gap (a tau-skippable loop
         # the A* search can't cycle-detect, so it burns the full budget
@@ -461,11 +510,10 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
         else:
             share = weight / len(alignments)
             for alignment in alignments:
-                for node, (d, m) in terms_by_node(alignment, tree, activity_to_id, tau_id_set).items():
+                for node, (d, m) in terms_by_node(alignment, tree, leaves, tau_id_set).items():
                     _add(node, d, m, share)
         skip_dict[_variant_key(variant)] = [
-            SimpleNamespace(path=_to_alignment_mass_path(alignment, id_to_activity,
-                                                           nodes_by_name, tau_id_set))
+            SimpleNamespace(path=_to_alignment_mass_path(alignment, leaves, tau_id_set))
             for alignment in alignments
         ]
 
@@ -495,10 +543,9 @@ def voidmass_table_pn(tree, variant_probs, net, im, fm, activity_to_id, tau_id_s
             # pooled match ratio (matchcount/movecount summed across every
             # variant/execution, not averaged per-execution the way
             # coveragemass.alignment_mass does) - matchcount = movecount -
-            # deficit, so this is 1 - voidmass_subprocess. Attribution of
-            # moves to this node is via terms_by_node's leaf-label
-            # membership (classical alignments have no lumping to
-            # disambiguate, unlike skip-alignments' executions()).
+            # deficit, so this is 1 - voidmass_subprocess. A move is
+            # attributed to this node through the one leaf whose
+            # transition fired (terms_by_node).
             'alignment_mass_pooled_lower': 1 - subprocess_upper,
             'alignment_mass_pooled_upper': 1 - subprocess_lower,
         }

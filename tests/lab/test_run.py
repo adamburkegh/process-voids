@@ -151,7 +151,7 @@ class MetricsSelectionTest(FakePipelineMixin, unittest.TestCase):
         row = df.iloc[0]
         self.assertEqual(row['skipprob'], 0.1)
         self.assertNotIn('salign_coverage', df.columns)
-        self.assertNotIn('voidmass_deficit_lower', df.columns)
+        self.assertNotIn('voidmass_deficit2_lower', df.columns)
         # node_df DOES have a fixed schema (NODE_ROW_COLUMNS), so an
         # unselected metric still gets its column - just null.
         self.assertIn('salign_coverage', node_df.columns)
@@ -435,7 +435,7 @@ class NotImplementedComboTest(unittest.TestCase):
             mock_skipprob.assert_not_called()
             self.assertTrue((df['status'] == 'not_implemented').all())
             self.assertTrue(df['weight_voidage'].isna().all())
-            self.assertTrue(df['voidmass_deficit_lower'].isna().all())
+            self.assertTrue(df['voidmass_deficit2_lower'].isna().all())
             self.assertTrue(df['timed_out_count'].isna().all())
             self.assertTrue(df['timed_out_weight'].isna().all())
 
@@ -462,7 +462,7 @@ class ComputeErrorTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(len(df), 1)
         self.assertIn('RuntimeError: boom', df.iloc[0]['status'])
         self.assertIsNone(df.iloc[0]['weight_voidage'])
-        self.assertIsNone(df.iloc[0]['voidmass_deficit_lower'])
+        self.assertIsNone(df.iloc[0]['voidmass_deficit2_lower'])
 
         # Every cell errored, so node_rows never got populated - the
         # written _nodes CSV must still carry a real header (see
@@ -583,8 +583,8 @@ class ClassicalMetricsTimeoutDiagnosticsTest(FakePipelineMixin, unittest.TestCas
     run carries voidmass_table_pn's per-cell timeout diagnostics into
     the root row - the count AND the summed probability weight, since
     0.03% of a log timing out is fine and 20% is not, and the count
-    alone can't tell those apart - plus voidmass_movecount_bound
-    alongside the observed voidmass_movecount, rather than overloading
+    alone can't tell those apart - plus voidmass_movecount2_bound
+    alongside the observed voidmass_movecount2, rather than overloading
     one column whose meaning would depend on whether a timeout happened.
     """
 
@@ -608,9 +608,9 @@ class ClassicalMetricsTimeoutDiagnosticsTest(FakePipelineMixin, unittest.TestCas
         row = df.iloc[0]
         self.assertEqual(row['timed_out_count'], 2)
         self.assertEqual(row['timed_out_weight'], 0.25)
-        self.assertEqual(row['voidmass_movecount'], 1.0)
-        self.assertEqual(row['voidmass_movecount_bound'], 3.0)
-        self.assertEqual(row['voidmass_deficit_upper'], 2.0)
+        self.assertEqual(row['voidmass_movecount2'], 1.0)
+        self.assertEqual(row['voidmass_movecount2_bound'], 3.0)
+        self.assertEqual(row['voidmass_deficit2_upper'], 2.0)
 
 
 class EmptyNodeCsvHasHeaderTest(FakePipelineMixin, unittest.TestCase):
@@ -714,14 +714,14 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
 
         self.assertEqual(row['skipprob'], 0.2)
         self.assertAlmostEqual(row['matchprob'], 0.8)
-        self.assertEqual(row['voidmass_deficit_lower'], 0.5)
-        self.assertEqual(row['voidmass_deficit_upper'], 0.5)
-        self.assertEqual(row['voidmass_movecount'], 1.0)
-        self.assertEqual(row['voidmass_movecount_bound'], 1.5)
+        self.assertEqual(row['voidmass_deficit2_lower'], 0.5)
+        self.assertEqual(row['voidmass_deficit2_upper'], 0.5)
+        self.assertEqual(row['voidmass_movecount2'], 1.0)
+        self.assertEqual(row['voidmass_movecount2_bound'], 1.5)
         self.assertEqual(row['salign_coverage'], 0.77)
         self.assertEqual(row['voidsalign3'], 0.66)
-        self.assertEqual(row['alignment_coverage_pn2_lower'], 0.88)
-        self.assertEqual(row['alignment_coverage_pn2_upper'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn3_lower'], 0.88)
+        self.assertEqual(row['alignment_coverage_pn3_upper'], 0.88)
         self.assertEqual(row['voidsat2'], 0.33)
         # a's own subtree is just itself, no silent alternative from its
         # own perspective (mandatory_node_count/total_node_count are
