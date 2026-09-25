@@ -223,9 +223,11 @@ for a decision.
 3. **Model provenance.** By principle 2, voids are meaningful only against
    external obligations, yet nothing records which nodes of a hybrid model a
    person asserted and which were discovered.
-4. **What does the product show?** pvoid prints weight coverage and coverage
-   by duration, and `bpmn_colour` paints skip probabilities onto tasks.
-   Neither is yet a subprocess-level void metric.
+4. **What does the product show?** pvoid exposes the three void metrics
+   (`voidsalign`, `voidsat`, `voidmass_process`) as functions and prints
+   one of them per node, and `bpmn_colour` paints the chosen one onto
+   tasks. Only tasks are painted, so a subprocess-level void is visible in
+   pvoid's tree but not yet on the diagram.
 
 ## Further reading
 

@@ -29,6 +29,23 @@ All notable changes to this project will be documented in this file.
   `lab.trace_variability`) reads `voidmass_process2_*`, falling back to
   `voidmass_process_*` in result CSVs written before the fix, including
   the published `results/`; `lab.runtime_table` counts either.
+* `process_voids.pvoid` is now the product's API for the three void
+  metrics: `voidsalign`, `voidsat` and `voidmass_process`, each taking a
+  log and a process tree and returning its value at every node (currently
+  voidsalign3, voidsat2 and voidmass_process's lower bound, warning where a
+  classical alignment timed out). `METRICS` maps the three names to them.
+  The CLI calls into that API and prints one metric as a tree,
+  `node : skip probability, <metric>`, chosen with
+  `--metric voidsalign|voidsat|voidmass_process` (default `voidsalign`).
+  It no longer prints tree weights, weight coverage or coverage by
+  duration; `show_tree_weights` and `show_tree_coverage_by_duration` are
+  replaced by `show_tree`. The README's sample output is regenerated.
+* `process_voids.bpmn_colour` colours tasks by a void metric, computed
+  through `pvoid`, instead of by skip probability read from pickles in
+  `var/`. It now takes the log and model:
+  `python -m process_voids.bpmn_colour <log> <model.ptml> <in.bpmn> <out.bpmn> [--metric ...]`.
+  `prob_to_colour` and `activity_skip_probs_by_label` become
+  `value_to_colour` and `values_by_label`; the pickle loaders are gone.
 
 ### Added
 

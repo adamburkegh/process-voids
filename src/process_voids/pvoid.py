@@ -1,6 +1,27 @@
+'''
+Process voids in an event log against a process tree model.
 
+Three void metrics, each returning its value at every node of the tree -
+0 where the node is fully backed by event data, 1 where it is never
+observed:
+
+    voidsalign(log, tree)        void by skip alignment correspondence
+    voidsat(log, tree)           void by aligned duration
+    voidmass_process(log, tree)  void by process-relative alignment moves
+
+`log` is an event log DataFrame (as pm4py reads one), `tree` a
+skipalignments process tree (process_voids.tree.from_pm4py converts a
+pm4py one). Each call does its own alignment work.
+
+From the command line, one metric at a time, as a tree:
+
+    python -m process_voids.pvoid <log.xes> <model.ptml> [--metric voidsalign|voidsat|voidmass_process]
+'''
+
+import argparse
 import datetime
 import sys
+import warnings
 
 sys.stdout.reconfigure(encoding='utf-8')
 DEBUG = False
@@ -18,9 +39,13 @@ from skipalignments import (
 from process_voids import slpn_importer
 from process_voids.config import ebi_executable
 from process_voids.tree import from_pm4py
+from process_voids.voidmass_pn import build_id_net
+from process_voids.voidsalign3 import voidsalign3
+from process_voids.voidsat2 import voidsat2
 
 probabilities.EBI_EXECUTABLE = ebi_executable()   # bare 'ebi' on PATH unless pvoid.toml says otherwise
 
+SLPN_PATH = 'var/spmodel.slpn'
 
 
 def show_skip_outcome(dv):
@@ -44,55 +69,6 @@ def show_skip_outcome(dv):
             print(f'    Costs: {state.acc_costs}')
 
 
-def show_tree_weights(tree,dv):
-    if isinstance(tree, LeafNode):
-        return tree.__str__() + " : " + str(tree.weight) + \
-                ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + \
-                str(dv.skip_probs[tree]) + \
-                (" ]" if tree.get_cheapest_execution(0)[1] else "")
-    else:
-        if isinstance(tree, Sequence):
-            operator = "→"
-        elif isinstance(tree, Xor):
-            operator = "×"
-        elif isinstance(tree, And):
-            operator = "∧"
-        elif isinstance(tree, Loop):
-            operator = "↺"
-        else:
-            operator = "UNKNOWN"
-        operator += " : " + str(tree.weight)
-        child_string = "\n".join([show_tree_weights(c,dv) \
-                                    for c in tree.children])
-        return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
-
-
-def show_tree_coverage_by_duration(tree, dv, traces, total_dur=None):
-    if total_dur is None:
-        total_dur = sum([ dur(sigma) for sigma in traces ])
-    cov = coverage_by_duration(tree, traces, dv.skip_probs, total_dur)
-    if isinstance(tree, LeafNode):
-        return tree.__str__() + " : " + str(cov) + \
-                ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + \
-                str(dv.skip_probs[tree]) + \
-                (" ]" if tree.get_cheapest_execution(0)[1] else "")
-    else:
-        if isinstance(tree, Sequence):
-            operator = "→"
-        elif isinstance(tree, Xor):
-            operator = "×"
-        elif isinstance(tree, And):
-            operator = "∧"
-        elif isinstance(tree, Loop):
-            operator = "↺"
-        else:
-            operator = "UNKNOWN"
-        operator += " : " + str(cov)
-        child_string = "\n".join([show_tree_coverage_by_duration(c,dv,traces,total_dur) \
-                                    for c in tree.children])
-        return (" " * tree.get_distance_to_root()*2) + operator + ", " + ("[ " if tree.get_cheapest_execution(0)[1] else "") + str(dv.skip_probs[tree]) + (" ]" if tree.get_cheapest_execution(0)[1] else "") + "\n" + child_string
-
-
 def skipprob(log, pt, slpn_path, ppt_weights=None):
     if ppt_weights is not None:
         # Toothpaste's weights are exact from the PPT - no pn_log/
@@ -109,30 +85,111 @@ def skipprob(log, pt, slpn_path, ppt_weights=None):
     return dv
 
 
-def main():
+def _nodes(tree):
+    yield tree
+    for child in getattr(tree, 'children', []) or []:
+        yield from _nodes(child)
+
+
+def _context(log, tree):
+    # Imported here, not at the top: metric_context imports this module
+    # for skipprob.
+    from process_voids.metric_context import CellContext
+    return CellContext(log=log, tree=tree, slpn_path=SLPN_PATH,
+                       classical_net=build_id_net(tree))
+
+
+def _voidsalign(ctx):
+    dv = ctx.stage('dv')
+    cache = ctx.stage('executions_cache')
+    return {node: voidsalign3(node, dv.skip_dict_backup, dv.pl, dv.skip_probs,
+                              executions_cache=cache)
+            for node in _nodes(ctx.tree)}
+
+
+def _voidsat(ctx):
+    dv = ctx.stage('dv')
+    paths = {k: [s.path for s in v] for k, v in dv.skip_dict_backup.items()}
+    cache = ctx.stage('aligned_duration_cache')
+    return {node: voidsat2(node, ctx.tree, ctx.log, paths, dv.skip_probs, cache=cache)
+            for node in _nodes(ctx.tree)}
+
+
+def _voidmass_process(ctx):
+    result, _variant_probs = ctx.stage('classical')
+    if result.timed_out_count:
+        warnings.warn(f'{result.timed_out_count} trace variant(s) timed out in classical '
+                      f'alignment (weight {result.timed_out_weight:.4g}); voidmass_process '
+                      f'reports its lower bound')
+    return {node: result.table[node]['voidmass_process_lower'] for node in _nodes(ctx.tree)}
+
+
+def voidsalign(log, tree):
+    '''Void by skip alignment correspondence, {node: value} for every node.'''
+    return _voidsalign(_context(log, tree))
+
+
+def voidsat(log, tree):
+    '''Void by aligned duration, {node: value} for every node.'''
+    return _voidsat(_context(log, tree))
+
+
+def voidmass_process(log, tree):
+    '''
+    Void by process-relative alignment moves, {node: value} for every
+    node. Where a classical alignment times out, the value is a lower
+    bound, and a warning says so.
+    '''
+    return _voidmass_process(_context(log, tree))
+
+
+METRICS = {'voidsalign': voidsalign, 'voidsat': voidsat, 'voidmass_process': voidmass_process}
+
+_BY_CONTEXT = {'voidsalign': _voidsalign, 'voidsat': _voidsat,
+               'voidmass_process': _voidmass_process}
+
+
+_OPERATORS = ((Sequence, '→'), (Xor, '×'), (And, '∧'), (Loop, '↺'))
+
+
+def show_tree(tree, skip_probs, values):
+    '''
+    One line per node, indented by depth: skip probability ([ ] where the
+    node can be traversed silently), then the metric's value.
+    '''
+    silent = tree.get_cheapest_execution(0)[1]
+    skip = f'[ {skip_probs[tree]} ]' if silent else str(skip_probs[tree])
+    fields = f'{skip}, {values[tree]}'
+    if isinstance(tree, LeafNode):
+        return f'{tree} : {fields}'
+    operator = next((op for cls, op in _OPERATORS if isinstance(tree, cls)), 'UNKNOWN')
+    line = ' ' * tree.get_distance_to_root() * 2 + f'{operator} : {fields}'
+    return '\n'.join([line] + [show_tree(c, skip_probs, values) for c in tree.children])
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog='python -m process_voids.pvoid',
+        description='Report a void metric at every node of a process tree.')
+    parser.add_argument('log', help='XES event log')
+    parser.add_argument('model', help='PTML process tree')
+    parser.add_argument('--metric', choices=tuple(METRICS), default='voidsalign',
+                        help='void metric to report (default: voidsalign)')
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
     print( f'Started at {datetime.datetime.now()}')
-    logx   = pm4py.read_xes( sys.argv[1] )
-    modelt = pm4py.read_ptml( sys.argv[2] )
-    pt = from_pm4py(modelt)
-    slpn_path = 'var/spmodel.slpn'
-    dv = skipprob(logx, pt, slpn_path)
+    log = pm4py.read_xes(args.log)
+    tree = from_pm4py(pm4py.read_ptml(args.model))
+    ctx = _context(log, tree)
+    values = _BY_CONTEXT[args.metric](ctx)
+    dv = ctx.stage('dv')
     show_skip_outcome(dv)
-    print( f'Skip probabilities calculated at {datetime.datetime.now()}')
-    slpn = slpn_importer.read_slpn(slpn_path)
-    transfer_pt_weights(pt,slpn)
-    print(show_tree_weights(pt,dv))
-    print( '==========' )
-    print( f'Coverage: {mass_by_weight(pt, dv.skip_probs)}' )
-    print( '==========' )
-    traces = log_to_traces(logx)
-    total_dur = sum([ dur(sigma) for sigma in traces ])
-    print(show_tree_coverage_by_duration(pt, dv, traces, total_dur))
-    print( '==========' )
-    print( f'Coverage by Duration: {coverage_by_duration(pt, traces, dv.skip_probs, total_dur)}' )
-    print( '==========' )
-    print( f'Finished at {datetime.datetime.now()}')
+    print( f'Calculated at {datetime.datetime.now()}')
+    print(f'node : skip probability, {args.metric}')
+    print(show_tree(tree, dv.skip_probs, values))
 
 if __name__ == '__main__':
     main()
-
-

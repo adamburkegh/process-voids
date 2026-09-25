@@ -1,12 +1,14 @@
-#Usage: python -m process_voids.bpmn_colour model.bpmn model_coloured.bpmn --var-path var
+#Usage: python -m process_voids.bpmn_colour log.xes model.ptml model.bpmn model_coloured.bpmn [--metric voidsalign|voidsat|voidmass_process]
 
 import argparse
-import pickle
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from typing import Dict, Optional
 
-from skipalignments import ProcessTree, Activity, Tau
+import pm4py_config as pm4py
+from skipalignments import ProcessTree, Activity
+
+from process_voids import pvoid
+from process_voids.tree import from_pm4py
 
 
 # BPMN, BPMNDI, DC, DI, BIOC Namespaces
@@ -27,36 +29,17 @@ def qn(prefix: str, tag: str) -> str:
     return f"{{{NS[prefix]}}}{tag}"
 
 
-# Loading the pvoid.py - DerivationnPipeline Output
-def load_pickle(path: str, name: str):
-    file_path = Path(path) / name
-    with open(file_path, "rb") as f:
-        return pickle.load(f)
+def values_by_label(values: Dict[ProcessTree, float]) -> Dict[str, float]:
 
-
-def load_skip_probs(path: str) -> Dict[ProcessTree, float]:
-
-    # Loads the `skip_probs` dict (ProcessTree node -> P(skip)) pickled by DerivationPipeline.compute() to `<path>/skip_probs`.
-
-    return load_pickle(path, "skip_probs")
-
-
-def load_tree(path: str) -> ProcessTree:
-    #Loads the process tree pickled by DerivationPipeline.compute() to "path/tree"
-    return load_pickle(path, "tree")
-
-
-def activity_skip_probs_by_label(skip_probs: Dict[ProcessTree, float]) -> Dict[str, float]:
-
-    # Maps activity *labels* to their skip probability, so they can be matched against the `name`/`id` of BPMN task elements.
+    # Maps activity *labels* to their value (the mean, where a label appears more than once), so they can be matched against the `name`/`id` of BPMN task elements.
 
     sums: Dict[str, float] = {}
     counts: Dict[str, int] = {}
-    for node, prob in skip_probs.items():
+    for node, value in values.items():
         if not isinstance(node, Activity):
             continue
         label = node.name
-        sums[label] = sums.get(label, 0.0) + prob
+        sums[label] = sums.get(label, 0.0) + value
         counts[label] = counts.get(label, 0) + 1
     return {label: sums[label] / counts[label] for label in sums}
 
@@ -70,9 +53,9 @@ GREY = "#9093A2FF"
 NAVY = "#777F9FFF"
 
 
-def prob_to_colour(p: float) -> str:
+def value_to_colour(p: float) -> str:
     """
-    Skip probability - six even bands to return a #RRGGBBAA hex string:
+    A void metric's value - six even bands to return a #RRGGBBAA hex string:
         0%      <= p < 16.67%  -> NAVY
         16.67%  <= p < 33.33%  -> GREY
         33.33%  <= p < 50%     -> TEAL
@@ -123,11 +106,11 @@ def find_shape_for_element(root: ET.Element, element_id: str) -> Optional[ET.Ele
 def colour_bpmn(
     in_path: str,
     out_path: str,
-    label_to_prob: Dict[str, float],
+    label_to_value: Dict[str, float],
     match_by: str = "name",
 ) -> None:
 
-    # Reads the .bpmn file, colours every task whose name (or id, if match_by="id") matches a key in `label_to_prob`, and writes the result to out_pathEbi-x86_64-windows.exe
+    # Reads the .bpmn file, colours every task whose name (or id, if match_by="id") matches a key in `label_to_value`, and writes the result to out_path
 
     tree_xml = ET.parse(in_path)
     root = tree_xml.getroot()
@@ -138,11 +121,11 @@ def colour_bpmn(
 
     for task_id, task_el in tasks.items():
         key = task_el.get("name") if match_by == "name" else task_id
-        if key not in label_to_prob:
+        if key not in label_to_value:
             unmatched.append(key)
             continue
 
-        colour = prob_to_colour(label_to_prob[key])
+        colour = value_to_colour(label_to_value[key])
         shape = find_shape_for_element(root, task_id)
         if shape is None:
             continue
@@ -155,32 +138,36 @@ def colour_bpmn(
 
     print(f"Coloured {coloured} task(s).")
     if unmatched:
-        print(f"{len(unmatched)} task(s) had no matching skip probability: {unmatched}")
+        print(f"{len(unmatched)} task(s) had no matching value: {unmatched}")
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Colour BPMN task activities by their skip probability "
-                    "(as computed by pvoid.py / DerivationPipeline)."
+        prog="python -m process_voids.bpmn_colour",
+        description="Colour BPMN task activities by a void metric."
     )
+    parser.add_argument("log", help="XES event log")
+    parser.add_argument("model", help="PTML process tree the metric is computed against")
     parser.add_argument("bpmn_in", help="Path to the input .bpmn file")
     parser.add_argument("bpmn_out", help="Path to write the coloured .bpmn file to")
     parser.add_argument(
-        "--var-path", default="var",
-        help="Directory in which pvoid.py's DerivationPipeline.compute(path=...) "
-             "wrote 'tree' and 'skip_probs' (default: 'var')",
+        "--metric", choices=tuple(pvoid.METRICS), default="voidsalign",
+        help="void metric to colour by (default: voidsalign)",
     )
     parser.add_argument(
         "--match-by", choices=["name", "id"], default="name",
         help="Match BPMN tasks to activities by their visible 'name' or by "
              "their 'id' (default: name)",
     )
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
-    skip_probs = load_skip_probs(args.var_path)
-    label_to_prob = activity_skip_probs_by_label(skip_probs)
 
-    colour_bpmn(args.bpmn_in, args.bpmn_out, label_to_prob, match_by=args.match_by)
+def main(argv=None):
+    args = parse_args(argv)
+    log = pm4py.read_xes(args.log)
+    tree = from_pm4py(pm4py.read_ptml(args.model))
+    values = pvoid.METRICS[args.metric](log, tree)
+    colour_bpmn(args.bpmn_in, args.bpmn_out, values_by_label(values), match_by=args.match_by)
 
 
 if __name__ == "__main__":

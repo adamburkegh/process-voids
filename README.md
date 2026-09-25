@@ -22,11 +22,13 @@ Install [ebi](https://bpm.rwth-aachen.de/ebi/).
 
 Configure paths to ebi, data files, and so on in `pvoid.toml`.
 
-To calculate skip probabilities and coverage on a XES event log and a PTML process tree model:
+To calculate the voids in a PTML process tree model against a XES event log:
 
 ```
-python -m process_voids.pvoid <log> <model>
+python -m process_voids.pvoid <log> <model> [--metric voidsalign|voidsat|voidmass_process]
 ```
+
+`--metric` chooses the void metric (default `voidsalign`). The same three are available from Python as `process_voids.pvoid.voidsalign`, `voidsat` and `voidmass_process`, each taking a log and a process tree and returning a value for every node.
 
 ## Sample Output
 
@@ -37,29 +39,23 @@ $ python -u -m process_voids.pvoid logs/rtfm_fine_appeal.xes.gz models/rtfm_extr
 
 ...
 
-Skip probabilities calculated at 2025-11-10 16:44:03.078990
-→ : 0.4562279269951479, 0.0012237967107096175
-  × : 0.8506576142530637, 7.419133891686282e-05
-    Act( Appeal to Judge ) : 0.005337205612239992, 0.0
-    → : 0.8453204086408238, 0.0
-      Act( Send Fine ) : 1.0, 0.0
-      Act( Insert Fine Notification ) : 0.7679806129612355, 0.23186426331685353
-      Act( Add penalty ) : 0.7679806129612355, 0.24921031127139176
-  Act( Certify Judgement ) : 0.001, 1.0
-  ∧ : 0.51702616673238, 0.9680111510731652
-    × : 1.009606970102032, [ 0.7613227893601723 ]
-      Tau( TAU_Receive Result Appeal from Prefecture ) : 1.0, [ 0.0 ]
-      Act( Receive Result Appeal from Prefecture ) : 0.009606970102031985, 0.0
-    → : 0.024445363362728033, 0.01998646296292657
-      Act( Insert Date Appeal to Prefecture ) : 0.04027426505236231, 0.15238992211297941
-      Act( Notify Result Appeal to Offender ) : 0.008616461673093751, 0.7851834092543752
-==========
-Coverage: 0.5354181989351403
+Calculated at 2026-09-20 00:25:35.858709
+node : skip probability, voidsalign
+→ : 0.0012237967107096171, 0.5984318351636353
+  × : 7.419133891686282e-05, 0.09363011182292846
+    Act( Appeal to Judge ) : 0.0, 0.0
+    → : 0.0, 0.09358220403988748
+      Act( Send Fine ) : 0.0, 0.0
+      Act( Insert Fine Notification ) : 0.23186426331685353, 0.2318642633168535
+      Act( Add penalty ) : 0.24921031127139176, 0.2492103112713917
+  Act( Certify Judgement ) : 1.0, 1.0
+  ∧ : 0.9680111510731652, 0.9730005057488195
+    × : [ 0.7613227893601723 ], 0.7613227893601723
+      Tau( TAU_Receive Result Appeal from Prefecture ) : [ 0.0 ], 1.0
+      Act( Receive Result Appeal from Prefecture ) : 0.0, 0.0
+    → : 0.01998646296292657, 0.17995351910221014
+      Act( Insert Date Appeal to Prefecture ) : 0.15238992211297941, 0.15238992211297941
+      Act( Notify Result Appeal to Offender ) : 0.7851834092543752, 0.7851834092543752
 ```
 
-Output describes:
- *  Weights and skip probabilities of the process tree
- *  A coverage metric summarising how much of the process is backed by event log data. 
-
-
-
+Each node of the process tree shows its skip probability (in brackets where the node can be traversed silently) and its void, from 0 where the node is fully backed by event log data to 1 where it is never observed. The root's void summarises the whole process. _Certify Judgement_ reads 1.
