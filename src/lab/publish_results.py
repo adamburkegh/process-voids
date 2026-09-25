@@ -1,6 +1,12 @@
 '''
-Builds the public results/ folder from full-size experiment result CSVs,
-so anyone who reruns an experiment can regenerate the same folder.
+Builds a compact, publishable folder from full-size experiment result
+CSVs, so anyone who reruns an experiment can regenerate the same folder.
+
+A publish is a snapshot, not a rolling update: point --out-dir at a dated
+subfolder (results/<YYYYMMDD>/csv, alongside a plots/ folder for
+lab.cross_log_plots' output and a README.md - see results/20260919 for
+the pattern) so a later publish adds a new folder rather than silently
+overwriting an earlier one a paper or report already cites.
 
 Per log id it writes:
 
@@ -31,7 +37,8 @@ Usage:
     python -m lab.publish_results \\
         --source rtfm=var/lab/results/rtfm_20260918-102305.csv \\
         --source rtfm=var/lab/results/rtfm_retry_20260918-124136.csv \\
-        --source bpic2020_rfp=var/lab/results/bpic2020_rfp_20260917-091018.csv
+        --source bpic2020_rfp=var/lab/results/bpic2020_rfp_20260917-091018.csv \\
+        --out-dir results/20260919/csv
 '''
 
 import argparse

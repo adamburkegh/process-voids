@@ -32,6 +32,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+* `results/<YYYYMMDD>/`: the published folder is now a dated snapshot
+  (`csv/` for `lab.publish_results`' output, `plots/` for
+  `lab.cross_log_plots`' PNGs, a `README.md` with what's in the folder and
+  its provenance) rather than a single overwritten `results/`, so a later
+  publish adds a new dated folder alongside an earlier one rather than
+  silently replacing it. First snapshot: `results/20260919/`, dated for
+  when its data was published and submitted against, not for when its
+  plots were drawn (2026-09-20).
 * `lab.repeated_label_shift`: per-node `voidmass_process` under the old
   label-based and the fixed leaf-based attribution, from one pass of
   alignments, over a cached tree and the `lab.degradation` cells - how
