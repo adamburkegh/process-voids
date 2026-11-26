@@ -127,6 +127,17 @@ _LABEL_ATTRIBUTION_RETIRED = (
     "counts. Trees with distinct labels are unaffected, which includes every "
     "inductive-miner tree; toothpaste trees usually repeat labels.")
 
+# Why the execution-grouped ids written before the Definition [Executions]
+# fix were retired, stated in each so a reader of an old result CSV finds
+# it at the column.
+_POSITION_RUN_GROUPING_RETIRED = (
+    "Retired: coveragemass._group_executions grouped a non-Loop node's "
+    "moves into one execution per maximal run of consecutive path "
+    "positions, so one traversal of Definition [Executions] was split in "
+    "two wherever a log move or a parallel sibling's move sat between its "
+    "members. Values written under this id are not comparable with any "
+    "produced after that fix.")
+
 _NAME_RESOLUTION_RETIRED = (
     "Retired: a move was resolved to a tree leaf by activity name, so where "
     "leaves repeat a label every move on it landed on one of them and the "
@@ -244,10 +255,12 @@ METRICS = {
                     'based, unlike weight_coverage. Fails the extremes '
                     'criterion: a submodel missing from half the traces reads '
                     '0.25, not 0.5, since the mass scores an unobserved '
-                    'execution 0 and (1 - skip_prob) has already counted it.',
+                    'execution 0 and (1 - skip_prob) has already counted it. '
+                    + _POSITION_RUN_GROUPING_RETIRED,
         source='process_voids.coveragemass.coverage_by_alignment',
         scripts=('exp_disco_degrade',),
         scale='coverage',
+        status='retired',
         history={'v0.5.0': _LUMPED_SKIP_BOTH_FACTORS_HISTORY},
     ),
     'voidsalign': Metric(
@@ -321,7 +334,42 @@ METRICS = {
                     "no synchronous move are excluded, traces observing the "
                     "node nowhere leave both the average and the normaliser, "
                     "and coverage is 0 where that normaliser is 0 - so a "
-                    "wholly missing subprocess reads void 1.",
+                    "wholly missing subprocess reads void 1. "
+                    + _POSITION_RUN_GROUPING_RETIRED,
+        source='process_voids.voidsalign3.voidsalign3',
+        scripts=('exp_disco_degrade',),
+        scale='void',
+        status='retired',
+        superseded_by='voidsalign4',
+    ),
+    'voidsalign4': Metric(
+        id='voidsalign4',
+        description="\\voidsalign (defn:salign-void): 1 - \\coversalign, where "
+                    "\\coversalign (defn:salign-coverage) is (1 - skip_prob) "
+                    "times a skip-weighted match ratio over skip-alignments' "
+                    "lumped normal form. Each skip move counts for "
+                    "|leaves(msub) \\ {silent}| - the number of labelled "
+                    "activities in the skipped subprocess - so a lumped skip "
+                    "over a large subtree is not underweighted, and a skip "
+                    "over a wholly silent subprocess counts 0. The mass is "
+                    "conditioned on observation: executions with no "
+                    "synchronous move are excluded, traces observing the node "
+                    "nowhere leave both the average and the normaliser, and "
+                    "coverage is 0 where that normaliser is 0 - so a wholly "
+                    "missing subprocess reads void 1. Differs from "
+                    "voidsalign3 in how the moves of one execution are "
+                    "grouped, and in nothing else: an execution is a loose "
+                    "subsequence of moves whose model projection is in the "
+                    "scored submodel's language, per Definition [Executions], "
+                    "rather than a maximal run of consecutive path "
+                    "positions. Position adjacency split a traversal whose "
+                    "moves were interleaved with another subtree's into "
+                    "several part-executions, quarantining a deficit in a "
+                    "matchless one that the matchcount > 0 filter then "
+                    "discarded, so voidsalign3 reads at or below this on the "
+                    "same alignments - by 0 on rtfm, at most 0.013 on "
+                    "bpi2013_closed_problems and up to 0.392 on "
+                    "BPIC2020_rfp, over toothpaste_noise10.",
         source='process_voids.voidsalign3.voidsalign3',
         scripts=('exp_disco_degrade',),
         scale='void',
@@ -579,20 +627,22 @@ METRICS = {
                     'resolved to the one leaf whose transition fired rather than '
                     'by activity name, and tied alignments deduplicated by leaf. '
                     'LOWER bound: a timed-out variant counts as one observed unit '
-                    'at a ratio of 0.',
+                    'at a ratio of 0. ' + _POSITION_RUN_GROUPING_RETIRED,
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
         scale='coverage',
+        status='retired',
     ),
     'alignment_coverage_pn3_upper': Metric(
         id='alignment_coverage_pn3_upper',
         description='Same as alignment_coverage_pn3_lower, but a timed-out '
                     'variant counts as one observed unit at a ratio of 1. Equal '
                     'to alignment_coverage_pn3_lower whenever no variant times '
-                    'out.',
+                    'out. ' + _POSITION_RUN_GROUPING_RETIRED,
         source='process_voids.voidmass_pn.coverage_by_alignment_pn',
         scripts=('exp_disco_degrade',),
         scale='coverage',
+        status='retired',
     ),
     'voidsat': Metric(
         id='voidsat',

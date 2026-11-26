@@ -30,20 +30,24 @@ class TotalSecondsTest(unittest.TestCase):
         df = _timings_df([
             ('inductive_noise20', 'dv', 10.0),
             ('inductive_noise20', 'executions_cache', 0.5),
-            ('inductive_noise20', 'voidsalign3', 0.01),
+            ('inductive_noise20', 'voidsalign4', 0.01),
             ('inductive_noise20', 'classical', 800.0),  # unrelated stage, must not be counted
         ])
-        self.assertAlmostEqual(total_seconds(df, 'inductive_noise20', 'voidsalign3'), 10.51)
+        self.assertAlmostEqual(total_seconds(df, 'inductive_noise20', 'voidsalign4'), 10.51)
 
-    def test_falls_back_to_voidsalign2_when_voidsalign3_absent(self):
-        '''A pre-refresh timings CSV has voidsalign2's own row, not
-        voidsalign3's - same version gap as lab.cross_log_plots.'''
-        df = _timings_df([
-            ('inductive_noise20', 'dv', 5.0),
-            ('inductive_noise20', 'executions_cache', 0.2),
-            ('inductive_noise20', 'voidsalign2', 0.02),
-        ])
-        self.assertAlmostEqual(total_seconds(df, 'inductive_noise20', 'voidsalign3'), 5.22)
+    def test_falls_back_to_earlier_voidsalign_rows_when_voidsalign4_absent(self):
+        '''A pre-refresh timings CSV has voidsalign2's or voidsalign3's
+        own row, not voidsalign4's - same version gap as
+        lab.cross_log_plots.'''
+        for earlier in ('voidsalign2', 'voidsalign3'):
+            with self.subTest(own_row=earlier):
+                df = _timings_df([
+                    ('inductive_noise20', 'dv', 5.0),
+                    ('inductive_noise20', 'executions_cache', 0.2),
+                    ('inductive_noise20', earlier, 0.02),
+                ])
+                self.assertAlmostEqual(
+                    total_seconds(df, 'inductive_noise20', 'voidsalign4'), 5.22)
 
     def test_counts_voidmass_process2_own_rows(self):
         df = _timings_df([
@@ -84,15 +88,15 @@ class RuntimeTableTest(unittest.TestCase):
             'rtfm': _timings_df([
                 ('inductive_noise20', 'dv', 10.0),
                 ('inductive_noise20', 'executions_cache', 1.0),
-                ('inductive_noise20', 'voidsalign3', 0.0),
+                ('inductive_noise20', 'voidsalign4', 0.0),
             ]),
             'bpic2020_rfp': _timings_df([
                 ('inductive_noise20', 'dv', 20.0),
                 ('inductive_noise20', 'executions_cache', 2.0),
-                ('inductive_noise20', 'voidsalign3', 0.0),
+                ('inductive_noise20', 'voidsalign4', 0.0),
             ]),
         }
-        df = runtime_table(log_timings, combos=['inductive_noise20'], metric_ids=['voidsalign3'])
+        df = runtime_table(log_timings, combos=['inductive_noise20'], metric_ids=['voidsalign4'])
         self.assertEqual(list(df.columns), ['rtfm', 'bpic2020_rfp'])
         self.assertEqual(list(df.index), [('Void by Skip Alignment', 'inductive_noise20')])
         self.assertAlmostEqual(df.loc[('Void by Skip Alignment', 'inductive_noise20'), 'rtfm'], 11.0)

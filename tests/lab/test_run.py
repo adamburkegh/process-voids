@@ -81,9 +81,8 @@ class FakePipelineMixin:
         return patcher.start()
 
     def patch_pipeline(self, skip_probs, vm_table, timed_out_count=0, timed_out_weight=0.0,
-                       skip_dict=None, read_xes_return=None,
-                       salign_coverage=0.0, alignment_coverage_pn=0.0, voidsat2_value=0.0,
-                       voidsalign3_value=0.0):
+                       skip_dict=None, read_xes_return=None, voidsat2_value=0.0,
+                       voidsalign4_value=0.0):
         # lab.run discovers through lab.discovery.discover_cached, which
         # pickles the discovered tree under TREE_CACHE_DIR. Left pointing at
         # the real var/lab/tree_cache, these tests would write a fake tree
@@ -101,9 +100,7 @@ class FakePipelineMixin:
                     return_value=VoidmassPnResult(table=vm_table, skip_dict=skip_dict or {},
                                                   timed_out_count=timed_out_count,
                                                   timed_out_weight=timed_out_weight))
-        self._patch('lab.run.coverage_by_alignment', return_value=salign_coverage)
-        self._patch('lab.run.voidsalign3', return_value=voidsalign3_value)
-        self._patch('lab.run.coverage_by_alignment_pn', return_value=alignment_coverage_pn)
+        self._patch('lab.run.voidsalign3', return_value=voidsalign4_value)
         self._patch('lab.run.voidsat2', return_value=voidsat2_value)
 
 
@@ -142,7 +139,7 @@ class MetricsSelectionTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(_resolve_metrics(ALL_METRICS), ALL_METRICS)
 
     def test_selecting_one_metric_leaves_others_absent_or_null(self):
-        self.patch_pipeline({self.tree: 0.1}, self.vm_table, salign_coverage=0.7)
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table, voidsalign4_value=0.7)
         df, node_df, timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations, levels=[0.5],
             metrics=['skipprob'], out_csv=str(Path(tempfile.mkdtemp()) / 'out.csv'))
@@ -150,12 +147,12 @@ class MetricsSelectionTest(FakePipelineMixin, unittest.TestCase):
         # absent entirely, not present-with-None.
         row = df.iloc[0]
         self.assertEqual(row['skipprob'], 0.1)
-        self.assertNotIn('salign_coverage', df.columns)
+        self.assertNotIn('voidsalign4', df.columns)
         self.assertNotIn('voidmass_deficit2_lower', df.columns)
         # node_df DOES have a fixed schema (NODE_ROW_COLUMNS), so an
         # unselected metric still gets its column - just null.
-        self.assertIn('salign_coverage', node_df.columns)
-        self.assertTrue(node_df['salign_coverage'].isna().all())
+        self.assertIn('voidsalign4', node_df.columns)
+        self.assertTrue(node_df['voidsalign4'].isna().all())
 
     def test_only_needed_stages_are_timed_when_metrics_selected(self):
         self.patch_pipeline({self.tree: 0.1}, self.vm_table)
@@ -391,7 +388,7 @@ class ZeroLevelDedupTest(FakePipelineMixin, unittest.TestCase):
             self.assertEqual(mock_skipprob.call_count, 3)
 
     def test_both_dims_get_a_row_at_level_zero_with_matching_metrics(self):
-        self.patch_pipeline({self.tree: 0.1}, self.vm_table, salign_coverage=0.7)
+        self.patch_pipeline({self.tree: 0.1}, self.vm_table, voidsalign4_value=0.7)
         df, node_df, timings_df = run(
             ['fake_log.xes'], combos=self.combos, degradations=self.degradations, levels=[0.0],
             out_csv=str(self.tmp_out))
@@ -400,7 +397,7 @@ class ZeroLevelDedupTest(FakePipelineMixin, unittest.TestCase):
         for _, row in df.iterrows():
             self.assertEqual(row['status'], 'ok')
             self.assertEqual(row['skipprob'], 0.1)
-            self.assertEqual(row['salign_coverage'], 0.7)
+            self.assertEqual(row['voidsalign4'], 0.7)
 
     def test_nonzero_levels_still_computed_per_dim_per_level(self):
         self.patch_pipeline({self.tree: 0.1}, self.vm_table)
@@ -598,8 +595,7 @@ class ClassicalMetricsTimeoutDiagnosticsTest(FakePipelineMixin, unittest.TestCas
                                               voidmass_subprocess_upper=2 / 3,
                                               voidmass_process_upper=2 / 3)}
 
-        self.patch_pipeline({tree: 0.0}, vm_table, timed_out_count=2, timed_out_weight=0.25,
-                           alignment_coverage_pn=0.5)
+        self.patch_pipeline({tree: 0.0}, vm_table, timed_out_count=2, timed_out_weight=0.25)
 
         df, node_df, timings_df = run(
             ['fake_log.xes'], combos=combos, degradations=degradations, levels=[0.0],
@@ -704,8 +700,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
 
     def test_row_has_every_metric_column_with_correct_values(self):
         _df, node_df, _timings_df = self._run(
-            salign_coverage=0.77, alignment_coverage_pn=0.88, voidsat2_value=0.33,
-            voidsalign3_value=0.66)
+            voidsat2_value=0.33, voidsalign4_value=0.66)
         row = node_df[node_df['node_id'] == '1'].iloc[0]
 
         for key in (PER_NODE_METRIC_KEYS + CLASSICAL_METRIC_KEYS
@@ -718,10 +713,7 @@ class NodeRowsTest(FakePipelineMixin, unittest.TestCase):
         self.assertEqual(row['voidmass_deficit2_upper'], 0.5)
         self.assertEqual(row['voidmass_movecount2'], 1.0)
         self.assertEqual(row['voidmass_movecount2_bound'], 1.5)
-        self.assertEqual(row['salign_coverage'], 0.77)
-        self.assertEqual(row['voidsalign3'], 0.66)
-        self.assertEqual(row['alignment_coverage_pn3_lower'], 0.88)
-        self.assertEqual(row['alignment_coverage_pn3_upper'], 0.88)
+        self.assertEqual(row['voidsalign4'], 0.66)
         self.assertEqual(row['voidsat2'], 0.33)
         # a's own subtree is just itself, no silent alternative from its
         # own perspective (mandatory_node_count/total_node_count are

@@ -150,7 +150,7 @@ class PlotCrossLogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out_dir:
             written = plot_cross_log(log_dfs, combos=['inductive_noise20'],
                                       degradation_dims=['trace'],
-                                      metric_ids=['voidsalign3', 'voidsat2'], out_dir=out_dir)
+                                      metric_ids=['voidsalign4', 'voidsat2'], out_dir=out_dir)
             self.assertEqual(len(written), 1)
             self.assertTrue(written[0].exists())
 
@@ -204,7 +204,7 @@ class PlotCrossLogTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as out_dir:
                 plot_cross_log(log_dfs, combos=['inductive_noise20'], degradation_dims=['trace'],
                                 out_dir=out_dir, panel_by='log_metric',
-                                metric_ids=['voidsalign3', 'voidsat2'])
+                                metric_ids=['voidsalign4', 'voidsat2'])
         # 2 logs x 2 metrics = 4 panels
         spy.assert_called_once_with(1, 4, figsize=(20, 4))
 
@@ -240,7 +240,7 @@ class PlotCrossLogTest(unittest.TestCase):
         self.assertEqual(labels, ['Road Traffic Fines'])
 
     def test_metric_specs_cover_default_ids(self):
-        for metric_id in ('voidsalign3', 'voidsat2', 'voidmass_process'):
+        for metric_id in ('voidsalign4', 'voidsat2', 'voidmass_process'):
             self.assertIn(metric_id, METRIC_SPECS)
 
 

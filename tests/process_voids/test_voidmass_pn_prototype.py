@@ -391,6 +391,38 @@ class NonPooledAlignmentCoverageTest(unittest.TestCase):
             coverage_by_alignment_pn(self.root, 0.0, skip_dict, variant_probs), 1.0)
 
 
+class UnmodelledEventDoesNotSplitATraversalTest(unittest.TestCase):
+    '''
+    Classical alignments are where positions belonging to no node are
+    commonest - an unmodelled event, and build_id_net's structural
+    silent transitions. Per Definition [Executions] none of them
+    divides an execution, so coverage reads one traversal here.
+
+    Tree: Sequence(a, b, c). Variant <a, q, c>, weight 1: b is missing
+    (one model move) and q is in no model position (one log move). One
+    traversal of the sequence, movecount 3, matchcount 2, so coverage is
+    2/3 at the root with skip_prob 0.
+
+    The value is also independent of where the aligner puts the model
+    move for b relative to the log move for q, which is the point: while
+    executions were maximal runs of consecutive positions, that ordering
+    decided whether the deficit shared an execution with a match.
+    '''
+
+    def setUp(self):
+        self.tree, _leaves = _sequence_of(['a', 'b', 'c'])
+        self.net, self.im, self.fm, self.activity_to_id, self.tau_ids, self.id_loop_list = \
+            build_id_net(self.tree)
+
+    def test_coverage_reads_one_traversal_of_three_moves(self):
+        variant_probs = {('a', 'q', 'c'): 1.0}
+        result = voidmass_table_pn(self.tree, variant_probs, self.net, self.im, self.fm,
+                                   self.activity_to_id, self.tau_ids, timeout=30)
+        self.assertAlmostEqual(
+            coverage_by_alignment_pn(self.tree, 0.0, result.skip_dict, variant_probs),
+            2 / 3, places=12)
+
+
 class PooledVsNonPooledDivergenceTest(unittest.TestCase):
     '''
     Pooling and per-execution averaging are genuinely different

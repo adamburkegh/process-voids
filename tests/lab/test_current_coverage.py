@@ -78,11 +78,11 @@ class CurrentCoverageTest(unittest.TestCase):
         read False - unlike lab.collection_report, which would OR them
         together across every file ever written.'''
         with tempfile.TemporaryDirectory() as d:
-            _write_csv(d, 'old.csv', 'rtfm', ['voidsalign3'])
+            _write_csv(d, 'old.csv', 'rtfm', ['voidsalign4'])
             time.sleep(0.01)
             _write_csv(d, 'new.csv', 'rtfm', ['voidsat2'])
             df = current_coverage(d)
-            self.assertFalse(df.loc['voidsalign3', 'rtfm'])
+            self.assertFalse(df.loc['voidsalign4', 'rtfm'])
             self.assertTrue(df.loc['voidsat2', 'rtfm'])
 
 

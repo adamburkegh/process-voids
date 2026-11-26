@@ -41,7 +41,7 @@ from lab.plots import _exclude_degenerate
 # plain metric; a (lower, upper) pair is one banded panel, plotted as
 # its midpoint with a shaded band - see plot_cross_log.
 METRIC_SPECS = {
-    'voidsalign3': ('Void by Skip Alignment', ('voidsalign3',)),
+    'voidsalign4': ('Void by Skip Alignment', ('voidsalign4',)),
     'voidsat2': ('Void by Aligned Durations', ('voidsat2',)),
     'voidmass_process': ('Void by Process Relative Moves',
                           ('voidmass_process2_lower', 'voidmass_process2_upper')),
@@ -52,9 +52,10 @@ METRIC_SPECS = {
 COLUMN_FALLBACKS = {
     ('voidmass_process2_lower', 'voidmass_process2_upper'):
         ('voidmass_process_lower', 'voidmass_process_upper'),
+    ('voidsalign4',): ('voidsalign3',),
 }
 
-DEFAULT_METRICS = ('voidsalign3', 'voidsat2', 'voidmass_process')
+DEFAULT_METRICS = ('voidsalign4', 'voidsat2', 'voidmass_process')
 
 # combo id -> display label, for titles/legends. Unmapped combos (eg
 # plain 'toothpaste') fall back to their own id - see _display.

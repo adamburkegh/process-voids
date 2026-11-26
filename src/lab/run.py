@@ -47,10 +47,10 @@ from lab.runs import Experiment, RUNS
 from lab.timing import Timer, TimingListener
 from process_voids.coveragemass import (
     TREE_METRIC_KEYS, mandatory_node_count, total_node_count,
-    voidage_by_weight, coverage_by_alignment,
+    voidage_by_weight,
 )
 from process_voids.metric_context import CellContext, ProcessMetric, score_all, METRIC_ERROR
-from process_voids.voidmass_pn import build_id_net, coverage_by_alignment_pn
+from process_voids.voidmass_pn import build_id_net
 from process_voids.voidsalign3 import voidsalign3
 from process_voids.voidsat2 import voidsat2
 
@@ -77,15 +77,13 @@ def _log_stats(log):
 
 CLASSICAL_METRIC_KEYS = ('voidmass_deficit2_lower', 'voidmass_deficit2_upper',
                           'voidmass_movecount2', 'voidmass_movecount2_bound',
-                          'voidmass_process2_lower', 'voidmass_process2_upper',
-                          'alignment_coverage_pn3_lower', 'alignment_coverage_pn3_upper')
+                          'voidmass_process2_lower', 'voidmass_process2_upper')
 
 # Per-cell bookkeeping, root CSV only (not metrics, so not in
 # lab.metric_registry).
 TIMEOUT_DIAGNOSTIC_KEYS = ('timed_out_count', 'timed_out_weight')
 
-PER_NODE_METRIC_KEYS = ('weight_voidage', 'skipprob', 'matchprob', 'salign_coverage',
-                         'voidsalign3')
+PER_NODE_METRIC_KEYS = ('weight_voidage', 'skipprob', 'matchprob', 'voidsalign4')
 
 ALIGNED_DURATION_METRIC_KEYS = ('voidsat2',)
 
@@ -119,15 +117,6 @@ def _classical_field(field):
     return compute
 
 
-def _alignment_coverage_pn(timed_out_ratio):
-    def compute(ctx, node):
-        result, variant_probs = ctx.stage('classical')
-        return coverage_by_alignment_pn(node, ctx.stage('dv').skip_probs[node], result.skip_dict,
-                                        variant_probs, executions_cache=ctx.stage('executions_cache'),
-                                        timed_out_ratio=timed_out_ratio)
-    return compute
-
-
 # Every metric this runner can score, both at the tree root and at every
 # node - see _compute_cell. mean_leaf_skipprob and TIMEOUT_DIAGNOSTIC_KEYS
 # are root-only bookkeeping, not in this list - see _compute_cell.
@@ -138,10 +127,7 @@ ALL_METRICS = [
                   compute=lambda ctx, node: ctx.stage('dv').skip_probs[node]),
     ProcessMetric(id='matchprob', scope='node', needs=('dv',),
                   compute=lambda ctx, node: 1 - ctx.stage('dv').skip_probs[node]),
-    ProcessMetric(id='salign_coverage', scope='node', needs=('dv', 'executions_cache'),
-                  compute=lambda ctx, node: coverage_by_alignment(
-                      node, ctx.stage('dv'), executions_cache=ctx.stage('executions_cache'))),
-    ProcessMetric(id='voidsalign3', scope='node', needs=('dv', 'executions_cache'),
+    ProcessMetric(id='voidsalign4', scope='node', needs=('dv', 'executions_cache'),
                   compute=lambda ctx, node: voidsalign3(
                       node, ctx.stage('dv').skip_dict_backup, ctx.stage('dv').pl,
                       ctx.stage('dv').skip_probs, executions_cache=ctx.stage('executions_cache'))),
@@ -157,12 +143,6 @@ ALL_METRICS = [
                   compute=_classical_field('voidmass_process_lower')),
     ProcessMetric(id='voidmass_process2_upper', scope='node', needs=('classical',),
                   compute=_classical_field('voidmass_process_upper')),
-    ProcessMetric(id='alignment_coverage_pn3_lower', scope='node',
-                  needs=('classical', 'dv', 'executions_cache'),
-                  compute=_alignment_coverage_pn(0.0)),
-    ProcessMetric(id='alignment_coverage_pn3_upper', scope='node',
-                  needs=('classical', 'dv', 'executions_cache'),
-                  compute=_alignment_coverage_pn(1.0)),
     ProcessMetric(id='voidsat2', scope='node', needs=('dv', 'aligned_duration_cache'),
                   compute=lambda ctx, node: voidsat2(
                       node, ctx.tree, ctx.log,

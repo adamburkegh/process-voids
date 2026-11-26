@@ -4,6 +4,89 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+* `lab.normal_form`: which adjacent moves of a skip alignment may be
+  transposed, and reordering one to a chosen move precedence
+  (`LOG_FIRST`, skip-alignments' own normal form, or `SKIP_FIRST`).
+  Independence follows the Definition of Skip Alignment: log/skip always;
+  two model-side moves where both orderings of the model path are in the
+  skip language, read structurally as a common `And` ancestor reached
+  through different branches; two consuming moves only where they carry
+  the same activity. Post-processes an alignment the aligner has already
+  returned, so nothing reaches into skip-alignments' search or costs. In
+  the harness rather than the product because the precedence is
+  skip-alignments' own rule: that library is the strategic home, and this
+  repo cannot modify a sibling.
+* `lab.normal_form_compare`: rescores `voidsalign3` and `voidsat2` on the
+  pinned fixtures under both precedences, and counts the independent
+  adjacent pairs that could move a value at all. `voidmass_process` is
+  not compared - it builds its own classical alignments and takes no
+  skip-alignment input.
+* Pinned witnesses that the metrics are not invariant to the precedence
+  (ICPM reviewer item #10): on `seq(and(a, b), c)` against one trace,
+  `voidsat2` at `and(a, b)` reads 1 under the current precedence and 0
+  under the reverse, since `mdur` charges a move for the interval its
+  position falls in. `voidsalign3` moved too, through `exec`, until the
+  execution grouping was fixed below; `tests/lab/
+  test_normal_form_invariance.py` now pins its invariance over the same
+  witness.
+* `lab.fixture_metric_table`: every metric `lab.run` computes, at every
+  node of each hand-built fixture, with a `--diff` of two such tables.
+  The fixture-scale counterpart to a run, for checking whether a change
+  to the shared metric machinery moves a value anywhere, including at
+  the nodes no test pins. Deliberately not a discovered tree: discovery
+  is not reproducible across processes with `PYTHONHASHSEED` unset.
+
+### Changed
+
+* `voidsalign4` replaces `voidsalign3`, which is retired with
+  `superseded_by`. The execution-grouping fix below changes what the
+  metric computes on the same alignments, and the registry mints a new
+  id for a definition change of our own rather than redefining one in
+  place - a result CSV's column has to keep meaning what it meant when
+  it was written. The two differ only in how one execution's moves are
+  grouped. Measured on `toothpaste_noise10` under
+  `activity_frequency_gradual`: `voidsalign4` reads at or above
+  `voidsalign3` everywhere, by exactly 0 in all 20 `rtfm` cells, at most
+  +0.013 on `bpi2013_closed_problems` and up to +0.392 on
+  `BPIC2020_rfp`, where it also removes a non-monotonic dip from the
+  published curve. `voidsat2` and `voidmass_process2` do not move.
+* `salign_coverage`, `alignment_coverage_pn3_lower` and
+  `alignment_coverage_pn3_upper` are retired with no replacement, as
+  `weight_coverage` was. None of the three is reported in the paper, all
+  three are grouping-sensitive and would otherwise each need a new id of
+  their own, and they are intermediates the project no longer carries.
+  Retiring an id is a registry and roster action, not a code deletion:
+  `coveragemass.coverage_by_alignment` and
+  `voidmass_pn.coverage_by_alignment_pn` stay, since `voidsalign` is
+  built on the same machinery and other code and tests call them.
+* `lab.cross_log_plots` and `lab.runtime_table` read `voidsalign4`,
+  falling back to `voidsalign3` (and, for timings, `voidsalign2`) when a
+  result CSV predates the rename - so the published `results/20260919/`
+  data still plots under the current tooling.
+
+### Fixed
+
+* Executions now follow Definition [Executions]: their moves are a loose
+  subsequence of the skip alignment, and clause (2) constrains only
+  moves that are part of a traversal of the node, so a log move or a
+  parallel sibling's move no longer divides one. `coveragemass` grouped
+  a non-Loop node's moves into one execution per maximal run of
+  consecutive path positions, which contradicts that definition and made
+  `voidsalign` depend on where an unmodelled event sat: on
+  `loop(seq(x, y, z), e)` the body's void read 1/3 or 0 with the same
+  evidence. Grouping is now bottom-up, a node's traversals composed from
+  its children's and cut where the operator's language starts again,
+  which is clause (1). On the three pinned fixtures no void metric
+  moves: `voidsalign3` nowhere, and `voidmass_process2` and `voidsat2`
+  not at all - `voidmass_process2` sums counts over executions, which is
+  additive across any partition of the same moves, and `voidsat2` never
+  groups. Only one value moves anywhere, the classical coverage reading
+  `alignment_coverage_pn3` at `payment_partial`'s root, 139/144 to
+  91/96, where the classical net's structural silent transitions reach
+  the path as log moves.
+
 ## [0.5.2] - 2026-11-23
 
 ### Fixed

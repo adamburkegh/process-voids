@@ -370,61 +370,118 @@ def _ancestor_chains(tree:ProcessTree):
     return chains
 
 
-def _group_executions(relevant, pt:ProcessTree):
+def _own_moves_by_node(path):
     '''
-    Groups an already-filtered, path-order list of (i, log_elem,
-    model_elem) triples into pt's executions, per Definition
-    [Executions]: one execution for the whole list if pt is a Loop
-    (all iterations count as one execution), otherwise one execution
-    per maximal run of consecutive original path positions.
+    {node: [(i, log_elem, model_elem), ...]} for the moves classified AT
+    each node - a synchronous move on a leaf, or a Skip/TauPath lumping
+    that node's whole subtree. Each such move is a complete traversal of
+    its node on its own, since both <a> and <s(N')> are in S(N').
     '''
-    if not relevant:
-        return []
+    own = {}
+    for i, (log_elem, model_elem) in enumerate(path):
+        node, _kind = _classify_move(model_elem)
+        if node is None:
+            continue
+        own.setdefault(node, []).append((i, log_elem, model_elem))
+    return own
+
+
+def _child_traversals(child_executions):
+    '''
+    [(child index, execution), ...] over all of a node's children, in
+    the path order of each execution's first move.
+    '''
+    items = [(j, execution)
+             for j, executions_of_child in enumerate(child_executions)
+             for execution in executions_of_child]
+    items.sort(key=lambda item: item[1][0][0])
+    return items
+
+
+def _extends_traversal(pt:ProcessTree, taken, child_index):
+    '''
+    Whether a traversal of `pt` that has so far traversed the children
+    `taken` (child indices, in the order traversed) can continue with
+    child `child_index` - Definition [Executions] clause (1), read off
+    the operator's own language, since a group is an execution exactly
+    while its projection stays in S(pt).
+    '''
+    width = len(pt.children)
+    if isinstance(pt, Xor):
+        # one traversal of one child is already the whole traversal
+        return False
     if isinstance(pt, Loop):
-        return [[(log_elem, model_elem) for _, log_elem, model_elem in relevant]]
-    groups = []
-    current = [relevant[0]]
-    for prev, curr in zip(relevant, relevant[1:]):
-        if curr[0] == prev[0] + 1:
-            current.append(curr)
-        else:
+        # do (redo do)*: complete after any do, continued only by a redo
+        return ((taken[-1] == 0 and child_index == 1)
+                or (taken[-1] == 1 and child_index == 0))
+    if isinstance(pt, And):
+        # each child once, in any order
+        return child_index not in taken and len(taken) < width
+    # Sequence: each child once, in its declared order
+    return child_index == len(taken) and len(taken) < width
+
+
+def _group_executions(pt:ProcessTree, own_moves, child_executions):
+    '''
+    pt's executions, per Definition [Executions]: the moves of an
+    execution are a LOOSE subsequence of the alignment, and clause (2)
+    constrains only moves that are part of a traversal of pt. So a move
+    belonging to no traversal of pt - a log move, or a move of a
+    parallel sibling - may sit between an execution's moves without
+    dividing it, and position adjacency is not the boundary.
+
+    The boundary is clause (1): a group is an execution only while its
+    projection lies in S(pt), so a traversal is composed of its
+    children's traversals in whatever order the operator admits, and
+    cut where the next one would start the operator's language again.
+    A move classified at pt itself is a whole traversal of pt.
+
+    Takes the children's executions rather than a flat move list
+    because "one traversal of a child" is the same question one level
+    down; executions_by_node drives this bottom-up.
+    '''
+    groups = [[move] for move in own_moves]
+    taken, current = [], []
+    for child_index, execution in _child_traversals(child_executions):
+        if current and not _extends_traversal(pt, taken, child_index):
             groups.append(current)
-            current = [curr]
-    groups.append(current)
-    return [[(log_elem, model_elem) for _, log_elem, model_elem in group]
-            for group in groups]
+            taken, current = [], []
+        taken.append(child_index)
+        current.extend(execution)
+    if current:
+        groups.append(current)
+    for group in groups:
+        group.sort(key=lambda move: move[0])
+    groups.sort(key=lambda group: group[0][0])
+    return groups
 
 
-def executions_by_node(path, tree:ProcessTree, ancestor_chains=None):
+def executions_by_node(path, tree:ProcessTree):
     '''
     {node: executions(path, node)} for EVERY node in tree, from one
-    pass over `path` - batches what calling executions(path, node) once
-    per node would otherwise redo (re-walking the same path from
-    scratch each time). Pass a precomputed ancestor_chains (this
-    function's own _ancestor_chains output) when calling repeatedly
-    against the same tree, to also skip re-deriving that structural,
-    alignment-independent map - see make_executions_cache/alignment_mass.
+    pass over `path` and one walk of the tree - batches what calling
+    executions(path, node) once per node would otherwise redo
+    (re-deriving every node's grouping from scratch each time).
+
+    Bottom-up, because a node's traversals are built from its
+    children's: see _group_executions.
 
     executions() (below) is a thin facade over this for the single-node
     case the existing test suite and simpler callers use; this is the
     real implementation both share, not a second maintained copy of the
     partitioning logic.
     '''
-    if ancestor_chains is None:
-        ancestor_chains = _ancestor_chains(tree)
+    own_moves = _own_moves_by_node(path)
+    result = {}
 
-    relevant_by_node = {}
-    for i, (log_elem, model_elem) in enumerate(path):
-        node, _kind = _classify_move(model_elem)
-        if node is None:
-            continue
-        for pt in ancestor_chains[node]:
-            relevant_by_node.setdefault(pt, []).append((i, log_elem, model_elem))
+    def _walk(pt):
+        child_executions = [_walk(child) for child in pt.children]
+        groups = _group_executions(pt, own_moves.get(pt, []), child_executions)
+        result[pt] = [[(log_elem, model_elem) for _i, log_elem, model_elem in group]
+                      for group in groups]
+        return groups
 
-    result = {pt: _group_executions(relevant, pt)
-              for pt, relevant in relevant_by_node.items()}
-    for pt in ancestor_chains:
-        result.setdefault(pt, [])
+    _walk(tree)
     return result
 
 
@@ -470,14 +527,14 @@ def _variant_key(variant):
 
 def make_executions_cache(tree:ProcessTree):
     '''
-    The structural map for `tree` (ancestor_chains) plus a
-    per-path memo, shared across many alignment_mass calls against
-    different nodes of the SAME tree/skip_dict (see
+    A per-path memo of executions_by_node for `tree`, shared across
+    many alignment_mass calls against different nodes of the SAME
+    tree/skip_dict (see
     lab.exp_disco_degrade._node_rows, which calls alignment_mass once
     per node via coverage_by_alignment/coverage_by_alignment_pn) - pass
-    the SAME cache object to every one of those calls so both the
-    structural map and each alignment's batched executions_by_node
-    result are computed once per report row, not once per node. Safe to
+    the SAME cache object to every one of those calls so each
+    alignment's batched executions_by_node result is computed once per
+    report row, not once per node. Safe to
     share between coverage_by_alignment's skip-alignment paths and
     coverage_by_alignment_pn's classical-alignment paths at once (both
     score the same tree) - the per-path memo is keyed by path object
@@ -485,7 +542,6 @@ def make_executions_cache(tree:ProcessTree):
     '''
     return {
         'tree': tree,
-        'ancestor_chains': _ancestor_chains(tree),
         'by_path': {},
     }
 
@@ -493,7 +549,7 @@ def make_executions_cache(tree:ProcessTree):
 def _executions_for(path, pt, cache):
     by_node = cache['by_path'].get(id(path))
     if by_node is None:
-        by_node = executions_by_node(path, cache['tree'], cache['ancestor_chains'])
+        by_node = executions_by_node(path, cache['tree'])
         cache['by_path'][id(path)] = by_node
     return by_node.get(pt, [])
 

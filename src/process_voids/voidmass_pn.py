@@ -253,9 +253,10 @@ def _to_alignment_mass_path(alignment, leaves, tau_id_set):
       - '>>' : a pure log move, OR a structural/helper silent transition
         with no tree correspondence at all (build_petri_net inserts
         these for net routing - label=None, never in tau_id_set). Both
-        cases are unattributable to any subprocess, so both become a gap
-        in executions()' consecutive-run grouping - the same treatment
-        an unrelated move already gets there, not a special case.
+        cases are unattributable to any subprocess, so executions()
+        passes over both without dividing an execution - the same
+        treatment an unrelated move already gets there, not a special
+        case.
 
     Each move is resolved to the one leaf whose transition fired, through
     `leaves` (leaf_by_transition's map, built once by the caller), so

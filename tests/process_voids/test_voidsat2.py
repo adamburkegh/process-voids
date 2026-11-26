@@ -11,15 +11,18 @@ completeness varies - the ratio reads its full magnitude rather than
 one of two ties.
 
 Alignments come from the real aligner, not hand-picked paths.
+
+NormalFormPrecedencePinTest pins the aligner behaviour this metric's
+values rest on, as CostModelPinTest does for voidmass_pn's bound.
 """
 
 import unittest
 from datetime import datetime, timedelta
 
-from skipalignments import Aligner
+from skipalignments import Activity, Aligner, And, Sequence
 
 from lab.fixtures import build_partial_sequence_tree, build_payment_partial_tree
-from process_voids.coveragemass import _variant_key, log_to_traces, obsdur, misdur
+from process_voids.coveragemass import _variant_key, block, consumes, log_to_traces, mdur, obsdur, misdur
 from process_voids.voidsat2 import adratio, admass, covsat2, voidsat2
 
 ACT_COST = 100000
@@ -142,6 +145,83 @@ class UnobservedSubprocessTest(unittest.TestCase):
         of the gap it sits in."""
         path = self.alignments[_variant_key(('o', 'x', 'z', 'p'))][0]
         self.assertGreater(misdur(self.y, self.tree, path, self.log[0]), 0.0)
+
+
+def _concurrent_tree():
+    """seq( and(a, b), c ) - ids 1..5, root last."""
+    a, b, c = (Activity(None, name, ACT_COST) for name in 'abc')
+    a.id, b.id, c.id = '1', '2', '3'
+    parallel = And(None, [a, b])
+    parallel.id = '4'
+    a.set_parent(parallel)
+    b.set_parent(parallel)
+    tree = Sequence(None, [parallel, c])
+    tree.id = '5'
+    parallel.set_parent(tree)
+    c.set_parent(tree)
+    return tree, parallel
+
+
+class NormalFormPrecedencePinTest(unittest.TestCase):
+    """
+    voidsat2's values rest on WHERE the aligner puts a skip move, since
+    mdur charges a move for the interval its own position falls in. A
+    skip alignment is in normal form when transposable moves follow the
+    precedence log, then synchronous, then skip, so for a skip that could
+    sit on either side of a synchronous move - inside a parallel block,
+    where both orderings are in the skip language - the precedence
+    decides, and the aligner returns that one representative.
+
+    Pinned behaviourally rather than by reading the rule: on
+    seq(and(a, b), c) against <a@0h, c@10h> the skip of b must come after
+    the synchronous move on a, which puts it in the 0-10h block and
+    charges it half the gap. Transposing it to the front - still a valid
+    skip alignment of the same trace - moves it before the first consumed
+    event, where no interval bounds it. adratio at and(a, b) is then 0
+    one way and 1 the other, so voidsat2 reads 1 or 0: the metric's whole
+    range on a tie-break.
+
+    If the precedence changes, this fails, and every voidsat2 value on a
+    concurrent model must be re-read rather than silently changing
+    meaning. lab.normal_form and lab.normal_form_compare are the
+    research side of the same question.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tree, cls.parallel = _concurrent_tree()
+        cls.trace = trace(('a', 0), ('c', 10))
+        cls.delta = align(cls.tree, ('a', 'c'))[0]
+        cls.delta_prime = [cls.delta[1], cls.delta[0], *cls.delta[2:]]
+
+    def test_the_aligner_returns_one_alignment_with_the_skip_after_the_sync(self):
+        paths = align(self.tree, ('a', 'c'))
+        self.assertEqual(len(paths), 1)
+        kinds = [('log' if model == '>>' else
+                  'skip' if type(model).__name__ in ('Skip', 'TauPath') else 'sync')
+                 for _log, model in self.delta]
+        self.assertEqual(kinds, ['sync', 'skip', 'sync'])
+
+    def test_the_skip_shares_the_whole_gap_with_the_following_event(self):
+        self.assertEqual(consumes(self.delta), [0, 2])
+        self.assertEqual(block(self.delta, 1, None), [1, 2])
+        self.assertEqual(mdur(self.delta, self.trace, 1), 5 * 3600)
+
+    def test_transposing_it_ahead_of_the_sync_leaves_it_unmeasurable(self):
+        self.assertEqual(consumes(self.delta_prime), [1, 2])
+        self.assertEqual(mdur(self.delta_prime, self.trace, 0), 0)
+
+    def test_adratio_and_voidsat_span_their_range_on_the_precedence(self):
+        skip_probs = {self.parallel: 0.0}
+        key = _variant_key(('a', 'c'))
+        for name, path, ratio in (('normal form', self.delta, 0.0),
+                                  ('transposed', self.delta_prime, 1.0)):
+            with self.subTest(alignment=name):
+                self.assertAlmostEqual(
+                    adratio(self.parallel, self.tree, path, self.trace), ratio, places=12)
+                self.assertAlmostEqual(
+                    voidsat2(self.parallel, self.tree, [self.trace], {key: [path]},
+                             skip_probs), 1 - ratio, places=12)
 
 
 class PerInstanceDurationTest(unittest.TestCase):

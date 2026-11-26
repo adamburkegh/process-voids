@@ -43,9 +43,6 @@ CASES = {
 
 # (metric id, case) -> the value it reads today, where that breaks its promise.
 KNOWN_FAILURES = {
-    # (1 - skip_prob) and the match-ratio mass both count b's absence, so
-    # coverage falls as (1 - p)^2 rather than 1 - p.
-    ('salign_coverage', 'half_missing'): 0.25,
     # skip_prob * voidmass: the voidmass has already counted the absence.
     ('voidage_subprocess', 'half_missing'): 0.25,
     ('target_voidage_subprocess', 'half_missing'): 0.25,

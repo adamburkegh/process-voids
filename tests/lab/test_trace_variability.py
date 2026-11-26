@@ -52,11 +52,11 @@ class StdDevForTest(unittest.TestCase):
         # here - std_dev_for operates on whatever it's given, so pass an
         # already-filtered frame to isolate this from that behaviour.
         flat = df[df['degradation_level'] != 1.0]
-        self.assertAlmostEqual(std_dev_for(flat, 'inductive_noise20', 'voidsalign3'), 0.0)
+        self.assertAlmostEqual(std_dev_for(flat, 'inductive_noise20', 'voidsalign4'), 0.0)
 
     def test_nonzero_std_dev_reflects_spread(self):
         df = fake_df()
-        std = std_dev_for(df, 'inductive_noise20', 'voidsalign3')
+        std = std_dev_for(df, 'inductive_noise20', 'voidsalign4')
         self.assertGreater(std, 0.0)
 
     def test_banded_metric_uses_midpoint(self):
@@ -66,7 +66,7 @@ class StdDevForTest(unittest.TestCase):
 
     def test_missing_metric_column_returns_none(self):
         df = fake_df_missing_voidsalign3()
-        self.assertIsNone(std_dev_for(df, 'inductive_noise20', 'voidsalign3'))
+        self.assertIsNone(std_dev_for(df, 'inductive_noise20', 'voidsalign4'))
 
     def test_ignores_other_degradation_dimensions(self):
         '''The activity_gradual row in fake_df would blow the std dev up
@@ -74,19 +74,19 @@ class StdDevForTest(unittest.TestCase):
         its job here.'''
         df = fake_df()
         flat = df[df['degradation_level'] != 1.0]
-        self.assertAlmostEqual(std_dev_for(flat, 'inductive_noise20', 'voidsalign3'), 0.0)
+        self.assertAlmostEqual(std_dev_for(flat, 'inductive_noise20', 'voidsalign4'), 0.0)
 
 
 class VariabilityTableTest(unittest.TestCase):
     def test_shape_is_metric_combo_by_log(self):
         log_dfs = {'log_a': fake_df(), 'log_b': fake_df()}
-        df = variability_table(log_dfs, combos=['inductive_noise20'], metric_ids=['voidsalign3'])
+        df = variability_table(log_dfs, combos=['inductive_noise20'], metric_ids=['voidsalign4'])
         self.assertEqual(list(df.columns), ['log_a', 'log_b'])
         self.assertEqual(list(df.index), [('Void by Skip Alignment', 'inductive_noise20')])
 
     def test_missing_metric_reads_as_nan_not_error(self):
         log_dfs = {'complete': fake_df(), 'partial': fake_df_missing_voidsalign3()}
-        df = variability_table(log_dfs, combos=['inductive_noise20'], metric_ids=['voidsalign3'])
+        df = variability_table(log_dfs, combos=['inductive_noise20'], metric_ids=['voidsalign4'])
         self.assertTrue(pd.isna(df.loc[('Void by Skip Alignment', 'inductive_noise20'), 'partial']))
 
 
