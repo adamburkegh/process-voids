@@ -174,7 +174,11 @@ that rule for its own criterion.
   formal definition it implements, and pin a hand-computed worked example in
   a test.
 - **Registry ids are append-only.** Retire ids; never delete or reuse them. A
-  changed meaning gets a new id or a `history` entry.
+  change we make, to a definition or to the code implementing it, mints a new
+  id; a `history` entry is for a change arriving from a dependency underneath.
+  Every retirement states in its own description what is wrong with the
+  numbers already written under it, since `superseded_by` says only where to
+  go next.
 - **Schema as code.** Anything schema-shaped (metric ids, column sets, run
   configurations) is an executable constant with a drift test. Prose,
   including this document, is downstream of it.
